@@ -14,7 +14,7 @@
     <PackageId>Veriqa.Core.AuditTrail</PackageId>
     <Authors>Veriqa</Authors>
     <Description>Veriqa audit trail — event-bus receiver, the in-process append-only store and the retention process (satellite package); the EF Core sink lives in the Veriqa.Core.AuditTrail.EntityFrameworkCore package.</Description>
-    <PackageTags>veriqa;authentication;audit</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;audit</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

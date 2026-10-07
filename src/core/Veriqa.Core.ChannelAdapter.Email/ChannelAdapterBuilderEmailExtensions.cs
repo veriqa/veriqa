@@ -28,7 +28,7 @@ public static class ChannelAdapterBuilderEmailExtensions
 {
     /// <summary>
     /// Registers the built-in Email channel adapter.
-    /// Supports the Pull mode (magic link) and the Push mode (send-to-login).
+    /// Supports the Pull mode (magic link) and the Push mode (the one-tap email).
     /// </summary>
     /// <param name="adapters">Channel adapter builder.</param>
     /// <returns>Builder for call chaining.</returns>
@@ -98,7 +98,7 @@ public static class ChannelAdapterBuilderEmailExtensions
         // by two kinds of message. It is judged in one now (SPEC-012 §8.2), as are the three other
         // enum axes of this section.
 
-        // Push mode (send-to-login): register the inbound processor only when Push is enabled — Push
+        // Push mode (the one-tap email): register the inbound processor only when Push is enabled — Push
         // is off by default (EM-051). Unlike the correlation store above, this one is safe to gate:
         // it is never a constructor dependency, only resolved from the service provider on the
         // inbound request path, and that path already returns early on !PushEnabled.

@@ -1,0 +1,42 @@
+# Veriqa with the Telegram channel - a local sign-in stand for the rp/ client of this repository.
+#
+# A local evaluation setup, not a production one: the Development environment keeps the OpenIddict
+# store in memory and signs tokens with development certificates, so every restart forgets the
+# registered sessions. Production setup: https://veriqa.app/docs/quickstart/self-hosted
+#
+# Before `docker compose up -d`: fill .env from .env.example and export the HTTPS certificate into
+# certs/ (README, "Run it").
+
+name: telegram-passwordless-login
+
+services:
+  veriqa:
+    image: registry.gitlab.com/veriqa/veriqa:0.6.1
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # HTTPS for the browser and the client; plain HTTP stays inside the container for the image's
+      # own health check.
+      ASPNETCORE_URLS: "https://+:8443;http://+:8080"
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /https/localhost.pfx
+      ASPNETCORE_Kestrel__Certificates__Default__Password: "${CERT_PASSWORD:?set CERT_PASSWORD in .env - see .env.example}"
+
+      # The issuer must be https, and the browser and the client must see the same address.
+      Veriqa__OpenIddict__Server__Issuer: "https://localhost:8443"
+
+      # The client of this repository (rp/): a public client, so Veriqa requires PKCE from it.
+      Veriqa__OpenIddict__Clients__0__ClientId: rp
+      Veriqa__OpenIddict__Clients__0__DisplayName: "Quickstart client"
+      Veriqa__OpenIddict__Clients__0__AllowedRedirectUris__0: "https://localhost:7020/signin-oidc"
+      Veriqa__OpenIddict__Clients__0__AllowedScopes__0: openid
+      Veriqa__OpenIddict__Clients__0__AllowedScopes__1: profile
+
+      # The one channel of this stand. Polling needs no public address - the bot fetches its updates
+      # itself; a deployed server switches to Webhook.
+      Veriqa__Channels__Telegram__Enabled: "true"
+      Veriqa__Channels__Telegram__BotToken: "${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN in .env - see .env.example}"
+      Veriqa__Channels__Telegram__UpdateMode: Polling
+    volumes:
+      - ./certs:/https:ro

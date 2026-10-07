@@ -12,7 +12,7 @@
     <PackageId>Veriqa.Core.TransactionEngine.EntityFrameworkCore</PackageId>
     <Authors>Veriqa</Authors>
     <Description>EF Core transaction store for the Veriqa Transaction Engine (satellite package). The provider (Npgsql etc.) and the migrations assembly belong to the host.</Description>
-    <PackageTags>veriqa;authentication;transactions;efcore</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;transactions;efcore</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

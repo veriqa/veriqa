@@ -11,8 +11,8 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter.Email</PackageId>
     <Authors>Veriqa</Authors>
-    <Description>Email channel adapter for Veriqa — magic link (Pull) and send-to-login (Push) sign-in over SMTP and an inbound provider (satellite package).</Description>
-    <PackageTags>veriqa;authentication;email;smtp</PackageTags>
+    <Description>Passwordless OpenID Connect sign-in by email for ASP.NET Core (OpenIddict): a magic link with a QR code, or the one-tap email — the user sends a pre-filled letter with one tap, nothing to type. Over SMTP and an inbound provider; for users without a messenger. Veriqa channel adapter (satellite package).</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;openid-connect-provider;oidc-server;identity-provider;sso;sms-alternative;human-in-the-loop;ai-agent-security;device-flow;email;smtp;magic-link;one-tap-email;cross-device-authentication;two-factor-authentication;qr-code</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

@@ -2,7 +2,7 @@
 
 The Veriqa code is open source. The Veriqa **name and logo are not** — they
 are trademarks of Dmitrii Erusov and his successors and assigns (the
-"licensor"), used with the ™ symbol. Neither the [MPL-2.0](./LICENSE) nor the
+"licensor"), used with the ™ symbol. Neither the [MPL-2.0](../LICENSE) nor the
 [MIT](./LICENSE-MIT) license grants any right to the marks (MPL-2.0 §2.3 says
 so expressly). This document says what you may do with them without asking.
 

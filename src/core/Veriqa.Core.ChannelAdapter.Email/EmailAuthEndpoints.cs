@@ -50,7 +50,7 @@ namespace Veriqa.Core.ChannelAdapter.Email;
 public static partial class EmailAuthEndpoints
 {
     /// <summary>
-    /// Registers the Email Pull mode (magic link) and Push mode (send-to-login) endpoints.
+    /// Registers the Email Pull mode (magic link) and Push mode (the one-tap email) endpoints.
     /// </summary>
     /// <param name="endpoints">Endpoint router.</param>
     /// <param name="rateLimitPolicyName">Rate limiting policy name for the email start endpoint (null — no limiting).</param>

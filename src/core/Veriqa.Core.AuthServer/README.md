@@ -56,7 +56,7 @@ builder.Services.AddVeriqaAuthServer(builder.Configuration, builder.Environment,
         adapters.AddTelegram();  // Telegram channel
         adapters.AddWhatsApp();  // WhatsApp channel
         adapters.AddMax();       // MAX channel
-        adapters.AddEmail();     // Email channel (magic link / send-to-login)
+        adapters.AddEmail();     // Email channel (magic link / one-tap email)
     });
 });
 ```
@@ -134,7 +134,7 @@ The WhatsApp delivery provider expected by the installation is declared by
 shipped provider). A provider supplied by the host names itself with its own code and is registered
 with `UseWhatsAppProvider<TProvider>()`; the declared code is matched against the registered one at
 startup, and a mismatch stops the host.
-The Email channel settings (SMTP for magic links, inbound for send-to-login) live in the
+The Email channel settings (SMTP for magic links, inbound for the one-tap email) live in the
 `Veriqa:Channels:Email` section; `PublicBaseUrl` is mandatory when the channel is enabled.
 
 ---
@@ -249,7 +249,7 @@ itself, through the endpoint seam every channel may use, so this package holds n
 |---|---|---|
 | `/auth/email/start` | GET/POST | Email entry page and magic link sending (Pull) |
 | `/auth/email/confirm` | GET/POST | Magic link confirmation (Pull) |
-| `/auth/email/push/compose` | GET | Push-mode compose page (send-to-login) |
+| `/auth/email/push/compose` | GET | Push-mode compose page (the one-tap email) |
 | `/api/channels/email/inbound` | POST | Inbound email webhook from the inbound provider (Push) |
 
 ---

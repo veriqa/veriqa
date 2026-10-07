@@ -108,7 +108,7 @@
          compiled code, and the notice-retention clauses of the incorporated packages (Apache-2.0 §4,
          MIT) travel with it. The product license itself needs no file here — it is stated by
          PackageLicenseExpression. -->
-    <None Include="$(MSBuildThisFileDirectory)../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../licenses/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
   <!-- PublishRepositoryUrl=false withholds the repository URL and the branch, but not the commit: the

@@ -7,7 +7,7 @@
   packages (`Veriqa.Core.Configuration`, `Veriqa.Core.BaseChannels`, the
   channel adapters, the audit trail, the EF Core / Redis / RabbitMQ / PostgreSQL
   migration packages), and the standalone `Veriqa.Core.AuthServer.Host` image —
-  [Mozilla Public License 2.0](./LICENSE).
+  [Mozilla Public License 2.0](../LICENSE).
 - `Veriqa.Core.Contracts`, `Veriqa.ServiceDefaults` and the samples —
   [MIT](./LICENSE-MIT).
 - Veriqa Cloud (console, multi-tenancy) — Elastic License 2.0, distributed
@@ -72,5 +72,5 @@ Veriqa is designed, specified and reviewed by its maintainers. AI coding
 tools are used in implementation under human direction; every change is
 specified before it is written and reviewed and accepted by a person before
 it ships. Contributors are asked to follow the same rule — see
-[CONTRIBUTING.md](./CONTRIBUTING.md). If you spot something odd, please open
+[CONTRIBUTING.md](../CONTRIBUTING.md). If you spot something odd, please open
 an issue.

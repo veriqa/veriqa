@@ -7,7 +7,7 @@ development" are plans, not offers: availability, features and terms may
 change until they ship.
 
 Veriqa Core itself is **open source** under the
-[Mozilla Public License 2.0](./LICENSE) — free for everyone, for any purpose,
+[Mozilla Public License 2.0](../LICENSE) — free for everyone, for any purpose,
 at any company size, in production, with no revenue thresholds, no user
 limits and no license key. The license map (including the MIT-licensed
 periphery) and the licensing FAQ are in [LICENSING.md](./LICENSING.md).

@@ -98,7 +98,7 @@ to start without them.
 The full key list, with the channel-specific settings (bot tokens, webhooks, e-mail provider),
 is in the [configuration reference](https://veriqa.app/docs/reference/configuration).
 
-A runnable sample: [`samples/dotnet/inproc/login/`](./samples/dotnet/inproc/login/).
+A runnable sample: [`samples/dotnet/inproc/login/`](../samples/dotnet/inproc/login/).
 
 ## Standalone (Docker)
 
@@ -112,11 +112,11 @@ docker pull registry.gitlab.com/veriqa/veriqa
 
 Without a tag Docker takes `latest` — the newest release. To pin a release in production, add its
 version as the tag (`registry.gitlab.com/veriqa/veriqa:<version>`). The published image is `linux/amd64`; on
-another architecture, build it from the repository root instead — the `Dockerfile` there publishes
-the same host — and use your local tag in place of the image name below:
+another architecture, build it from the repository root instead — `build/docker/Dockerfile`
+publishes the same host — and use your local tag in place of the image name below:
 
 ```bash
-docker build -t veriqa-authserver .
+docker build -f build/docker/Dockerfile -t veriqa-authserver .
 ```
 
 The image runs as a non-root user, exposes port **8080** over HTTP and ships a `HEALTHCHECK`

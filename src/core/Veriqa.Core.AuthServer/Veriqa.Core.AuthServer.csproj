@@ -16,8 +16,8 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.AuthServer</PackageId>
     <Authors>Veriqa</Authors>
-    <Description>Veriqa OpenIddict OIDC Auth Server — pluggable library for cross-device authentication via messenger channels.</Description>
-    <PackageTags>openiddict;oidc;authentication;telegram;veriqa</PackageTags>
+    <Description>OpenID Connect provider for ASP.NET Core built on OpenIddict: passwordless sign-in and action approval through messaging apps, on any device. On a computer, TV or kiosk, your users scan a QR code shown by your website or app. On a phone, they tap a button. Either way, they confirm with one tap in Telegram, WhatsApp or another messenger they already have.</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;openid-connect-provider;oidc-server;identity-provider;sso;sms-alternative;human-in-the-loop;ai-agent-security;device-flow;cross-device-authentication;two-factor-authentication;qr-code;aspnetcore</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

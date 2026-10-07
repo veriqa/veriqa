@@ -1,0 +1,47 @@
+# Veriqa with the WhatsApp channel - a local sign-in stand for the rp/ client of this repository.
+#
+# A local evaluation setup, not a production one: the Development environment keeps the OpenIddict
+# store in memory and signs tokens with development certificates, so every restart forgets the
+# registered sessions. Production setup: https://veriqa.app/docs/quickstart/self-hosted
+#
+# Before `docker compose up -d`: fill .env from .env.example and export the HTTPS certificate into
+# certs/ (README, "Run it"). WhatsApp delivers messages to a webhook, so it also needs a public HTTPS
+# address in front of port 8080 (README, "A public address for the webhook").
+
+name: whatsapp-passwordless-login
+
+services:
+  veriqa:
+    image: registry.gitlab.com/veriqa/veriqa:0.6.1
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+      # The webhook port for your tunnel; bound to this machine only.
+      - "127.0.0.1:8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # HTTPS for the browser and the client; plain HTTP for the tunnel and the image's own health
+      # check.
+      ASPNETCORE_URLS: "https://+:8443;http://+:8080"
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /https/localhost.pfx
+      ASPNETCORE_Kestrel__Certificates__Default__Password: "${CERT_PASSWORD:?set CERT_PASSWORD in .env - see .env.example}"
+
+      # The issuer must be https, and the browser and the client must see the same address.
+      Veriqa__OpenIddict__Server__Issuer: "https://localhost:8443"
+
+      # The client of this repository (rp/): a public client, so Veriqa requires PKCE from it.
+      Veriqa__OpenIddict__Clients__0__ClientId: rp
+      Veriqa__OpenIddict__Clients__0__DisplayName: "Quickstart client"
+      Veriqa__OpenIddict__Clients__0__AllowedRedirectUris__0: "https://localhost:7020/signin-oidc"
+      Veriqa__OpenIddict__Clients__0__AllowedScopes__0: openid
+      Veriqa__OpenIddict__Clients__0__AllowedScopes__1: profile
+
+      # The one channel of this stand, over the Meta Cloud API.
+      Veriqa__Channels__WhatsApp__Enabled: "true"
+      Veriqa__Channels__WhatsApp__BusinessPhoneNumber: "${WHATSAPP_BUSINESS_PHONE_NUMBER:?set WHATSAPP_BUSINESS_PHONE_NUMBER in .env - see .env.example}"
+      Veriqa__Channels__WhatsApp__MetaCloudApi__PhoneNumberId: "${WHATSAPP_PHONE_NUMBER_ID:?set WHATSAPP_PHONE_NUMBER_ID in .env - see .env.example}"
+      Veriqa__Channels__WhatsApp__MetaCloudApi__AccessToken: "${WHATSAPP_ACCESS_TOKEN:?set WHATSAPP_ACCESS_TOKEN in .env - see .env.example}"
+      Veriqa__Channels__WhatsApp__MetaCloudApi__AppSecret: "${WHATSAPP_APP_SECRET:?set WHATSAPP_APP_SECRET in .env - see .env.example}"
+      Veriqa__Channels__WhatsApp__MetaCloudApi__WebhookVerifyToken: "${WHATSAPP_WEBHOOK_VERIFY_TOKEN:?set WHATSAPP_WEBHOOK_VERIFY_TOKEN in .env - see .env.example}"
+    volumes:
+      - ./certs:/https:ro

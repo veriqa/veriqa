@@ -36,6 +36,7 @@ where it calls the confirmation API server-to-server.
 | `node/index.ts` | The same client on `openid-client` + Express | code to copy |
 | `python/main.py` | The same client on Authlib + FastAPI | code to copy |
 | `claude-code/` | A Claude Code plugin: a `git push`, the start of a long command cycle or a costly run waits until a person approves it in the messenger; the costly run takes two approvers in turn | Claude Code plugin + local host |
+| `quickstart/<channel>-passwordless-login` | One directory per channel: Veriqa from the published Docker image with that one channel, and the shared minimal OIDC client `quickstart/rp` that lists the claims after sign-in. Each directory is also published as its own repository — [Telegram](https://github.com/veriqa/telegram-passwordless-login), [WhatsApp](https://github.com/veriqa/whatsapp-passwordless-login), [Email](https://github.com/veriqa/email-passwordless-login) and other channels | runnable · Docker + `https://localhost:7020` |
 | `docker-compose/` | Self-hosted deployment of the auth server behind Nginx with PostgreSQL, Redis and RabbitMQ — **demonstration only**, production belongs on an orchestrator with real secret management | deployment sample |
 
 The Aspire sample and the custom-channel host both listen on port 7320, so run them one at a time.

@@ -19,7 +19,7 @@ services:
   authserver:
     build:
       context: ../..
-      dockerfile: Dockerfile
+      dockerfile: build/docker/Dockerfile
     image: veriqa-authserver:latest
     restart: unless-stopped
     depends_on:

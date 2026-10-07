@@ -206,7 +206,7 @@ MIT — see the `PackageLicenseExpression` of this package.
 ## Trademark
 
 Veriqa™ is a trademark of Dmitrii Erusov. This package's MIT license covers the code, not the name
-or the logo — `TRADEMARK.md` in the repository states what the policy allows without asking (in
+or the logo — `licenses/TRADEMARK.md` in the repository states what the policy allows without asking (in
 short: truthful, descriptive use of the word mark, including in package manifests and dependency
 lists, is fine).
 

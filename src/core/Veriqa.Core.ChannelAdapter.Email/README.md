@@ -1,7 +1,7 @@
 # Veriqa.Core.ChannelAdapter.Email
 
 Email channel adapter for Veriqa — a satellite package. It signs a user in over mail in two shapes:
-a magic link the user opens (Pull) and a prepared message the user sends back (Push). Outbound mail
+a magic link the user opens (Pull) and the one-tap email, a pre-filled letter the user sends (Push). Outbound mail
 goes over SMTP; inbound mail arrives from a provider webhook.
 
 It is the channel for users who have none of the messengers installed, and it is one channel out of

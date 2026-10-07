@@ -14,7 +14,7 @@
     <PackageId>Veriqa.Core.Contracts</PackageId>
     <Authors>Veriqa</Authors>
     <Description>Veriqa Core Contracts — MIT-licensed contracts for building channel adapters against the Veriqa authentication core (IChannelAdapter, Result, TransactionId).</Description>
-    <PackageTags>veriqa;authentication;contracts;channel-adapter</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;contracts;channel-adapter</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 

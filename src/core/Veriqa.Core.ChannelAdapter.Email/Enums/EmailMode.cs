@@ -15,7 +15,7 @@ public enum EmailMode
     Pull,
 
     /// <summary>
-    /// Push mode (Email Send-to-Login): the user sends an email to Veriqa.
+    /// Push mode (the one-tap email): the user sends an email to Veriqa.
     /// Login is confirmed once an email is received from a verified sender.
     /// </summary>
     Push

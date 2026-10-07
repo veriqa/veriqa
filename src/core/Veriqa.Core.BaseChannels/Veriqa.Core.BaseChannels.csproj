@@ -13,8 +13,8 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.BaseChannels</PackageId>
     <Authors>Veriqa</Authors>
-    <Description>Veriqa base channel set — a metapackage pulling the channel contour together with the Telegram, WhatsApp and Email channels. MAX is installed separately (Veriqa.Core.ChannelAdapter.Max).</Description>
-    <PackageTags>veriqa;authentication;channels;metapackage</PackageTags>
+    <Description>Veriqa base channel set — a metapackage pulling the channel contour together with the Telegram, WhatsApp and Email channels. Other channels ship as separate packages.</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;openid-connect-provider;oidc-server;identity-provider;sso;sms-alternative;human-in-the-loop;ai-agent-security;device-flow;channels;metapackage;telegram;whatsapp;email;cross-device-authentication</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

@@ -1,9 +1,10 @@
 # Veriqa Core Auth Server — multi-stage Dockerfile
 # Target platforms: linux/amd64 (default) and linux/arm64
-# Usage: docker build -t veriqa-authserver .
+# Usage (from the repository root, which is the build context):
+#        docker build -f build/docker/Dockerfile -t veriqa-authserver .
 #        docker run -p 8080:8080 veriqa-authserver
 # Release builds also pass the product version for the version label (see the final stage):
-#        docker build --build-arg VERIQA_VERSION="$(sed -n 's:.*<VeriqaCoreVersion>\(.*\)</VeriqaCoreVersion>.*:\1:p' build/Versions.props)" -t veriqa-authserver .
+#        docker build --build-arg VERIQA_VERSION="$(sed -n 's:.*<VeriqaCoreVersion>\(.*\)</VeriqaCoreVersion>.*:\1:p' build/Versions.props)" -f build/docker/Dockerfile -t veriqa-authserver .
 
 # ── Stage 1: Restore inputs ────────────────────────────────────────────────────
 # The restore layer needs every MSBuild input of the host graph: the project file of each
@@ -54,7 +55,7 @@ COPY . .
 # the file:line frames of stack traces, embedded and portable PDBs, CallerFilePath. Without it an
 # operator reading the container log sees the absolute source layout of the build machine. The
 # mapping is spelled out rather than obtained through ContinuousIntegrationBuild: that switch derives
-# PathMap from the git SourceRoot, and .dockerignore keeps .git out of this context, so there is no
+# PathMap from the git SourceRoot, and Dockerfile.dockerignore keeps .git out of this context, so there is no
 # repository to locate and the deterministic-path targets fail with "SourceRoot items must include at
 # least one top-level item". /_/ is the same prefix a git-based deterministic build produces. The
 # value must contain no comma: on the command line a comma separates properties.
@@ -112,7 +113,7 @@ COPY --from=build /app/publish .
 # The license texts and the third-party notices travel with the binaries: MPL-2.0 §3.2 for the
 # product itself, and the notice-retention clauses of the incorporated packages (Apache-2.0 §4,
 # MIT) for its dependencies. Same set as the OS service archive.
-COPY LICENSE LICENSE-MIT THIRD-PARTY-NOTICES.md ./
+COPY LICENSE licenses/LICENSE-MIT licenses/THIRD-PARTY-NOTICES.md ./
 
 # Health check — probe the liveness endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

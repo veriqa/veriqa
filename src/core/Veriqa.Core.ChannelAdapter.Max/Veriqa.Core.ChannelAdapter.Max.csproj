@@ -11,8 +11,8 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter.Max</PackageId>
     <Authors>Veriqa</Authors>
-    <Description>MAX channel adapter for Veriqa — cross-device sign-in confirmed in a MAX bot (satellite package).</Description>
-    <PackageTags>veriqa;authentication;max</PackageTags>
+    <Description>Passwordless OpenID Connect sign-in and action approval through MAX for ASP.NET Core (OpenIddict). Users scan a QR code on a computer, TV or kiosk, or tap a button on the phone, and confirm with one tap in MAX. Veriqa channel adapter (satellite package).</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;openid-connect-provider;oidc-server;identity-provider;sso;sms-alternative;human-in-the-loop;ai-agent-security;device-flow;max;cross-device-authentication;two-factor-authentication;qr-code</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

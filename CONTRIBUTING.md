@@ -2,9 +2,9 @@
 
 Thank you for your interest in contributing to Veriqa! Veriqa Core is **open
 source** under the Mozilla Public License 2.0 (see [LICENSE](./LICENSE)); a
-few peripheral packages are MIT ([LICENSE-MIT](./LICENSE-MIT)). The license
+few peripheral packages are MIT ([LICENSE-MIT](./licenses/LICENSE-MIT)). The license
 map — which package is under which license — is in
-[LICENSING.md](./LICENSING.md).
+[LICENSING.md](./licenses/LICENSING.md).
 
 ## Contributor License Agreement (CLA)
 
@@ -41,7 +41,7 @@ license of your choice, and do **not** require accepting our CLA. This is the
 intended ecosystem path: implement the adapter interfaces from the Contracts
 package and ship independently. We are happy to link community adapters from
 the documentation — open an issue to tell us about yours. How you may name
-such a package is described in [TRADEMARK.md](./TRADEMARK.md).
+such a package is described in [TRADEMARK.md](./licenses/TRADEMARK.md).
 
 ## How to contribute
 

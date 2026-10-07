@@ -11,7 +11,7 @@
     <PackageId>Veriqa.Core.ChannelAdapter</PackageId>
     <Authors>Veriqa</Authors>
     <Description>Veriqa Channel Adapter System — the channel contour every Veriqa channel plugs into: the registration SPI, the webhook pipeline and the settings resolution seam. The channels themselves ship as satellite packages.</Description>
-    <PackageTags>veriqa;authentication;channels</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;channels</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

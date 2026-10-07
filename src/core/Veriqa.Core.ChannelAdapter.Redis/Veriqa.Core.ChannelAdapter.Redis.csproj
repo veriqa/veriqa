@@ -12,7 +12,7 @@
     <PackageId>Veriqa.Core.ChannelAdapter.Redis</PackageId>
     <Authors>Veriqa</Authors>
     <Description>Redis-backed channel stores for Veriqa — prompt coordinates, Email action tokens and Email push correlations shared across replicas (satellite package).</Description>
-    <PackageTags>veriqa;authentication;channels;redis</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;channels;redis</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

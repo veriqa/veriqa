@@ -13,7 +13,7 @@
     <PackageId>Veriqa.Core.AuditTrail.Migrations.SqlServer</PackageId>
     <Authors>Veriqa</Authors>
     <Description>SQL Server migrations for the Veriqa audit journal (host-referenced migrations assembly).</Description>
-    <PackageTags>veriqa;authentication;audit;efcore;migrations;sqlserver</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;audit;efcore;migrations;sqlserver</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

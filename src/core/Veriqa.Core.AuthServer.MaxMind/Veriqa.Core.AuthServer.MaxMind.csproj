@@ -14,7 +14,7 @@
     <PackageId>Veriqa.Core.AuthServer.MaxMind</PackageId>
     <Authors>Veriqa</Authors>
     <Description>Offline MaxMind GeoIP provider for the Veriqa initiator context check (satellite package). The GeoLite2/GeoIP2 .mmdb database itself belongs to the deployment.</Description>
-    <PackageTags>veriqa;authentication;geoip;maxmind</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;geoip;maxmind</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

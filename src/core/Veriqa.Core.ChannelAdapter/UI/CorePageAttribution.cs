@@ -30,7 +30,7 @@ namespace Veriqa.Core.ChannelAdapter.UI;
 /// </list>
 /// <para>
 /// None of the layers stops a fork that edits the sources, and they do not try to: that boundary is
-/// drawn by TRADEMARK.md, not by code.
+/// drawn by licenses/TRADEMARK.md, not by code.
 /// </para>
 /// <para>
 /// Whether the mark is shown at all is <see cref="IsShown"/> — a constant of the build, one for the

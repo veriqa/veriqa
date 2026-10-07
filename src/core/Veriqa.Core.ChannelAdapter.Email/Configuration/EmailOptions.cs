@@ -51,7 +51,7 @@ public sealed class EmailOptions
     public bool PullEnabled { get; set; } = true;
 
     /// <summary>
-    /// Whether Push mode (Email Send-to-Login) is enabled.
+    /// Whether Push mode (the one-tap email) is enabled.
     /// Disabled by default until the inbound provider and verification policy are configured (EM-051).
     /// Must be explicitly enabled by the administrator together with a correct
     /// <see cref="EmailInboundOptions.VerificationPolicy"/>.

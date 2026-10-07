@@ -24,7 +24,7 @@ namespace Veriqa.Core.ChannelAdapter.Email;
 
 /// <summary>
 /// Email channel adapter (SPEC-016).
-/// Supports the Pull mode (magic link) and the Push mode (send-to-login).
+/// Supports the Pull mode (magic link) and the Push mode (the one-tap email).
 /// Email login and confirmation are delivered through the dedicated email endpoints
 /// (EmailAuthEndpoints/EmailPushEndpoints); the push/webhook SPI methods below are deliberate
 /// stubs because they are not on the Email delivery path.

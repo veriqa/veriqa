@@ -257,7 +257,7 @@ next to it as `wwwroot/lib/signalr/LICENSE.txt`, served and packaged with it.
   implementation, and the Windows service archive is built without
   `Microsoft.Data.SqlClient.SNI.dll`. An operator who runs SQL Server on
   Windows downloads the package from nuget.org and accepts its terms
-  (INSTALL.md, "SQL Server on Windows").
+  (docs/INSTALL.md, "SQL Server on Windows").
 - Separately running services (PostgreSQL, Redis or Valkey, RabbitMQ, an
   external IdP) are not linked into or distributed with Veriqa; their licenses
   are not part of these notices. Note that the Redis server is

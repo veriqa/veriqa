@@ -1,0 +1,13 @@
+# Docker build context exclusions of build/docker/Dockerfile — they speed up COPY . . and keep build
+# outputs of the host machine out of the image. BuildKit reads <Dockerfile name>.dockerignore next to
+# the Dockerfile; the context stays the repository root, so the patterns are relative to it.
+**/bin/
+**/obj/
+**/.vs/
+**/.git/
+.git/
+.github/
+artifacts/
+**/node_modules/
+**/*.user
+docs/

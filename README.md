@@ -1,29 +1,32 @@
-<p align="center">
-  <img src="./build/assets/icon.png" width="96" height="96" alt="Veriqa" />
-</p>
-
 <h1 align="center">Veriqa</h1>
 
-<p align="center"><em>OpenID Connect · Any stack · Open Source</em></p>
+<p align="center"><em>OpenID Connect · Any stack · Any device · Open Source</em></p>
 
-<p align="center"><strong>Sign-in and approvals through messaging apps for your website or app. No passwords, no forms, no SMS codes — zero typing, even on screens without a keyboard.</strong></p>
+<p align="center"><strong>Sign in and approve actions through messaging apps — for your website or app.</strong></p>
 
 <p align="center">
-  The user scans a QR code shown on a computer, TV or any other screen — or taps a button on
-  their phone — and confirms with a single tap in a messaging app they already trust: Telegram,
-  WhatsApp or another supported channel. Veriqa plugs into your application as a standard OIDC
+  No passwords, no forms, no SMS codes. Nothing to type, nothing to set up.<br />
+  Works even on screens without a keyboard.
+</p>
+
+<p align="center"><em>The speed of passkeys. The reach of messengers.</em></p>
+
+<p align="center">
+  On a computer, TV or kiosk, your users scan a QR code shown by your website or app. On a
+  phone, they tap a button. Either way, they confirm with one tap in Telegram, WhatsApp or
+  another messenger they already have. Veriqa plugs into your application as a standard OIDC
   provider, with no frontend SDK.
 </p>
 
 <p align="center">
   <a href="https://veriqa.app/demo/flow/try-live">Try it live</a> ·
   <a href="https://veriqa.app/docs">Documentation</a> ·
-  <a href="./INSTALL.md">Install</a> ·
+  <a href="./docs/INSTALL.md">Install</a> ·
   <a href="https://veriqa.app/contacts">Contact</a>
 </p>
 
 <!-- LEGAL-TEXT:BEGIN — legally reviewed wording: change only together with LICENSING.md and a new legal review. -->
-**Open source under [MPL-2.0](./LICENSE). Free for everyone, in production, at any company size — see [LICENSING.md](./LICENSING.md).**
+**Open source under [MPL-2.0](./LICENSE). Free for everyone, in production, at any company size — see [LICENSING.md](./licenses/LICENSING.md).**
 <!-- LEGAL-TEXT:END -->
 
 <p align="center">
@@ -267,24 +270,31 @@ run on WordPress, Drupal, Joomla, TYPO3 and Bitrix this way, with no changes to 
 executable and an installer that registers it as a systemd unit on Linux or a Windows service.
 The machine needs neither Docker nor a .NET runtime.
 
-All three are available today — see [INSTALL.md](./INSTALL.md).
+All three are available today — see [INSTALL.md](./docs/INSTALL.md).
 
 ## Channels
 
-| Channel | Status |
-|---|---|
-| Telegram | supported |
-| WhatsApp (Meta Cloud API) | supported |
-| MAX | supported |
-| Email (magic link and the one-tap email) | supported |
-| Viber | in testing — ships in the next release |
-| LINE | in testing — ships in the next release |
-| Messenger | in testing — ships in the next release |
-| Instagram Direct | in testing — ships in the next release |
-| Slack | in testing — ships in the next release |
+| Channel | Status | Quickstart repository |
+|---|---|---|
+| Telegram | supported | [telegram-passwordless-login](https://github.com/veriqa/telegram-passwordless-login) |
+| WhatsApp (Meta Cloud API) | supported | [whatsapp-passwordless-login](https://github.com/veriqa/whatsapp-passwordless-login) |
+| MAX | supported | [max-passwordless-login](https://github.com/veriqa/max-passwordless-login) |
+| Email (magic link and the one-tap email) | supported | [email-passwordless-login](https://github.com/veriqa/email-passwordless-login) |
+| Viber | in testing — ships in the next release | |
+| LINE | in testing — ships in the next release | |
+| Messenger | in testing — ships in the next release | |
+| Instagram Direct | in testing — ships in the next release | |
+| Slack | in testing — ships in the next release | |
 
 Four channels ship today, and five more are already in testing for the next release — 8+ channels. What else
 the next release brings: [Next release](https://veriqa.app/docs/next-release).
+
+**Try a channel in five minutes.** Every supported channel has its own quickstart repository:
+Veriqa from the published Docker image with that one channel, plus a minimal ASP.NET Core OpenID
+Connect client that shows the claims after sign-in —
+[Telegram](https://github.com/veriqa/telegram-passwordless-login), [WhatsApp](https://github.com/veriqa/whatsapp-passwordless-login),
+[Email](https://github.com/veriqa/email-passwordless-login) and the others in the table above. The same directories live
+in this repository under [`samples/quickstart/`](./samples/quickstart/).
 
 Email works two ways. The classic **magic link** is on by default; the **one-tap email** turns the
 letter around — the user sends a pre-filled one instead of receiving it, so the sign-in no longer
@@ -342,7 +352,7 @@ More answers in the [documentation](https://veriqa.app/docs).
 - [SECURITY.md](./SECURITY.md) — responsible disclosure. Please do not open public issues for
   vulnerabilities.
 - [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) — Contributor Covenant v2.1.
-- [LICENSING.md](./LICENSING.md) — the license map, the licensing FAQ, and links to the
+- [LICENSING.md](./licenses/LICENSING.md) — the license map, the licensing FAQ, and links to the
   trademark policy and the commercial terms.
 
 [^baymard]: Baymard Institute, [Cart Abandonment Rate Statistics](https://baymard.com/lists/cart-abandonment-rate): 70.22% average documented cart abandonment across 50 studies; reasons among shoppers who abandoned a checkout, excluding those who were just browsing.
