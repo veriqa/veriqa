@@ -1,0 +1,44 @@
+/*
+ * Copyright (c) Dmitrii Erusov
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * Rules of the page of a web provider channel - the page that stands in for a chat: the messages
+ * above, the question, the waiting line or the outcome under them. Loaded after the rules of the
+ * service pages, which it only adds to.
+ * The file is inlined into the generated document, not served over a URL. Every comment of it
+ * therefore reaches the end user's browser verbatim: the norms these rules implement are named
+ * in WebProviderPageRenderer (C#), not here.
+ */
+
+/* The line under the name of the application that names the channel. */
+.veriqa-wp-via {
+    margin: calc(-1 * var(--veriqa-spacing-sm)) 0 var(--veriqa-spacing-md);
+    color: var(--veriqa-muted);
+    font-size: 0.75rem;
+}
+
+/* The messages, one under another, read as the text of the card: centered, without a plate of their
+   own, set apart by space alone. */
+.veriqa-wp-feed {
+    display: flex;
+    flex-direction: column;
+    gap: var(--veriqa-spacing-lg);
+    margin-bottom: var(--veriqa-spacing-md);
+}
+.veriqa-wp-message > .veriqa-instruction {
+    color: var(--veriqa-text);
+    margin-bottom: var(--veriqa-spacing-10);
+}
+.veriqa-wp-message > :last-child { margin-bottom: 0; }
+/* The actions of a message stand one under another, each across the card. */
+.veriqa-wp-message > .veriqa-actions { flex-direction: column; }
+.veriqa-wp-message > .veriqa-actions form { flex: none; }
+/* An action of a message leads somewhere: its caption ends with an arrow, kept out of its name. */
+.veriqa-wp-arrow { margin-inline-start: var(--veriqa-spacing-sm); }
+
+/* The waiting block shows the spinner the shared layer keeps hidden. */
+.veriqa-wp-waiting .veriqa-spinner {
+    display: block;
+    margin: 0 auto var(--veriqa-spacing-md);
+}
+.veriqa-wp-waiting > .veriqa-instruction { margin-bottom: 0; }

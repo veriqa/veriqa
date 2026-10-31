@@ -1,9 +1,19 @@
 # Veriqa.Core.TransactionEngine
 
-The lifecycle of an authentication / confirmation transaction: the state machine, the transaction
-service, the pluggable transaction store and in-process event publishing. The store shipped inside
-this package is the in-memory one; the EF Core and Redis stores and the RabbitMQ publisher live in
-satellite packages (`Veriqa.Core.TransactionEngine.EntityFrameworkCore`,
+**The sign-in transaction at the heart of Veriqa.** A sign-in has an explicit state, a
+lifetime and a single outcome: it survives a change of device, expires on its own and handles
+repeated requests idempotently.
+
+Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
+authentication through popular messaging apps and email, over standard OpenID Connect.
+Documentation: [Architecture](https://veriqa.app/docs/concepts/architecture).
+
+## About this package
+
+The lifecycle of an authentication / confirmation transaction: the state machine, the
+transaction service, the pluggable transaction store and in-process event publishing. The store
+shipped inside this package is the in-memory one; the EF Core and Redis stores and the RabbitMQ
+publisher live in satellite packages (`Veriqa.Core.TransactionEngine.EntityFrameworkCore`,
 `Veriqa.Core.TransactionEngine.Redis`, `Veriqa.Core.TransactionEngine.RabbitMq`), so a deployment
 never receives an ORM or a broker client it does not use.
 
@@ -101,6 +111,94 @@ otherwise stores keep compiling and quietly stop carrying it.
   (a TTL). Implement it and the cleanup service stops deleting those records; it still scans for
   expired transactions in order to publish `TransactionExpiredEvent`.
 
+### Obligations of GetPendingSignInsAsync
+
+When a sign-in gets its channel subject for the first time, the engine closes the other sign-ins
+of the same tenant, application and channel subject that are still `Pending`: each goes to `Failed`
+with the reason `superseded_by_new_sign_in`. `GetPendingSignInsAsync` is how it finds them, and the
+member has no default body — a store that does not implement it does not compile.
+
+- **Return every stored transaction** in the `Pending` state whose `SignInSubjectScope.Of(…)` equals
+  the scope passed in (record equality, all four members compared ordinally). The deadline does not
+  narrow the selection: a sign-in past its TTL that the cleanup pass has not promoted yet is returned
+  as well. The order is not significant; nothing found is an empty list; a null scope is an
+  `ArgumentNullException`.
+- **Index by `SignInSubjectScope.ToFingerprint()`** rather than by the four members: it is a stable
+  64-character lowercase hex SHA-256 and keeps the channel user identifier out of column values and
+  key names. Recompute it on every write of the transaction — it is derived, never read back.
+- **Too much is harmless, too little is not.** The engine re-checks every returned transaction
+  before closing it (still `Pending`, same scope, not the new sign-in itself), so an extra one
+  cannot close someone else's sign-in. A missing one is a sign-in that lives on to its deadline and
+  may still write to the chat over the new one.
+- **Do not answer with an empty list in silence.** A store that cannot run this selection must say
+  so in its own documentation.
+
+### Obligations of the hop observation writes
+
+A hop link leaves four observations on its transaction — the scanner context
+(`ScannerContextSnapshot`) and three marks (`HopFirstResolvedAt`, `HopInterstitialOpenedAt`,
+`HopChannelLaunchedAt`). They are observations, not state, and once the transaction is stored a store
+writes them through three methods of their own, all abstract — there is no default body to fall back
+on:
+
+- `TryMarkHopObservationAsync(id, mark, markedAt)` — writes the mark named by `HopObservationMark`;
+- `TryAttachScannerContextAsync(id, snapshot)` — attaches the scanner snapshot, which arrives without
+  a fingerprint (`snapshot.ScannedAt` equals `markedAt` of the `FirstResolve` mark; the store does
+  not check it);
+- `TryFillScannerFingerprintAsync(id, fingerprint)` — fills the fingerprint of an attached snapshot.
+
+Each returns `true` only to the call that wrote the value, and `false` when the field is already
+filled, when (for the fingerprint) no snapshot is attached, or when the transaction is not stored.
+What every implementation owes:
+
+- **Once, by the first writer.** The write is an atomic conditional write on the field — "empty →
+  value" (`WHERE … IS NULL`, `HSETNX`, a compare-and-swap) — never a read followed by a write: of two
+  concurrent calls for one field exactly one gets `true`. A backend without atomicity on a field runs
+  its own read → conditional write → retry loop over an unchanged `ConcurrencyToken` / `UpdatedAt`.
+- **No competition with `UpdateAsync`.** The write changes neither `ConcurrencyToken`, nor
+  `UpdatedAt`, nor `State`, and never makes a concurrent `UpdateAsync` with a valid token fail.
+- **`AddAsync` stores the ones a new transaction carries.** Once it is stored, only the three writes
+  above set them.
+- **`UpdateAsync` neither writes nor erases them.** The observation values a passed transaction
+  carries are ignored; the stored ones stay.
+- **Every read returns them** — `GetByIdAsync`, `GetByIdempotencyKeyAsync`, `GetExpiredAsync`,
+  `GetStaleTerminalAsync`, `GetStalledConfirmedAsync`.
+- **They die with the transaction.** `DeleteAsync`, cleanup and the TTL of the store remove them
+  together with it; nothing keeps them longer.
+- **Arguments, not state.** A missing snapshot, a snapshot carrying a fingerprint, an empty
+  fingerprint and an undefined mark are refused with an argument exception. The state of the
+  transaction (terminal, expired) is not checked — that belongs to the callers.
+
+### Obligations of the claims completion writes
+
+A transaction that waits for missing claims carries `ClaimCompletion` (`ClaimCompletionState`). Its
+parts are written in two ways:
+
+- `ConfirmedAt` and `Items` — the completion mark and the list of missing claims — are ordinary fields:
+  `UpdateAsync` writes them, `Restore` / `ToSnapshot` carry them;
+- `Surface`, `FormTokenHash` and `Results` are written only by three conditional writes, all abstract:
+  - `TrySetWebStepSurfaceAsync(id, expected, surface)` — the surface of the web step, moving
+    "none → any" or "`CrossDevicePage` → `InitiatingPage`" (any other pair answers `false`);
+  - `TrySetClaimFormTokenHashAsync(id, tokenHash)` — the fingerprint of the form token, moving
+    "none → value"; the token itself never reaches the store;
+  - `TryRecordClaimResultAsync(id, result)` — the outcome for one missing claim, once per claim.
+
+What every implementation owes, beyond the obligations of the hop observation writes above (atomic
+conditional write, no change of `ConcurrencyToken` / `UpdatedAt` / `State`, `UpdateAsync` neither writes
+nor erases the three parts, every read returns them):
+
+- **The state is part of the condition.** All three writes go through only while the transaction is
+  `Pending` and carries a completion mark, checked in the same atomic step as the write — an outcome
+  never lands after the transaction left `Pending`.
+- **One outcome per claim, for a listed claim.** `TryRecordClaimResultAsync` adds the outcome only when
+  `Items` names the claim and no outcome for it is recorded yet; claim names compare the way
+  `VeriqaClaimTypes.NameComparer` does. A backend that keeps the outcomes in one document field runs a
+  read → conditional write → retry loop whose condition covers the state, the mark and the outcomes it
+  read.
+- **Arguments.** An undefined surface, an empty token fingerprint, an outcome without a claim, with a
+  value but no method (or the other way round), a verified skip and an undefined method are refused
+  with an argument exception.
+
 ## Request context of a transaction: tenant, application, locale, time zone, ui_config
 
 Five dimensions travel with a transaction, carried by one of two containers — `OidcContext` for a
@@ -125,8 +223,9 @@ off (no ambient tenant scope is open on those HTTP paths; only the channel paths
   creates;
 - server-to-server creation of a confirmation transaction (`POST /api/transaction/confirmation`)
   stores it on the request context of the transaction it creates (`TransactionRequestContext.TenantId`);
-- the `form_post` response page, issued after the transaction is gone, asks again for its branding —
-  the mapping is deterministic, so the answer is the one the sign-in stored.
+- the `form_post` response page asks again for its branding: the handler that writes it is given the
+  HTTP context only, not the transaction — the mapping is deterministic, so the answer is the one the
+  sign-in stored.
 
 Every later reader of a transaction takes the tenant off the transaction (`GetTenantId`), not from the
 resolver. **The engine's own implementation always answers

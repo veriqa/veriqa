@@ -12,6 +12,7 @@ using Veriqa.Core.TransactionEngine.Events;
 using Veriqa.Core.TransactionEngine.Events.Channels;
 using Veriqa.Core.TransactionEngine.Identity;
 using Veriqa.Core.TransactionEngine.MessageTemplates;
+using Veriqa.Core.TransactionEngine.RestrictionPolicies;
 using Veriqa.Core.TransactionEngine.Services;
 using Veriqa.Core.TransactionEngine.Store;
 
@@ -77,6 +78,16 @@ public static class TransactionEngineServiceCollectionExtensions
             _ => new IdentityMatchOptionsValidator(configuration));
         services.AddOptionsWithValidateOnStart<IdentityMatchOptions>();
 
+        // Restriction policies (SPEC-018 §9.2): the core level of both policy keys. The section is
+        // bound STRICTLY, as the resolver reads the same members: a stray member would otherwise pass
+        // the start and be refused on the first resolution, leaving a running host that rejects every
+        // event. A policy of a broken form refuses the start as well (RP-082).
+        services.Configure<RestrictionPoliciesOptions>(
+            configuration.GetSection(RestrictionPoliciesOptions.SectionName),
+            static binder => binder.ErrorOnUnknownConfiguration = true);
+        services.AddSingleton<IValidateOptions<RestrictionPoliciesOptions>, RestrictionPoliciesOptionsValidator>();
+        services.AddOptionsWithValidateOnStart<RestrictionPoliciesOptions>();
+
         // Clock of the engine: TTL, expiry, cleanup boundaries and event moments read it instead of
         // the static system clock, which is what lets a test move time without touching product code.
         // Registered here rather than inherited from the configuration module: the engine assembly is
@@ -105,6 +116,8 @@ public static class TransactionEngineServiceCollectionExtensions
         services.AddVeriqaConfigKeyCatalog(configuration, MessageTemplateConfigKeys.Catalog);
         services.AddVeriqaConfigKeyCatalog(configuration, InitiatorContextConfigKeys.Catalog);
         services.AddVeriqaConfigKeyCatalog(configuration, IdentityMatchConfigKeys.Catalog);
+        services.AddVeriqaConfigKeyCatalog(configuration, ClaimCompletionConfigKeys.Catalog);
+        services.AddVeriqaConfigKeyCatalog(configuration, RestrictionPolicyConfigKeys.Catalog);
 
         // Register the configuration validator
         services.AddSingleton<IValidateOptions<TransactionEngineOptions>,
@@ -151,8 +164,20 @@ public static class TransactionEngineServiceCollectionExtensions
         // it, so a host taking the engine alone still builds.
         services.TryAddSingleton<IdentityMatchService>();
 
+        // The restriction policies of the admissibility gate (SPEC-018 §6): the reader of the claim a
+        // rule checks and the evaluator of a resolved set. Both stateless. External admissibility
+        // checks are the deployment's to register — the engine ships none and takes whatever
+        // collection the container holds, an empty one included.
+        services.TryAddSingleton<IRestrictionClaimReader, RestrictionClaimReader>();
+        services.TryAddSingleton<IRestrictionPolicyEvaluator, RestrictionPolicyEvaluator>();
+
         // Register the main transaction service
         services.AddSingleton<ITransactionService, TransactionService>();
+
+        // The one computation of the claims completion (SPEC-041 L91). Scoped: it reads the channel
+        // adapters, whose lifetime a host may narrow, and the service resolves it from a scope of its
+        // own per operation rather than holding it.
+        services.TryAddScoped<ClaimCompletionPlanner>();
 
         // Tenant of the calling client (the source of OidcContext.TenantId on the creation path).
         // The shipped answer is null — the single default tenant of a self-hosted installation — and

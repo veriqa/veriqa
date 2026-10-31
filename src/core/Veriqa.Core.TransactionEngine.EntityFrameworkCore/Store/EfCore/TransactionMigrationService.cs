@@ -21,9 +21,10 @@ namespace Veriqa.Core.TransactionEngine.Store.EfCore;
 /// engine.UseEfCoreStore(ef => ef.UseNpgsql(cs,
 ///     npgsql => npgsql.MigrationsAssembly("Veriqa.Core.TransactionEngine.Migrations.PostgreSql")));
 /// </code>
-/// A new migration is generated in the directory of the corresponding migrations assembly:
+/// A new migration is generated in the directory of the corresponding migrations assembly; the assembly
+/// also carries the migrations of the collected claims store, so the context is named:
 /// <code>
-/// dotnet ef migrations add &lt;MigrationName&gt;
+/// dotnet ef migrations add &lt;MigrationName&gt; --context TransactionDbContext
 ///   --project src/core/Veriqa.Core.TransactionEngine.Migrations.PostgreSql
 /// </code>
 /// </remarks>

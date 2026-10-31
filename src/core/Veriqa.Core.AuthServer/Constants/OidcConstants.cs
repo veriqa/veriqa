@@ -52,12 +52,6 @@ public static class OidcConstants
     public const string OpenIddictInternalClaimPrefix = "oi_";
 
     /// <summary>
-    /// Lifetime of the browser nonce cookie (in minutes).
-    /// Determines how long the user has to complete authentication via the channel.
-    /// </summary>
-    public const int BrowserNonceCookieMaxAgeMinutes = 10;
-
-    /// <summary>
     /// Lifetime of the intermediate authentication cookie (in minutes).
     /// Determines how long the cookie between callback and authorize remains valid.
     /// </summary>

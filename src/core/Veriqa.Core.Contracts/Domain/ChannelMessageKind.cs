@@ -29,6 +29,21 @@ public readonly record struct ChannelMessageKind(string Value)
     public static ChannelMessageKind PlainText => new(ChannelMessageKinds.PlainText);
 
     /// <summary>
+    /// A request for the user's phone number (see <see cref="ChannelMessageKinds.PhoneNumberRequest"/>).
+    /// </summary>
+    public static ChannelMessageKind PhoneNumberRequest => new(ChannelMessageKinds.PhoneNumberRequest);
+
+    /// <summary>
+    /// A link to the claim completion form (see <see cref="ChannelMessageKinds.ClaimFormLink"/>).
+    /// </summary>
+    public static ChannelMessageKind ClaimFormLink => new(ChannelMessageKinds.ClaimFormLink);
+
+    /// <summary>
+    /// A text with link and callback buttons under it (see <see cref="ChannelMessageKinds.ActionButtons"/>).
+    /// </summary>
+    public static ChannelMessageKind ActionButtons => new(ChannelMessageKinds.ActionButtons);
+
+    /// <summary>
     /// Rejects an empty code so that a constructed kind can never collide with <c>default</c>.
     /// </summary>
     /// <param name="value">Content kind code.</param>

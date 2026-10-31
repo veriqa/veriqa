@@ -4,19 +4,27 @@
 using System.Collections.Frozen;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Text;
 using System.Text.RegularExpressions;
 using Veriqa.Core.ChannelAdapter.UI;
 
 namespace Veriqa.Core.AuthServer.UI;
 
 /// <summary>
-/// Allowed shape of the integrator's footer block of the sign-in page (<c>AuthPageDesign.FooterHtml</c>).
-/// The block is the one place the page emits markup it did not build, and it is emitted UNSANITIZED:
-/// this check does not repair a value, it refuses it whole. It admits a strict subset of inline HTML —
-/// text, the tags <c>a</c>, <c>span</c>, <c>div</c>, <c>p</c>, <c>strong</c>, <c>em</c> and <c>br</c>,
-/// the attributes <c>href</c>, <c>target</c>, <c>rel</c> and <c>class</c> in double quotes — so that a
-/// value cannot close the container of the window, take the identifier of an element the script of the
-/// page reads (<c>id</c>), restyle it (<c>style</c>) or carry a handler (<c>on*</c>).
+/// Allowed shape of the integrator's markup on the sign-in page: the footer block
+/// (<c>AuthPageDesign.FooterHtml</c>) and the content of the block shown once the hop has started
+/// (<c>AuthPageDesign.HopInstructionHtml</c>). Such markup is emitted UNSANITIZED: this check does not
+/// repair a value, it refuses it whole. It admits a strict subset of inline HTML — text, the tags
+/// <c>a</c>, <c>span</c>, <c>div</c>, <c>p</c>, <c>strong</c>, <c>em</c> and <c>br</c>, the attributes
+/// <c>href</c>, <c>target</c>, <c>rel</c> and <c>class</c> in double quotes — so that a value cannot close
+/// the container of the window, take the identifier of an element the script of the page reads
+/// (<c>id</c>), restyle it (<c>style</c>) or carry a handler (<c>on*</c>).
+/// <para>
+/// The same pass judges the texts of the page that stand inside a heading or a paragraph — the title,
+/// the lead instruction, the hint of a channel — against the INLINE set of tags: the same list without
+/// <c>div</c> and <c>p</c>, which such an element cannot hold. The rules of attributes, links and class
+/// names are one for both sets.
+/// </para>
 /// <para>
 /// <c>class</c> is admitted, but not the namespace of the contour: a value is refused whole when one of
 /// its class tokens is <c>veriqa</c> or begins with <c>veriqa-</c>. The script of the page reaches its
@@ -81,10 +89,22 @@ internal static partial class AuthPageFooterMarkup
     private const string UndecodedReferencePattern = "&(?:#|[A-Za-z][A-Za-z0-9]*;)";
 
     /// <summary>
-    /// Tags that open and close.
+    /// Tags that open and close in a text standing inside a heading or a paragraph.
     /// </summary>
-    private static readonly FrozenSet<string> ContainerTags =
-        new[] { "a", "span", "div", "p", "strong", "em" }.ToFrozenSet(StringComparer.Ordinal);
+    private static readonly FrozenSet<string> InlineContainerTags =
+        new[] { LinkTag, "span", "strong", "em" }.ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Tags that open and close in a block of the page: the inline ones and the two block tags.
+    /// </summary>
+    private static readonly FrozenSet<string> BlockContainerTags =
+        InlineContainerTags.Union(["div", "p"]).ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// What a line break becomes in the text of a value read without its tags: the two lines it
+    /// separates must not run into one word.
+    /// </summary>
+    private const char LineBreakText = ' ';
 
     /// <summary>
     /// Attributes a tag may carry, each at most once.
@@ -154,7 +174,51 @@ internal static partial class AuthPageFooterMarkup
     /// </summary>
     /// <param name="markup">Markup of the block — the value of the setting or its translation.</param>
     /// <returns><c>true</c> if the markup may be emitted into the page as it is.</returns>
-    public static bool IsValid([NotNullWhen(true)] string? markup)
+    public static bool IsValid([NotNullWhen(true)] string? markup) =>
+        IsAdmissible(markup, BlockContainerTags, textOnlyLiteral: null, text: null);
+
+    /// <summary>
+    /// Checks a text of the page that stands inside a heading or a paragraph against the same shape
+    /// with the inline set of tags, and reads the value without its tags — for a place that takes text
+    /// only, such as the title of the document.
+    /// </summary>
+    /// <param name="markup">Value of the text — the stated one or its translation.</param>
+    /// <param name="text">
+    /// The value without its tags when it is admitted: the runs of text exactly as they are written,
+    /// character references included, and a space for every line break. Otherwise null.
+    /// </param>
+    /// <param name="textOnlyLiteral">
+    /// A literal the caller replaces after the check — a slot of the text. A value carrying it inside a
+    /// tag is refused: what replaces the slot there would be read as part of an attribute this check
+    /// never saw. Null — no such literal.
+    /// </param>
+    /// <returns><c>true</c> if the value may be emitted into the page as it is.</returns>
+    public static bool IsValidInline(
+        [NotNullWhen(true)] string? markup,
+        [NotNullWhen(true)] out string? text,
+        string? textOnlyLiteral = null)
+    {
+        var runs = new StringBuilder();
+        var admitted = IsAdmissible(markup, InlineContainerTags, textOnlyLiteral, runs);
+
+        text = admitted ? runs.ToString() : null;
+
+        return admitted;
+    }
+
+    /// <summary>
+    /// The one pass behind both checks: walks the value token by token against a set of container tags.
+    /// </summary>
+    /// <param name="markup">Value to check.</param>
+    /// <param name="containerTags">Tags that may open and close in it.</param>
+    /// <param name="textOnlyLiteral">Literal no tag may carry; null — none.</param>
+    /// <param name="text">Collector of the value without its tags; null — the text is not read.</param>
+    /// <returns><c>true</c> if the value is admitted.</returns>
+    private static bool IsAdmissible(
+        [NotNullWhen(true)] string? markup,
+        FrozenSet<string> containerTags,
+        string? textOnlyLiteral,
+        StringBuilder? text)
     {
         // The method walks the markup token by token and keeps the open tags on a stack: a closing tag
         // must close the innermost open one, and none may stay open at the end.
@@ -177,9 +241,23 @@ internal static partial class AuthPageFooterMarkup
 
             position += token.Length;
 
-            if (!token.Groups[TextGroup].Success && !IsAdmissibleTag(token, open))
+            if (token.Groups[TextGroup].Success)
+            {
+                text?.Append(token.Value);
+
+                continue;
+            }
+
+            if ((textOnlyLiteral is not null && token.Value.Contains(textOnlyLiteral, StringComparison.Ordinal))
+                || !IsAdmissibleTag(token, containerTags, open))
             {
                 return false;
+            }
+
+            // A line break is the one tag that stands for a character of the text.
+            if (IsLineBreak(token))
+            {
+                text?.Append(LineBreakText);
             }
         }
 
@@ -187,12 +265,22 @@ internal static partial class AuthPageFooterMarkup
     }
 
     /// <summary>
+    /// Tells whether the token is the opening form of the void tag.
+    /// </summary>
+    /// <param name="tag">Token of a tag.</param>
+    /// <returns><c>true</c> for <c>&lt;br&gt;</c> in any of its spellings.</returns>
+    private static bool IsLineBreak(Match tag) =>
+        !tag.Groups[CloseGroup].Success
+        && string.Equals(tag.Groups[NameGroup].Value, LineBreakTag, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Checks one tag and applies it to the stack of open tags.
     /// </summary>
     /// <param name="tag">Token of the tag.</param>
+    /// <param name="containerTags">Tags that may open and close in the value.</param>
     /// <param name="open">Tags opened and not yet closed, innermost on top.</param>
     /// <returns><c>true</c> if the tag is admitted.</returns>
-    private static bool IsAdmissibleTag(Match tag, Stack<string> open)
+    private static bool IsAdmissibleTag(Match tag, FrozenSet<string> containerTags, Stack<string> open)
     {
         var name = tag.Groups[NameGroup].Value.ToLowerInvariant();
         var attributes = tag.Groups[AttributeGroup].Captures;
@@ -213,7 +301,7 @@ internal static partial class AuthPageFooterMarkup
 
         // A self-closing slash on a tag that is not void is ignored by the browser, which then keeps
         // the tag open — so it is refused rather than counted as closed.
-        if (!ContainerTags.Contains(name) || selfClosing || !AreAdmissibleAttributes(name, tag))
+        if (!containerTags.Contains(name) || selfClosing || !AreAdmissibleAttributes(name, tag))
         {
             return false;
         }

@@ -99,6 +99,7 @@ internal sealed class EfCoreAuditSink : IAuditSink, IAuditRetentionStore
             UiTimeZone = record.Metadata.UiTimeZone,
             ChannelDetails = record.Metadata.ChannelDetails,
             ChannelInboundVerification = record.Metadata.ChannelInboundVerification,
+            DeletionBasis = record.Metadata.DeletionBasis,
             ConfirmationActionType = record.Metadata.ConfirmationParameters?.ActionType,
             ConfirmationSlotValuesJson = SerializeSlotValues(record.Metadata.ConfirmationParameters),
             Sequence = record.Sequence,

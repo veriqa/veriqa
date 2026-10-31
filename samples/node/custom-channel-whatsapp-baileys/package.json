@@ -1,0 +1,19 @@
+{
+  "name": "veriqa-custom-channel-whatsapp-baileys",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reference external adapter of a Veriqa HTTP channel: WhatsApp through Baileys, an unofficial WhatsApp Web client.",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/main.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "standardwebhooks": "1.1.1"
+  }
+}

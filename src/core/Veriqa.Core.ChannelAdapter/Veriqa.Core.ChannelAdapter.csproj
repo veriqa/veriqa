@@ -10,8 +10,9 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter</PackageId>
     <Authors>Veriqa</Authors>
+    <Title>Login through messaging apps for ASP.NET Core: channel adapters</Title>
     <Description>Veriqa Channel Adapter System — the channel contour every Veriqa channel plugs into: the registration SPI, the webhook pipeline and the settings resolution seam. The channels themselves ship as satellite packages.</Description>
-    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;channels</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;channels;channel-adapter;webhooks;messaging-apps</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->
@@ -43,6 +44,13 @@
                       LogicalName="Veriqa.Core.ChannelAdapter.UI.Styles.veriqa-core-base.css" />
     <EmbeddedResource Include="UI\Styles\veriqa-service-page.css"
                       LogicalName="Veriqa.Core.ChannelAdapter.UI.Styles.veriqa-service-page.css" />
+    <!-- The button that closes the tab of a page (CorePageCloseAction): its rules and its script,
+         inlined the same way under the nonce of the page — one home for the callback pages of the
+         auth server and the pages of the email adapter. -->
+    <EmbeddedResource Include="UI\Styles\veriqa-close-tab.css"
+                      LogicalName="Veriqa.Core.ChannelAdapter.UI.Styles.veriqa-close-tab.css" />
+    <EmbeddedResource Include="UI\Scripts\veriqa-close-tab.js"
+                      LogicalName="Veriqa.Core.ChannelAdapter.UI.Scripts.veriqa-close-tab.js" />
   </ItemGroup>
 
   <ItemGroup>
@@ -57,13 +65,25 @@
          those to the public instead would publish an API nobody outside the product needs; a
          third-party channel goes through the public SPI (AddChannel, IChannelEndpointRegistrar). -->
     <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Email" />
+    <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Http" />
+    <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Instagram" />
     <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Max" />
+    <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Messenger" />
     <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Telegram" />
+    <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Viber" />
+    <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.WebProviders" />
+    <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.WeChat" />
     <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.WhatsApp" />
     <!-- The channel service tests build the contour's own seams directly (the settings resolution
          host, the channel declarations) — surfaces that are internal by design -->
     <!-- Test friends stay out of the packed assemblies: build/pack-core passes VeriqaPackaging=true. -->
     <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Tests" Condition="'$(VeriqaPackaging)' != 'true'" />
+    <InternalsVisibleTo Include="Veriqa.Core.WhiteLabel.Tests" Condition="'$(VeriqaPackaging)' != 'true'" />
+    <!-- The component tests of the channel contour and of the auth server state the receipt text of an
+         outcome through its port — an internal seam of this assembly — to observe what a render
+         point asks it for. -->
+    <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.ComponentTests" Condition="'$(VeriqaPackaging)' != 'true'" />
+    <InternalsVisibleTo Include="Veriqa.Core.AuthServer.ComponentTests" Condition="'$(VeriqaPackaging)' != 'true'" />
   </ItemGroup>
 
   <!-- No NuGet dependency of its own: the contour talks to no channel platform. Every platform

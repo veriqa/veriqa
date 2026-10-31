@@ -63,6 +63,32 @@ public sealed class OidcContext
     public string? TenantId { get; init; }
 
     /// <summary>
+    /// Display name of the application, taken at creation from the entry of <see cref="ClientId"/> (its
+    /// <c>DisplayName</c>, else the identifier itself) — what the application slot of the texts shows.
+    /// Additive field: old serialized transactions deserialize with null, and readers fall back to the
+    /// identifier.
+    /// </summary>
+    [JsonPropertyName("application_name")]
+    public string? ApplicationName { get; init; }
+
+    /// <summary>
+    /// Brand name the levels of the transaction stated at creation (<c>AuthPageDesign.BrandName</c>), as
+    /// configured — a Natural Key, translated where a text shows it. Null — no level states one. Additive field.
+    /// </summary>
+    [JsonPropertyName("brand_name")]
+    public string? BrandName { get; init; }
+
+    /// <summary>
+    /// Whether the resolution of the tenant of <see cref="ClientId"/> failed at creation: the resolver threw,
+    /// and <see cref="TenantId"/> is null because nothing answered, not because the client states no tenant.
+    /// The sign-in goes on as before; only the collected claims store stays untouched on this transaction
+    /// (SPEC-041 E62), since a null tenant would key the records of another tenant.
+    /// Additive field: old serialized transactions deserialize with false (behavior 1:1).
+    /// </summary>
+    [JsonPropertyName("tenant_resolution_failed")]
+    public bool TenantResolutionFailed { get; init; }
+
+    /// <summary>
     /// Response type (code).
     /// </summary>
     [JsonPropertyName("response_type")]

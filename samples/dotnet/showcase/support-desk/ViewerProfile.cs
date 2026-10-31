@@ -11,21 +11,22 @@ namespace Veriqa.Sample.DotNet.Showcase.SupportDesk;
 
 /// <summary>
 /// The card of the customer, built from the claims Veriqa issued for them. Which fields a
-/// card carries depends on the channel the person signed in through: Telegram gives a picture,
-/// WhatsApp a phone number, Email an address — and a field the channel did not give stays null so
-/// the page can leave the line out instead of drawing an empty one.
+/// card carries depends on the channel the person signed in through — Telegram gives a picture and
+/// a username, say — and a field the channel did not give stays null so the page can leave the line
+/// out instead of drawing an empty one. The two contacts are different: the sign-in asks for
+/// neither, and each appears only once the session has accepted it from a contact request.
 /// </summary>
 /// <param name="DisplayName">The <c>name</c> claim; always present for a signed-in person.</param>
 /// <param name="GivenName">The <c>given_name</c> claim, or null.</param>
 /// <param name="FamilyName">The <c>family_name</c> claim, or null.</param>
 /// <param name="ChannelType">The <c>channel_type</c> claim: the channel this session came through.</param>
 /// <param name="Avatar">The <c>picture</c> claim — an image data URI, or null.</param>
-/// <param name="PhoneMasked">The <c>phone_number</c> claim, already masked, or null.</param>
-/// <param name="Email">The <c>email</c> claim, or null.</param>
+/// <param name="PhoneMasked">The phone number this session accepted, already masked, or null.</param>
+/// <param name="Email">The e-mail address this session accepted, or null.</param>
 /// <param name="Username">The <c>preferred_username</c> claim — the Telegram @username — or null.</param>
 /// <param name="ChannelUserIdMasked">The Telegram user id from <c>channel_user_id</c>, already masked, or
 /// null for any other channel: there the identifier is the phone number or the address, which the
-/// card shows already.</param>
+/// card shows as a contact once it is confirmed.</param>
 public sealed record ViewerProfile(
     string DisplayName,
     string? GivenName,
@@ -86,8 +87,8 @@ public sealed record ViewerProfile(
             Value(user, VeriqaClaimTypes.FamilyName),
             channelType,
             Value(user, VeriqaClaimTypes.Picture),
-            MaskPhone(Value(user, VeriqaClaimTypes.PhoneNumber)),
-            Value(user, VeriqaClaimTypes.Email),
+            MaskPhone(Value(user, SampleContacts.Phone.SessionClaimType)),
+            Value(user, SampleContacts.Email.SessionClaimType),
             Value(user, VeriqaClaimTypes.PreferredUsername),
             isTelegram ? MaskIdentifier(Value(user, VeriqaClaimTypes.ChannelUserId)) : null);
     }

@@ -1,4 +1,5 @@
 #nullable enable
+const Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions.DefaultApiBaseUrl = "https://platform-api2.max.ru" -> string!
 const Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions.DefaultDeepLinkBaseUrl = "https://max.ru/" -> string!
 const Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions.SectionName = "Veriqa:Channels:Max" -> string!
 override Veriqa.Core.ChannelAdapter.Max.Configuration.MaxTenantCredentials.Equals(object? obj) -> bool
@@ -12,6 +13,8 @@ static Veriqa.Core.ChannelAdapter.Max.Configuration.MaxTenantCredentials.operato
 Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderMaxExtensions
 Veriqa.Core.ChannelAdapter.Max.Configuration.MaxConfigKeys
 Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions
+Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions.ApiBaseUrl.get -> string!
+Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions.ApiBaseUrl.set -> void
 Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions.BotPublicName.get -> string!
 Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions.BotPublicName.set -> void
 Veriqa.Core.ChannelAdapter.Max.Configuration.MaxOptions.BotToken.get -> string!

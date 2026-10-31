@@ -1,6 +1,8 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Text.Json.Serialization;
+
 using Veriqa.Core.TransactionEngine.Domain;
 
 namespace Veriqa.Core.TransactionEngine.Events;
@@ -72,6 +74,36 @@ public sealed record TransactionChannelIdentityAttachedEvent : TransactionEvent
     /// Type of the channel the identity came from.
     /// </summary>
     public required string ChannelType { get; init; }
+
+    /// <summary>
+    /// Whether the answer is taken only from the browser the identity was attached from
+    /// (<see cref="ChannelSubjectBinding.AnswerBrowserBound"/>): the question is then already open in that
+    /// browser, and no other page of the transaction leaves for it.
+    /// </summary>
+    public bool AnswerBrowserBound { get; init; }
+}
+
+/// <summary>
+/// A step of the claims completion began (SPEC-041 L91): the transaction stays Pending, and the pages
+/// learn which step to show. Additive event — the lifecycle state does not change.
+/// </summary>
+/// <remarks>
+/// Published by the engine when a step begins — after the confirmation that set the completion mark,
+/// and after an outcome that moved the completion to the next step — and again by whoever changes the
+/// surface of the web step. <see cref="Step"/> and <see cref="Surface"/> are read from the transaction
+/// as it is stored after the step starter ran, so they state what the store holds.
+/// </remarks>
+public sealed record TransactionClaimCompletionStepEvent : TransactionEvent
+{
+    /// <summary>
+    /// Current step of the claims completion.
+    /// </summary>
+    public required ClaimCompletionStep Step { get; init; }
+
+    /// <summary>
+    /// Surface of the web step; null — the web step has not begun (always null on the phone step).
+    /// </summary>
+    public WebStepSurface? Surface { get; init; }
 }
 
 /// <summary>
@@ -82,6 +114,13 @@ public sealed record TransactionCompletedEvent : TransactionEvent
     /// <summary>
     /// Final user identifier (sub claim).
     /// </summary>
+    /// <remarks>
+    /// In-process payload only, excluded from serialization (SPEC-001 §10.3): an event leaves the
+    /// process through an outbound publisher verbatim, and the default subject carries the channel
+    /// user identifier in the clear. Outside the process the user is attributed by the masked
+    /// identifier of <see cref="TransactionEvent.Context"/> alone.
+    /// </remarks>
+    [JsonIgnore]
     public string? Subject { get; init; }
 }
 
@@ -125,7 +164,7 @@ public sealed record TransactionExpiredEvent : TransactionEvent
 /// Channel-specific intermediate transaction status changed (SPEC-016 §10.1).
 /// An additive event: it does not change the transaction lifecycle state and is published
 /// by a channel adapter to inform the UI about intermediate steps
-/// (e.g. email: "message sent", "compose page opened").
+/// (e.g. email: "message sent", "mail received").
 /// </summary>
 public sealed record TransactionChannelStatusChangedEvent : TransactionEvent
 {
@@ -135,7 +174,7 @@ public sealed record TransactionChannelStatusChangedEvent : TransactionEvent
     public required string ChannelType { get; init; }
 
     /// <summary>
-    /// Channel-specific status code (e.g. "sent", "compose_opened").
+    /// Channel-specific status code (e.g. "sent", "mail_received").
     /// The code semantics are defined by the channel adapter.
     /// </summary>
     public required string ChannelStatus { get; init; }

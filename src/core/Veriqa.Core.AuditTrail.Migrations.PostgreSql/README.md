@@ -1,5 +1,13 @@
 # Veriqa.Core.AuditTrail.Migrations.PostgreSql
 
+**The PostgreSQL schema of the Veriqa audit trail, ready to apply.**
+
+Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
+authentication through popular messaging apps and email, over standard OpenID Connect.
+Documentation: [Data handling](https://veriqa.app/docs/guides/data-handling).
+
+## About this package
+
 PostgreSQL migrations for the audit journal schema of Veriqa. The package contains no API of its
 own: it is the migrations assembly a host names by string when it configures the EF Core audit sink,
 plus the design-time factory `dotnet ef` needs.

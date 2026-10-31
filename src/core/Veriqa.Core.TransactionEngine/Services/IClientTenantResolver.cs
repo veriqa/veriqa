@@ -7,8 +7,8 @@ namespace Veriqa.Core.TransactionEngine.Services;
 /// Resolves the tenant a calling OIDC client belongs to. Called once per request by the entry points
 /// that know the client but have no transaction to read the tenant off: a path that creates a
 /// transaction stores the answer on its request context — from there every reader takes it through
-/// <see cref="TransactionContextExtensions.GetTenantId"/> — and a page issued after the transaction is
-/// gone asks again.
+/// <see cref="TransactionContextExtensions.GetTenantId"/> — and a page that is handed no transaction
+/// (the <c>form_post</c> response page receives the HTTP context only) asks again.
 /// <para>
 /// The mapping <c>client_id</c> → tenant is deterministic, which is why the tenant travels with the
 /// transaction rather than being read from an ambient scope: the scope is opened only by the channel

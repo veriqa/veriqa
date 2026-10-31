@@ -50,7 +50,20 @@ public sealed record ChannelRegistrationOptions
     public string? StaleLinkReplyText { get; init; }
 
     /// <summary>
-    /// Natural Key of the reply to a direct message that names no transaction
+    /// Natural Key of the reply to a start by a code no live transaction answers to
+    /// (<c>ChannelAuthStartByCodeResult</c>): unknown, expired, already used. One text for every
+    /// reason, as with a link: the wording must not tell whether such a code ever existed.
+    /// <c>null</c> — the reply is <see cref="StaleLinkReplyText"/>, so a channel that stays silent on a
+    /// link it cannot serve stays silent on such a code as well.
+    /// </summary>
+    /// <remarks>
+    /// A text of its own because the user of a code followed no link: a channel started by a code may
+    /// have none at all, and a sentence about an expired link sends its reader looking for one.
+    /// </remarks>
+    public string? UnmatchedCodeReplyText { get; init; }
+
+    /// <summary>
+    /// Natural Key of the reply to an event of a user that names no transaction
     /// (<c>ChannelUnaddressedResult</c>). <c>null</c> — no reply.
     /// </summary>
     public string? UnaddressedReplyText { get; init; }

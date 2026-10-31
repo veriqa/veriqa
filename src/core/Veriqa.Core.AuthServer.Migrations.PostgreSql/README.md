@@ -1,5 +1,14 @@
 # Veriqa.Core.AuthServer.Migrations.PostgreSql
 
+**The PostgreSQL schema of the OpenIddict store for Veriqa, ready to apply.** Clients, scopes,
+authorizations and tokens in your own database.
+
+Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
+authentication through popular messaging apps and email, over standard OpenID Connect.
+Documentation: [OpenIddict database](https://veriqa.app/docs/guides/storage#openiddict-database).
+
+## About this package
+
 PostgreSQL migrations for the OpenIddict store of the Veriqa auth server — clients, scopes,
 authorizations and tokens. The package contains no API of its own: it is the migrations assembly a
 host names by string when it configures the OpenIddict `DbContext`, plus the design-time factory

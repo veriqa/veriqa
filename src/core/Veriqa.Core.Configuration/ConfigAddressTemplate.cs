@@ -78,6 +78,7 @@ internal sealed class ConfigAddressTemplate
         MinimumSegments = parts.Where(part => !part.Optional).Sum(part => part.SegmentCount);
         RootSegment = RootSegmentOf(parts);
         SectionText = SectionTextOf(text, parts);
+        EnumerableDimension = EnumerableDimensionOf(parts);
     }
 
     /// <summary>
@@ -225,6 +226,20 @@ internal sealed class ConfigAddressTemplate
 
         return new ConfigAddressTemplate(text, parts);
     }
+
+    /// <summary>
+    /// The one dimension the address substitutes OUTSIDE its groups, together with the section whose
+    /// child keys are the values of that dimension a record states: for
+    /// <c>Veriqa:Channels:{channel}:Member</c> — the dimension <c>channel</c> and the section
+    /// <c>Veriqa:Channels</c>. It is what lets a reader of a record ENUMERATE the points such an
+    /// address exists at, where <see cref="Resolve"/> can only be asked about a point already known.
+    /// <para>
+    /// Null when the address has no such substitution, has more than one, or does not let the values be
+    /// read off the keys of one section: a substitution that shares its segment with literal text, one
+    /// that opens the address, or one standing behind a group.
+    /// </para>
+    /// </summary>
+    public (string Section, string Dimension)? EnumerableDimension { get; }
 
     /// <summary>
     /// Builds the concrete path for ONE step of the fallback chain: the substitutions take the values
@@ -544,6 +559,45 @@ internal sealed class ConfigAddressTemplate
     /// <returns>Exception to raise.</returns>
     private static InvalidOperationException Defect(string keyName, string text, string reason) =>
         new($"Configuration key '{keyName}' declares the address '{text}': {reason}.");
+
+    /// <summary>
+    /// Finds the dimension a reader of a record can enumerate the values of
+    /// (<see cref="EnumerableDimension"/>).
+    /// </summary>
+    /// <param name="parts">Parts of the address.</param>
+    /// <returns>The section and the dimension, or null.</returns>
+    private static (string Section, string Dimension)? EnumerableDimensionOf(IReadOnlyList<Part> parts)
+    {
+        if (parts.Where(part => !part.Optional).Sum(part => part.Dimensions.Count) != 1 || parts[0].Optional)
+        {
+            return null;
+        }
+
+        var tokens = parts[0].Tokens;
+        var section = new StringBuilder();
+
+        for (var index = 0; index < tokens.Count; index++)
+        {
+            if (tokens[index].Dimension is not { } dimension)
+            {
+                section.Append(tokens[index].Literal);
+
+                continue;
+            }
+
+            // The substitution has to be a segment of its own — the key of a child of the section in
+            // front of it — or the values could not be read off the keys of that section.
+            var opensItsSegment = section.Length > 1 && section[^1] == ConfigNode.PathSeparator;
+            var closesItsSegment = index == tokens.Count - 1
+                || tokens[index + 1].Literal.StartsWith(ConfigNode.PathSeparator);
+
+            return opensItsSegment && closesItsSegment
+                ? (section.ToString(0, section.Length - 1), dimension)
+                : null;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Piece of an address: either a literal chunk or one dimension substitution.

@@ -24,8 +24,8 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 /// this case, and it is answered by the step that names no transaction type.
 /// </para>
 /// </summary>
-/// <param name="Outcome">Terminal outcome the receipt reports — one of the three the kinds are
-/// declared for.</param>
+/// <param name="Outcome">What the receipt reports — one of the three terminal outcomes the kinds
+/// are declared for, or the non-terminal state of a claims completion.</param>
 /// <param name="Surface">Surface the receipt is shown on (<see cref="OutcomeReceiptSurfaces"/>).</param>
 /// <param name="TransactionType">Transaction type (<see cref="TransactionTypes"/>); null — the
 /// render point has no transaction to read it off.</param>
@@ -35,19 +35,25 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 /// null — the receipt is shown outside a channel. The channel REFINES the surface and no step of
 /// the ladder names it without one (SPEC-036 §4.6), so it is asked about only beside a stated
 /// surface — see <see cref="ToDimensions"/>.</param>
+/// <param name="DeviceType">Type of the device the transaction was started on, as the initiator
+/// context of the transaction states it (<see cref="InitiatorContextFields.DeviceTypes"/>); null — the
+/// render point has no transaction, the transaction carries no initiator context, or the context
+/// does not collect the device type. Unlike the channel it refines any step and is asked about
+/// with or without a surface.</param>
 public readonly record struct OutcomeReceiptAddress(
     TransactionOutcome Outcome,
     string Surface,
     string? TransactionType = null,
     string? ActionType = null,
-    string? ChannelType = null)
+    string? ChannelType = null,
+    string? DeviceType = null)
 {
     /// <summary>
     /// Identifier of the message kind this outcome is reported by — the identity dimension of both
     /// keys. This is a mapping of an outcome onto an identifier, not a choice of wording: which text
     /// the kind renders is decided by the resolution, never here.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">The outcome is none of the three the receipt
+    /// <exception cref="ArgumentOutOfRangeException">The outcome is none of the four the receipt
     /// kinds are declared for — <c>Failed</c> and <c>default</c> included: an error is reported by
     /// the wording of the channel that failed, which is not a message of this group
     /// (SPEC-036 §1.3).</exception>
@@ -56,12 +62,13 @@ public readonly record struct OutcomeReceiptAddress(
         TransactionOutcomeCodes.Confirmed => MessageKinds.OutcomeReceiptConfirmed,
         TransactionOutcomeCodes.Declined => MessageKinds.OutcomeReceiptDeclined,
         TransactionOutcomeCodes.Expired => MessageKinds.OutcomeReceiptExpired,
+        TransactionOutcomeCodes.AwaitingClaims => MessageKinds.OutcomeReceiptAwaitingClaims,
         _ => throw new ArgumentOutOfRangeException(
             nameof(Outcome),
             Outcome.Value,
-            "An outcome receipt is declared for a confirmed, a declined and an expired outcome. "
-            + "Any other outcome is reported by the error wording of the channel, which is not a "
-            + "message of this group.")
+            "An outcome receipt is declared for a confirmed, a declined and an expired outcome and "
+            + "for the state of a claims completion. Any other outcome is reported by the error "
+            + "wording of the channel, which is not a message of this group.")
     };
 
     /// <summary>
@@ -71,16 +78,16 @@ public readonly record struct OutcomeReceiptAddress(
     /// <para>
     /// The channel is the one dimension that does not stand alone: it REFINES the surface and no step
     /// of the ladder addresses it without one (SPEC-036 §4.6), so a point naming a channel without a
-    /// surface asks about no step at all and the resolution refuses it. A receipt is terminal — the
-    /// user pressed something and must be told how it ended, with no second screen to try again on —
-    /// so an address that names no surface leaves the channel out with it and is answered by the step
-    /// that narrows by neither, exactly as any unnamed axis is answered.
+    /// surface asks about no step at all and the resolution refuses it. A receipt answers the user —
+    /// something was pressed, or the time ran out, and there is no second screen to learn the result
+    /// on — so an address that names no surface leaves the channel out with it and is answered by
+    /// the step that narrows by neither, exactly as any unnamed axis is answered.
     /// </para>
     /// </summary>
     /// <returns>The point of the fallback chain.</returns>
     public ConfigDimensionValues ToDimensions()
     {
-        var values = new List<(string Dimension, string? Value)>(5)
+        var values = new List<(string Dimension, string? Value)>(6)
         {
             (MessageTemplateConfigKeys.KindDimensionName, Kind)
         };
@@ -92,6 +99,7 @@ public readonly record struct OutcomeReceiptAddress(
             values,
             MessageTemplateConfigKeys.ChannelDimensionName,
             string.IsNullOrEmpty(Surface) ? null : ChannelType);
+        Add(values, MessageTemplateConfigKeys.DeviceTypeDimensionName, DeviceType);
 
         return ConfigDimensionValues.Of(values.ToArray().AsSpan());
     }
@@ -115,13 +123,14 @@ public readonly record struct OutcomeReceiptAddress(
 
         // The printed list IS the list of stated parts: taking them apart binds it to the members of
         // the address, so a dimension added to the address cannot go missing from the printout.
-        var (outcome, surface, transactionType, actionType, channelType) = this;
+        var (outcome, surface, transactionType, actionType, channelType, deviceType) = this;
 
         builder.Append("Outcome = ").Append(outcome)
             .Append(", Surface = ").Append(surface)
             .Append(", TransactionType = ").Append(transactionType)
             .Append(", ActionType = ").Append(actionType)
-            .Append(", ChannelType = ").Append(channelType);
+            .Append(", ChannelType = ").Append(channelType)
+            .Append(", DeviceType = ").Append(deviceType);
 
         return true;
     }

@@ -6,22 +6,16 @@ using Veriqa.Core.Configuration;
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
 /// <summary>
-/// The single point at which a render point obtains the TERMINAL text of a transaction — the
-/// receipt of an outcome (SPEC-036 TPL-123, SPEC-039 R51). The caller states the ADDRESS of the
+/// The single point at which a render point obtains the text of a receipt (SPEC-036 TPL-123,
+/// SPEC-039 R51): the terminal text of a transaction, or the text of the one non-terminal state of
+/// the group — a sign-in confirmed and waiting for its claims. The caller states the ADDRESS of the
 /// receipt and gets the text back; which wording that address resolves to is decided by the
 /// declared dimensions of the message template key, level by level, and never by the caller.
-/// <para>
-/// Public because it is SPI: a host composing the channel pipeline of its own — a third-party
-/// adapter, a polling service, the replay of a sandbox — hands the port to
-/// <see cref="ChannelWebhookPipeline.ProcessInboundResultAsync"/>, and takes it from its own
-/// service provider, where <c>AddVeriqaChannelAdapters</c> registers it with the rest of the
-/// message mechanism.
-/// </para>
 /// </summary>
-public interface IOutcomeReceiptText
+internal interface IOutcomeReceiptText
 {
     /// <summary>
-    /// Resolves and renders the receipt of one outcome.
+    /// Resolves and renders the receipt of one outcome or of the claims completion state.
     /// </summary>
     /// <param name="address">What the render point knows about the receipt it is about to show.</param>
     /// <param name="recipientLocale">Recipient locale (IETF tag; null — base language).</param>
@@ -33,7 +27,8 @@ public interface IOutcomeReceiptText
     /// — a port does not narrow the norm it serves (TPL-057).
     /// </param>
     /// <param name="outcomeMoment">
-    /// Moment the transaction ended, as the value of the <c>outcome_at</c> server slot; null when
+    /// Moment the transaction ended — for the claims completion state, the moment it was entered —
+    /// as the value of the <c>outcome_at</c> server slot; null when
     /// this render point has no moment to state. Whether it reaches the text at all is decided by
     /// the contract of the receipt: the shipped one declares no slots, and a deployment declaring
     /// this one gets a value instead of an empty variant (TPL-123, TPL-001).

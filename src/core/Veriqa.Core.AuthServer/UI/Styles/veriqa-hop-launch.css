@@ -1,0 +1,43 @@
+/*
+ * Copyright (c) Dmitrii Erusov
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * Rules of the launch pages of the hop of the "Core" contour: the heading that names the channel
+ * under its icon and the spare start code under the status line. Loaded after the token layer and
+ * the rules of the service pages, which the launch pages are a family of.
+ * The file is inlined into the generated document, not served over a URL. Every comment of it
+ * therefore reaches the end user's browser verbatim: the norms these rules implement are named
+ * in HopLaunchPageHeading and HopInterstitialPage (C#), not here.
+ */
+.veriqa-launch-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--veriqa-spacing-sm);
+}
+.veriqa-launch-title span { min-width: 0; overflow-wrap: anywhere; }
+/* The icon of the channel keeps its brand color whatever the preset; a channel without one takes
+   the color of the heading. */
+.veriqa-launch-icon { width: 1em; height: 1em; flex-shrink: 0; fill: currentColor; }
+.veriqa-launch-icon--telegram { color: #26a5e4; }
+.veriqa-launch-icon--whatsapp { color: #25d366; }
+.veriqa-launch-icon--instagram { color: #ff0069; }
+.veriqa-launch-icon--messenger { color: #0866ff; }
+.veriqa-launch-icon--wechat { color: #07c160; }
+.veriqa-launch-icon--viber { color: #7360f2; }
+.veriqa-launch-icon--max { color: #9500ff; }
+.veriqa-launch-spare { margin-top: var(--veriqa-spacing-md); }
+/* The link that opens the spare start code reads as the main text of the card - bold, in the text
+   color - not as the muted service link. */
+.veriqa-launch-trouble {
+    display: block;
+    margin-top: var(--veriqa-spacing-md);
+    color: var(--veriqa-text);
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.6;
+    text-align: center;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.veriqa-launch-trouble:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; border-radius: 2px; }

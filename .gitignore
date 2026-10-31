@@ -22,6 +22,9 @@ mono_crash.*
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+# Release notes of the client docs are content, not build output
+!docs-site/releases/
+!docs-site/ru/releases/
 x64/
 x86/
 [Ww][Ii][Nn]32/
@@ -433,3 +436,7 @@ FodyWeavers.xsd
 
 # Local tool state — not for git
 .claude/state/
+
+# Claude Code writes the plugin API's declarations beside a mod it loads from a folder; written
+# again at every load, never edited or committed.
+samples/claude-code/veriqa-approval/.claude-plugin/types/

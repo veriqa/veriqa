@@ -70,7 +70,7 @@ internal sealed class RedisEmailActionTokenStore : IEmailActionTokenStore
     private readonly IDatabase _db;
 
     /// <summary>
-    /// Clock the record TTLs and stamps are computed from.
+    /// Clock a record is checked to be alive against before it is written, and its stamps are taken from.
     /// </summary>
     private readonly TimeProvider _timeProvider;
 
@@ -100,7 +100,7 @@ internal sealed class RedisEmailActionTokenStore : IEmailActionTokenStore
         cancellationToken.ThrowIfCancellationRequested();
 
         var key = GetTokenKey(token);
-        var lifetime = RedisRecordLifetime.FromExpiry(data.ExpiresAt, _timeProvider.GetUtcNow(), EntityDescription);
+        var deadline = RedisRecordLifetime.DeadlineOf(data.ExpiresAt, _timeProvider.GetUtcNow(), EntityDescription);
 
         var entries = new List<HashEntry>(4)
         {
@@ -114,12 +114,12 @@ internal sealed class RedisEmailActionTokenStore : IEmailActionTokenStore
             entries.Add(new HashEntry(OpenedAtField, RedisChannelStoreTimestamps.Format(openedAt)));
         }
 
-        // DEL + HSET + EXPIRE in one MULTI/EXEC: writing a token must replace the record wholesale
+        // DEL + HSET + PEXPIREAT in one MULTI/EXEC: writing a token must replace the record wholesale
         // (the in-process store assigns over the dictionary slot), never merge with leftover fields.
         var transaction = _db.CreateTransaction();
         var deleteTask = transaction.KeyDeleteAsync(key);
         var setTask = transaction.HashSetAsync(key, entries.ToArray());
-        var expireTask = transaction.KeyExpireAsync(key, lifetime);
+        var expireTask = transaction.KeyExpireAsync(key, deadline.UtcDateTime);
 
         await transaction.ExecuteAsync();
         await Task.WhenAll(deleteTask, setTask, expireTask);

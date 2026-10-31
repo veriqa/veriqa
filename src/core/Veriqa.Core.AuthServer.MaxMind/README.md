@@ -1,8 +1,18 @@
 # Veriqa.Core.AuthServer.MaxMind
 
-Offline GeoIP provider for the Veriqa initiator context check — a satellite package. The auth server
-shows the person confirming a sign-in what device started it; this package adds the approximate
-region to that picture, resolved from a local MaxMind database.
+**Show the user where a sign-in comes from, without sending their IP address anywhere.** The
+approximate region of the device that started the sign-in is resolved from a local MaxMind
+database.
+
+Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
+authentication through popular messaging apps and email, over standard OpenID Connect.
+Documentation: [Initiator context](https://veriqa.app/docs/concepts/initiator-context).
+
+## About this package
+
+Offline GeoIP provider for the Veriqa initiator context check — a satellite package. The auth
+server shows the person confirming a sign-in what device started it; this package adds the
+approximate region to that picture.
 
 It ships separately because the data it needs does not ship at all: a GeoLite2/GeoIP2 `.mmdb` file
 comes from MaxMind under their own EULA and an account of yours. Without this package the auth

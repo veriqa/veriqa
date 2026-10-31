@@ -26,11 +26,6 @@ public static class EmailChannelStatuses
     public const string PullOpened = "opened";
 
     /// <summary>
-    /// Push: the compose-helper page was opened (the user scanned the QR or pressed the button).
-    /// </summary>
-    public const string PushComposeOpened = "compose_opened";
-
-    /// <summary>
     /// Push: an inbound email was received from the inbound provider and accepted for processing.
     /// </summary>
     public const string PushMailReceived = "mail_received";
@@ -39,4 +34,19 @@ public static class EmailChannelStatuses
     /// Push: the email sender passed verification according to the configured policy.
     /// </summary>
     public const string PushVerified = "verified";
+
+    /// <summary>
+    /// Push: the email sender passed verification, but the transaction is bound to the subject of another
+    /// channel, so the mail does not confirm it (SPEC-039 N34). Published instead of
+    /// <see cref="PushVerified"/>.
+    /// </summary>
+    public const string PushSubjectMismatch = "subject_mismatch";
+
+    /// <summary>
+    /// The claims completion: the address of its email was confirmed — by the link of the completion mail or
+    /// by the mail its owner sent (the way <c>Push</c>). A code of the completion rather than of an Email sign-in, so it stays out of the public set above:
+    /// the auth server owns it and keeps the value of its own, which this copy repeats — the adapter
+    /// publishes it without depending on the auth server's assembly.
+    /// </summary>
+    internal const string ClaimEmailConfirmed = "email_confirmed";
 }

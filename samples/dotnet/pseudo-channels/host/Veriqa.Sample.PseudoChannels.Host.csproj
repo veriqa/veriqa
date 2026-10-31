@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Veriqa.Sample.PseudoChannels.Host</RootNamespace>
+    <AssemblyName>Veriqa.Sample.PseudoChannels.Host</AssemblyName>
+    <!-- The sample is not a public package -->
+    <IsPackable>false</IsPackable>
+    <!-- Provider credentials and the relay secret are passed through user secrets or environment
+         variables, never through a committed file -->
+    <UserSecretsId>veriqa-sample-dotnet-pseudo-channels</UserSecretsId>
+    <!-- The phone page reads the confirmation context the adapter received, and that type is marked
+         [Experimental("VERIQAEXP0001")]. Inside this repository the root Directory.Build.targets
+         already suppresses the identifier; the line is kept so a copy of this project builds outside
+         the tree. -->
+    <NoWarn>$(NoWarn);VERIQAEXP0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The host embeds the Veriqa server core: registering a channel goes through
+         ChannelAdapterBuilder, which lives in the MPL-2.0 package Veriqa.Core.ChannelAdapter. -->
+    <ProjectReference Include="..\..\..\..\src\core\Veriqa.Core.AuthServer\Veriqa.Core.AuthServer.csproj" />
+    <ProjectReference Include="..\..\..\..\src\core\Veriqa.Core.ChannelAdapter\Veriqa.Core.ChannelAdapter.csproj" />
+    <ProjectReference Include="..\..\..\..\src\core\Veriqa.Core.TransactionEngine\Veriqa.Core.TransactionEngine.csproj" />
+    <!-- The pseudo-channel adapter — an ordinary assembly built against the contracts package. -->
+    <ProjectReference Include="..\adapter\Veriqa.Sample.PseudoChannels.Adapter.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The standard OIDC handler does three jobs here: the sign-in at Google, the sign-in at Apple
+         and the desktop relying party that signs in against the issuer this host embeds. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
+  </ItemGroup>
+
+</Project>

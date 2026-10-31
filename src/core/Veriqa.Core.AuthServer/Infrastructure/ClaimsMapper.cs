@@ -4,7 +4,9 @@
 using System.Collections.Frozen;
 using System.Security.Claims;
 using OpenIddict.Abstractions;
+using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Constants;
+using Veriqa.Core.Configuration;
 using Veriqa.Core.Contracts;
 using Veriqa.Core.TransactionEngine.Common;
 using Veriqa.Core.TransactionEngine.Domain;
@@ -15,14 +17,30 @@ namespace Veriqa.Core.AuthServer.Infrastructure;
 /// Mapper of the resolved identity and completion snapshot into OIDC claims.
 /// Builds the full claim set with destinations for token issuance.
 /// <para>
-/// The shipped implementation is synchronous inside — it has nothing to await — and ignores the
-/// relying party attribution on purpose: the subject it issues is global across relying parties,
-/// which is a property of the Veriqa contract. A substituted mapper is the place where a pairwise
-/// subject or an enrichment from the integrator's directory belongs.
+/// The shipped implementation reads the relying party attribution for one thing only — the effective
+/// catalog of scopes and claims of that relying party, which gates the claims it declares (SPEC-041
+/// R21). The subject it issues is global across relying parties, which is a property of the Veriqa
+/// contract. A substituted mapper is the place where a pairwise subject or an enrichment from the
+/// integrator's directory belongs.
 /// </para>
 /// </summary>
 public sealed class ClaimsMapper : IClaimsMapper
 {
+    /// <summary>
+    /// The canonical resolver of the effective setting values — the source of the catalog.
+    /// </summary>
+    private readonly IConfigurationResolver _resolver;
+
+    /// <summary>
+    /// Creates the mapper.
+    /// </summary>
+    /// <param name="resolver">Canonical resolver of the effective setting values (the catalog of scopes
+    /// and claims).</param>
+    public ClaimsMapper(IConfigurationResolver resolver)
+    {
+        _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+    }
+
     /// <summary>
     /// Claim names the core emits itself and never accepts from a snapshot. <c>sub</c> comes from the
     /// typed field of the resolved identity, and <c>amr</c> states the channel the confirmation
@@ -44,7 +62,7 @@ public sealed class ClaimsMapper : IClaimsMapper
     /// <param name="context">Context of the relying party the claims are built for.</param>
     /// <param name="cancellationToken">Token that cancels the mapping.</param>
     /// <returns>Result with the claim set or an error.</returns>
-    public Task<Result<IReadOnlyList<Claim>>> MapToClaimsAsync(
+    public async Task<Result<IReadOnlyList<Claim>>> MapToClaimsAsync(
         ResolvedIdentitySnapshot resolvedIdentity,
         CompletionSnapshot completion,
         ClaimsMappingContext context,
@@ -62,9 +80,9 @@ public sealed class ClaimsMapper : IClaimsMapper
 
         if (string.IsNullOrEmpty(resolvedIdentity.Subject))
         {
-            return Task.FromResult(Result<IReadOnlyList<Claim>>.Failure(
+            return Result<IReadOnlyList<Claim>>.Failure(
                 OidcErrorCodes.ClaimsMappingFailed,
-                "Subject (sub) is missing in ResolvedIdentitySnapshot."));
+                "Subject (sub) is missing in ResolvedIdentitySnapshot.");
         }
 
         var claims = new List<Claim>();
@@ -78,8 +96,11 @@ public sealed class ClaimsMapper : IClaimsMapper
         {
             foreach (var kvp in resolvedIdentity.Claims)
             {
-                // sub and amr are emitted by the core below, never taken from a snapshot
-                if (CoreEmittedClaims.Contains(kvp.Key) || !IsIssuable(kvp.Key, kvp.Value, context.Scopes))
+                // sub and amr are emitted by the core below, never taken from a snapshot. An empty value
+                // the completion filled is taken from the completion snapshot in the loop below.
+                if (CoreEmittedClaims.Contains(kvp.Key)
+                    || !IsIssuable(kvp.Key, kvp.Value, context.Scopes)
+                    || IsFilledByCompletion(kvp.Key, kvp.Value, completion.Claims))
                 {
                     continue;
                 }
@@ -89,7 +110,8 @@ public sealed class ClaimsMapper : IClaimsMapper
             }
         }
 
-        // Claims from CompletionSnapshot (only those not yet present — duplication prevention)
+        // Claims from CompletionSnapshot (only those not yet present — duplication prevention). The values
+        // Veriqa collected during the claim completion come this way too, and pass the same gates.
         if (completion.Claims is not null)
         {
             foreach (var kvp in completion.Claims)
@@ -142,13 +164,40 @@ public sealed class ClaimsMapper : IClaimsMapper
         // tomorrow" is not a breaking change.
 
         // Set destinations for each claim
+        var claimScopes = await CatalogClaimScopes.ResolveAsync(
+            _resolver, context.TenantId, context.ClientId, cancellationToken);
+
         foreach (var claim in claims)
         {
-            claim.SetDestinations(ClaimDestinationsHelper.GetDestinations(claim, context.Scopes));
+            claim.SetDestinations(ClaimDestinationsHelper.GetDestinations(claim, context.Scopes, claimScopes));
         }
 
-        return Task.FromResult(Result<IReadOnlyList<Claim>>.Success(claims.AsReadOnly()));
+        return Result<IReadOnlyList<Claim>>.Success(claims.AsReadOnly());
     }
+
+    /// <summary>
+    /// Whether an identity claim the channel left empty carries a value in the completion snapshot: the
+    /// claims completion counted it missing and collected it from the user (SPEC-041 L43 — an empty value
+    /// is not a value the channel gave). Without a completion the snapshot repeats the identity claims,
+    /// so an empty value is issued as it stands.
+    /// </summary>
+    /// <remarks>
+    /// "Empty is not given" is the rule of the engine, stated once there by
+    /// <c>DefaultIdentityResolutionService.IsGiven</c> (internal to <c>Veriqa.Core.TransactionEngine</c>);
+    /// this check mirrors it on the side that issues the claims. Change the two together.
+    /// </remarks>
+    /// <param name="name">Claim name.</param>
+    /// <param name="value">Value of the resolved identity.</param>
+    /// <param name="completionClaims">Claims of the completion snapshot.</param>
+    /// <returns>true — the claim is issued from the completion snapshot instead.</returns>
+    private static bool IsFilledByCompletion(
+        string name,
+        string value,
+        IReadOnlyDictionary<string, string>? completionClaims)
+        => string.IsNullOrEmpty(value)
+           && completionClaims is not null
+           && completionClaims.TryGetValue(name, out var completed)
+           && !string.IsNullOrEmpty(completed);
 
     /// <summary>
     /// Tells whether a snapshot entry may become a claim of this sign-in. Only the avatar is gated
@@ -182,21 +231,28 @@ public sealed class ClaimsMapper : IClaimsMapper
     /// Builds a claim out of a snapshot entry, declaring its value type where the core states one.
     /// A name in <see cref="VeriqaClaimTypes.BooleanClaims"/> gets <see cref="ClaimValueTypes.Boolean"/>
     /// so the claim reaches the wire as a JSON boolean (OIDC Core 1.0 section 5.1) instead of the
-    /// string the internal transport carries it in; every other name keeps the default string type.
+    /// string the internal transport carries it in, and a name in <see cref="VeriqaClaimTypes.NumericDateClaims"/>
+    /// gets <see cref="ClaimValueTypes.Integer64"/> so it reaches the wire as a JSON number; every other
+    /// name keeps the default string type.
     /// </summary>
     /// <remarks>
-    /// The decision is made by MEMBERSHIP in the registry and never by naming a claim here: that keeps
-    /// one place in the core knowing which claims are boolean. A value that is not <c>true</c>/<c>false</c>
-    /// under such a name (a corrupted snapshot) is passed through as it stands — refusing the token is
-    /// not this layer's call, and the mapper neither throws nor logs over it.
+    /// The decision is made by MEMBERSHIP in the registries and never by naming a claim here: that keeps
+    /// one place in the core knowing which claims are boolean and which are numeric dates. A value that
+    /// does not have the shape of its registry (a corrupted snapshot) is passed through as it stands —
+    /// refusing the token is not this layer's call, and the mapper neither throws nor logs over it.
     /// </remarks>
     /// <param name="name">Claim name from the snapshot.</param>
     /// <param name="value">Claim value from the snapshot (transport form).</param>
     /// <returns>The claim, typed when the core states a type for that name.</returns>
     private static Claim CreateClaim(string name, string value)
     {
-        return VeriqaClaimTypes.BooleanClaims.Contains(name)
-            ? new Claim(name, value, ClaimValueTypes.Boolean)
+        if (VeriqaClaimTypes.BooleanClaims.Contains(name))
+        {
+            return new Claim(name, value, ClaimValueTypes.Boolean);
+        }
+
+        return VeriqaClaimTypes.NumericDateClaims.Contains(name)
+            ? new Claim(name, value, ClaimValueTypes.Integer64)
             : new Claim(name, value);
     }
 }

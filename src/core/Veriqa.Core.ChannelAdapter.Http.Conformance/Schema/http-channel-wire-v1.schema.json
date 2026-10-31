@@ -1,0 +1,624 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:veriqa:http-channel-wire:1",
+  "title": "Veriqa HTTP channel wire, version 1",
+  "description": "The wire contract between Veriqa and an external channel adapter, version 1 (status: preview). A document is checked against one of the entry points in $defs: call_envelope (a call of Veriqa to the adapter), <operation>_response (the answer of the adapter to that call) or event_envelope (an event the adapter posts to Veriqa). The normative text is the specification of the wire; this schema is derived from it. Unknown fields are allowed everywhere, and the values of variant, reason, outcome, display_intent, purpose, anomaly_reason_key, secondary_action, action, operation, event and error code are open: a receiver that does not know a value behaves as the specification declares.",
+  "$defs": {
+    "wire_version": {
+      "description": "Version of the wire of the sender, major.minor; a document of this schema carries major version 1.",
+      "type": "string",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$"
+    },
+    "semantic_version": {
+      "description": "Semantic version of the adapter.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "transaction_id": {
+      "description": "Transaction identifier: 43 Base62 characters.",
+      "type": "string",
+      "pattern": "^[0-9A-Za-z]{43}$"
+    },
+    "e164_phone_number": {
+      "description": "Phone number in E.164: the leading plus and 1 to 15 digits, the first not zero; no separators. Veriqa does not repair a number in another spelling: the event that carries it is not processed.",
+      "type": "string",
+      "pattern": "^\\+[1-9][0-9]{0,14}$"
+    },
+    "nullable_string": {
+      "type": [ "string", "null" ]
+    },
+    "message_ref": {
+      "description": "Coordinates of a message in the channel.",
+      "type": "object",
+      "required": [ "chat_id", "message_id" ],
+      "properties": {
+        "chat_id": { "type": "string" },
+        "message_id": { "type": "string" }
+      }
+    },
+    "nullable_message_ref": {
+      "anyOf": [
+        { "$ref": "#/$defs/message_ref" },
+        { "type": "null" }
+      ]
+    },
+
+    "call_envelope": {
+      "description": "Envelope of a call of Veriqa to the adapter: POST to the base URL of the registration.",
+      "type": "object",
+      "required": [ "version", "operation", "channel_type", "payload" ],
+      "properties": {
+        "version": { "$ref": "#/$defs/wire_version" },
+        "operation": {
+          "description": "send-prompt, send-message, report-outcome, deep-link or health; an unknown operation is answered with the error unsupported_operation.",
+          "type": "string"
+        },
+        "channel_type": {
+          "description": "Channel type of the registration: one entry point may serve several registrations.",
+          "type": "string"
+        },
+        "tenant": {
+          "description": "Tenant of the call; null — the implicit tenant.",
+          "$ref": "#/$defs/nullable_string"
+        },
+        "adapter_settings": {
+          "description": "Opaque settings string of the registration for the tenant of the call; null — none.",
+          "$ref": "#/$defs/nullable_string"
+        },
+        "payload": {
+          "description": "Data of the operation.",
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "operation": { "const": "send-prompt" } }, "required": [ "operation" ] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/send_prompt_payload" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "send-message" } }, "required": [ "operation" ] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/send_message_payload" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "report-outcome" } }, "required": [ "operation" ] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/report_outcome_payload" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "deep-link" } }, "required": [ "operation" ] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/deep_link_payload" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "health" } }, "required": [ "operation" ] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/health_payload" } } }
+        }
+      ]
+    },
+
+    "send_prompt_payload": {
+      "type": "object",
+      "required": [ "transaction_id", "channel_user_id", "prompt", "rendered" ],
+      "properties": {
+        "transaction_id": { "$ref": "#/$defs/transaction_id" },
+        "channel_user_id": {
+          "description": "Delivery address of the recipient.",
+          "type": "string"
+        },
+        "prompt": { "$ref": "#/$defs/prompt" },
+        "rendered": { "$ref": "#/$defs/rendered_prompt" }
+      }
+    },
+    "prompt": {
+      "description": "Structured context of the confirmation. An unknown variant is shown as a prompt without details.",
+      "type": "object",
+      "required": [ "variant", "ownership" ],
+      "properties": {
+        "variant": {
+          "description": "detailed, subject or suppressed.",
+          "type": "string"
+        },
+        "ownership": { "$ref": "#/$defs/ownership" },
+        "recipient_locale": { "$ref": "#/$defs/nullable_string" },
+        "recipient_time_zone": { "$ref": "#/$defs/nullable_string" },
+        "brand_name": {
+          "description": "Brand name the owners of the transaction state, as configured — a Natural Key the question translates into the language of the recipient; null — none is stated. An adapter that does not know the field ignores it.",
+          "$ref": "#/$defs/nullable_string"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "variant": { "const": "detailed" } }, "required": [ "variant" ] },
+          "then": {
+            "required": [ "client_application_name", "initiated_at", "anomaly" ],
+            "properties": {
+              "client_application_name": { "type": "string" },
+              "browser": { "$ref": "#/$defs/nullable_string" },
+              "os_platform": { "$ref": "#/$defs/nullable_string" },
+              "device_type": { "$ref": "#/$defs/nullable_string" },
+              "geo_country": { "$ref": "#/$defs/nullable_string" },
+              "geo_city": { "$ref": "#/$defs/nullable_string" },
+              "initiated_at": {
+                "description": "Moment the transaction was initiated, RFC 3339 in UTC.",
+                "type": "string",
+                "format": "date-time"
+              },
+              "requested_at": {
+                "description": "Moment the transaction was created — the time of the request the question shows, RFC 3339 in UTC; null — the context states none. An adapter that does not know the field ignores it.",
+                "type": [ "string", "null" ],
+                "format": "date-time"
+              },
+              "anomaly": { "type": "boolean" },
+              "anomaly_reason_key": {
+                "description": "Natural Key of the reason of the anomaly; null — the flag alone. An unknown key is the flag without a reason.",
+                "$ref": "#/$defs/nullable_string"
+              },
+              "channel_identity": {
+                "description": "Channel snapshot of the account the question is asked of, in the shape of the identity of an event; null — no account is known. Its delivery_address is always null: the snapshot has no delivery address. An adapter that does not know the field ignores it.",
+                "anyOf": [
+                  { "$ref": "#/$defs/identity" },
+                  { "type": "null" }
+                ]
+              },
+              "channel_name": {
+                "description": "Name of the channel the question is asked in, in the language of the text; null — the channel is not known.",
+                "$ref": "#/$defs/nullable_string"
+              },
+              "bot_name": {
+                "description": "Name under which the user sees the chat of the channel; null — the channel states none.",
+                "$ref": "#/$defs/nullable_string"
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "variant": { "const": "subject" } }, "required": [ "variant" ] },
+          "then": {
+            "required": [ "prompt_text" ],
+            "properties": {
+              "prompt_text": { "type": "string" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "variant": { "const": "suppressed" } }, "required": [ "variant" ] },
+          "then": {
+            "required": [ "reason" ],
+            "properties": {
+              "reason": {
+                "description": "initiator_snapshot_unavailable, display_disabled_by_configuration or confirmation_template_unavailable; diagnostics only. An unknown reason is suppressed without a reason.",
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ownership": {
+      "description": "Owners of the transaction; every field may be null or absent.",
+      "type": "object",
+      "properties": {
+        "tenant_id": { "$ref": "#/$defs/nullable_string" },
+        "application_id": { "$ref": "#/$defs/nullable_string" },
+        "ui_config_selector": { "$ref": "#/$defs/nullable_string" },
+        "requested_scopes": {
+          "type": [ "array", "null" ],
+          "items": { "type": "string" }
+        },
+        "acr_values": {
+          "type": [ "array", "null" ],
+          "items": { "type": "string" }
+        },
+        "user_id": { "$ref": "#/$defs/nullable_string" }
+      }
+    },
+    "rendered_prompt": {
+      "description": "The prompt rendered by Veriqa, in plain text.",
+      "type": "object",
+      "required": [ "text", "confirm_label", "decline_label", "locale" ],
+      "properties": {
+        "text": { "type": "string" },
+        "confirm_label": { "type": "string" },
+        "decline_label": { "type": "string" },
+        "locale": {
+          "description": "Language the text is rendered in.",
+          "type": "string"
+        }
+      }
+    },
+    "send_message_payload": {
+      "type": "object",
+      "required": [ "channel_user_id", "text", "kind" ],
+      "properties": {
+        "channel_user_id": {
+          "description": "Delivery address of the recipient.",
+          "type": "string"
+        },
+        "text": { "type": "string" },
+        "kind": {
+          "description": "Kind of the content — always one the registration declares.",
+          "type": "string"
+        },
+        "phone_number_request": {
+          "description": "Content of the request for the phone number: an object exactly when kind is phone_number_request, null for every other kind. The schema does not tie the member to kind; Veriqa keeps the two together.",
+          "type": [ "object", "null" ],
+          "required": [ "transaction_id", "share_button_label", "secondary_action", "secondary_button_label" ],
+          "properties": {
+            "transaction_id": { "$ref": "#/$defs/transaction_id" },
+            "share_button_label": {
+              "description": "Caption of the button that shares the phone number, localized by Veriqa.",
+              "type": "string"
+            },
+            "secondary_action": {
+              "description": "The secondary action of the step: skip or cancel_sign_in.",
+              "type": "string"
+            },
+            "secondary_button_label": {
+              "description": "Caption of the button of the secondary action, localized by Veriqa.",
+              "type": "string"
+            }
+          }
+        },
+        "claim_form_link": {
+          "description": "Content of the link to the claim completion form: an object exactly when kind is claim_form_link, null for every other kind. The url carries the form token and is a secret: the adapter never logs it. The schema does not tie the member to kind; Veriqa keeps the two together.",
+          "type": [ "object", "null" ],
+          "required": [ "url", "button_label" ],
+          "properties": {
+            "url": {
+              "description": "Absolute https URL of the form page, the form token included.",
+              "type": "string"
+            },
+            "button_label": {
+              "description": "Caption of the button that opens the form, localized by Veriqa.",
+              "type": "string"
+            }
+          }
+        },
+        "action_buttons": {
+          "description": "Buttons drawn under the text: an object exactly when kind is action_buttons, null for every other kind. The schema does not tie the member to kind; Veriqa keeps the two together.",
+          "type": [ "object", "null" ],
+          "required": [ "buttons" ],
+          "properties": {
+            "buttons": {
+              "description": "Buttons in the order they are displayed; never empty.",
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/action_button" }
+            }
+          }
+        }
+      }
+    },
+    "action_button": {
+      "description": "One button of an action message: a link the platform opens, or an item of the menu whose press the adapter posts as menu_item_pressed. Exactly one of url and menu_item_value is a string, the other is null.",
+      "type": "object",
+      "required": [ "label" ],
+      "properties": {
+        "label": {
+          "description": "Caption of the button, localized by Veriqa.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Address a link button opens; null for an item of the menu. It may carry a single-use handle of the transaction and is a secret: the adapter never logs it.",
+          "type": [ "string", "null" ]
+        },
+        "menu_item_value": {
+          "description": "Value of an item of the menu, carried back by menu_item_pressed; null for a link button. The adapter builds the payload of the platform button itself.",
+          "type": [ "string", "null" ]
+        }
+      },
+      "oneOf": [
+        { "required": [ "url" ], "properties": { "url": { "type": "string" }, "menu_item_value": { "type": "null" } } },
+        { "required": [ "menu_item_value" ], "properties": { "menu_item_value": { "type": "string" }, "url": { "type": "null" } } }
+      ]
+    },
+    "report_outcome_payload": {
+      "type": "object",
+      "required": [ "transaction_id", "outcome", "channel_user_id", "status_text", "display_intent" ],
+      "properties": {
+        "transaction_id": { "$ref": "#/$defs/transaction_id" },
+        "outcome": {
+          "description": "confirmed, declined, expired or failed — terminal outcomes; awaiting_claims — not terminal: the sign-in is confirmed and waits for the claims it still lacks. An unknown outcome is shown as a terminal outcome by status_text.",
+          "type": "string"
+        },
+        "channel_user_id": {
+          "description": "Delivery address of the recipient.",
+          "type": "string"
+        },
+        "status_text": {
+          "description": "Outcome text localized by Veriqa.",
+          "type": "string"
+        },
+        "inbound_token": {
+          "description": "Opaque token of the inbound event the outcome answers; null — none.",
+          "$ref": "#/$defs/nullable_string"
+        },
+        "prompt_message": {
+          "description": "Coordinates of the prompt of the transaction; null — none.",
+          "$ref": "#/$defs/nullable_message_ref"
+        },
+        "phone_request_message": {
+          "description": "Coordinates of the message that asked the user for a phone number, when the step it belongs to is over; optional, null — none. Stated with a terminal outcome only.",
+          "$ref": "#/$defs/nullable_message_ref"
+        },
+        "display_intent": {
+          "description": "replace_prompt or new_message; an unknown intent is new_message.",
+          "type": "string"
+        }
+      }
+    },
+    "deep_link_payload": {
+      "type": "object",
+      "required": [ "transaction_id" ],
+      "properties": {
+        "transaction_id": { "$ref": "#/$defs/transaction_id" },
+        "purpose": {
+          "description": "Where the link is going to be used: button, hop_qr or direct_qr. The core always sends it; an adapter that does not know the field ignores it, and an unknown value is button.",
+          "type": "string"
+        },
+        "rendered": {
+          "description": "The text to prefill the link with, rendered by Veriqa from the deeplink-prefill template of the purpose, in plain text; null or absent — Veriqa has no text for this link, and the adapter uses its own. The text carries the sign-in code only where the template states it: an adapter whose inbound side needs a marker adds it when it is missing. An adapter that does not know the field ignores it.",
+          "type": [ "object", "null" ],
+          "required": [ "text", "locale" ],
+          "properties": {
+            "text": { "type": "string" },
+            "locale": {
+              "description": "Language the text is rendered in.",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "health_payload": {
+      "description": "Empty.",
+      "type": "object"
+    },
+
+    "response_envelope": {
+      "description": "Envelope of the answer of the adapter: status 200, the version and exactly one of result and error.",
+      "type": "object",
+      "required": [ "version" ],
+      "properties": {
+        "version": { "$ref": "#/$defs/wire_version" },
+        "result": {
+          "description": "Data of the operation.",
+          "type": "object"
+        },
+        "error": { "$ref": "#/$defs/error" }
+      },
+      "oneOf": [
+        { "required": [ "result" ], "not": { "required": [ "error" ] } },
+        { "required": [ "error" ], "not": { "required": [ "result" ] } }
+      ]
+    },
+    "error": {
+      "description": "Refusal of the operation by the adapter.",
+      "type": "object",
+      "required": [ "code", "message" ],
+      "properties": {
+        "code": {
+          "description": "channel_cannot_continue, message_send_failed, channel_not_available, deep_link_generation_failed, unsupported_wire_version, unsupported_operation; other codes are allowed.",
+          "type": "string"
+        },
+        "message": { "type": "string" }
+      }
+    },
+    "message_result": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "description": "Coordinates of the sent message; null or absent — the channel has no addressable reference.",
+          "$ref": "#/$defs/nullable_message_ref"
+        }
+      }
+    },
+    "send_prompt_response": {
+      "allOf": [
+        { "$ref": "#/$defs/response_envelope" },
+        { "properties": { "result": { "$ref": "#/$defs/message_result" } } }
+      ]
+    },
+    "send_message_response": {
+      "allOf": [
+        { "$ref": "#/$defs/response_envelope" },
+        { "properties": { "result": { "$ref": "#/$defs/message_result" } } }
+      ]
+    },
+    "report_outcome_response": {
+      "allOf": [
+        { "$ref": "#/$defs/response_envelope" },
+        {
+          "properties": {
+            "result": {
+              "type": "object",
+              "required": [ "shown" ],
+              "properties": {
+                "shown": {
+                  "description": "true — the outcome is shown; false — the channel deliberately showed nothing.",
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "deep_link_response": {
+      "allOf": [
+        { "$ref": "#/$defs/response_envelope" },
+        {
+          "properties": {
+            "result": {
+              "type": "object",
+              "required": [ "url" ],
+              "properties": {
+                "url": {
+                  "description": "Deep link of the transaction: an absolute URI of https or of a scheme the registration admits, up to 2048 characters; the same for every call on one transaction.",
+                  "type": "string",
+                  "maxLength": 2048
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "health_response": {
+      "allOf": [
+        { "$ref": "#/$defs/response_envelope" },
+        {
+          "properties": {
+            "result": {
+              "type": "object",
+              "required": [ "healthy", "adapter_version", "wire_version" ],
+              "properties": {
+                "healthy": { "type": "boolean" },
+                "details": { "$ref": "#/$defs/nullable_string" },
+                "adapter_version": { "$ref": "#/$defs/semantic_version" },
+                "wire_version": {
+                  "description": "The highest wire version the adapter supports.",
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "event_envelope": {
+      "description": "Envelope of an event the adapter posts to POST /api/channels/{channel}/webhook or .../webhook/{tenant}. An unknown event is treated as unrelated.",
+      "type": "object",
+      "required": [ "version", "event", "adapter_version" ],
+      "properties": {
+        "version": { "$ref": "#/$defs/wire_version" },
+        "event": {
+          "description": "auth_start, auth_start_by_code, auth_confirm, auth_decline, phone_shared, phone_step_action, menu_item_pressed, unaddressed or unrelated.",
+          "type": "string"
+        },
+        "adapter_version": { "$ref": "#/$defs/semantic_version" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "event": { "const": "auth_start" } }, "required": [ "event" ] },
+          "then": {
+            "required": [ "transaction_id", "identity" ],
+            "properties": {
+              "transaction_id": { "$ref": "#/$defs/transaction_id" },
+              "identity": { "$ref": "#/$defs/identity" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "event": { "const": "auth_start_by_code" } }, "required": [ "event" ] },
+          "then": {
+            "required": [ "code", "identity" ],
+            "properties": {
+              "code": {
+                "description": "The code the user sent, without the wrapper of the message template of the registration; neither normalized nor checked for length by the adapter. Posted only by a registration that declares the start by a code; the event names no transaction.",
+                "type": "string"
+              },
+              "identity": { "$ref": "#/$defs/identity" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "event": { "enum": [ "auth_confirm", "auth_decline" ] } }, "required": [ "event" ] },
+          "then": {
+            "required": [ "transaction_id", "identity" ],
+            "properties": {
+              "transaction_id": { "$ref": "#/$defs/transaction_id" },
+              "identity": { "$ref": "#/$defs/identity" },
+              "inbound_token": {
+                "description": "Opaque token Veriqa returns in report-outcome; optional.",
+                "$ref": "#/$defs/nullable_string"
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "event": { "const": "phone_shared" } }, "required": [ "event" ] },
+          "then": {
+            "required": [ "phone_number", "identity" ],
+            "properties": {
+              "phone_number": { "$ref": "#/$defs/e164_phone_number" },
+              "identity": { "$ref": "#/$defs/identity" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "event": { "const": "phone_step_action" } }, "required": [ "event" ] },
+          "then": {
+            "required": [ "transaction_id", "action", "identity" ],
+            "properties": {
+              "transaction_id": { "$ref": "#/$defs/transaction_id" },
+              "action": {
+                "description": "The secondary action of the phone step the user chose: skip or cancel_sign_in.",
+                "type": "string"
+              },
+              "identity": { "$ref": "#/$defs/identity" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "event": { "const": "menu_item_pressed" } }, "required": [ "event" ] },
+          "then": {
+            "required": [ "menu_item_value", "identity" ],
+            "properties": {
+              "menu_item_value": {
+                "description": "The menu_item_value of the pressed button as send-message carried it. An empty value or one longer than 1024 characters makes the event unrelated. The event names no transaction; the webhook-id of the delivery is the identifier of the press.",
+                "type": "string"
+              },
+              "identity": { "$ref": "#/$defs/identity" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "event": { "const": "unaddressed" } }, "required": [ "event" ] },
+          "then": {
+            "required": [ "identity" ],
+            "properties": {
+              "identity": { "$ref": "#/$defs/identity" },
+              "text": {
+                "description": "Text of the message; optional. A button without a payload arrives as the text of its caption.",
+                "$ref": "#/$defs/nullable_string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "identity": {
+      "description": "Identity of the user in the channel.",
+      "type": "object",
+      "required": [ "channel_user_id", "display_name", "is_bot" ],
+      "properties": {
+        "channel_user_id": { "type": "string" },
+        "display_name": { "type": "string" },
+        "is_bot": { "type": "boolean" },
+        "delivery_address": {
+          "description": "Delivery address when it differs from channel_user_id.",
+          "$ref": "#/$defs/nullable_string"
+        },
+        "first_name": { "$ref": "#/$defs/nullable_string" },
+        "last_name": { "$ref": "#/$defs/nullable_string" },
+        "username": { "$ref": "#/$defs/nullable_string" },
+        "email": { "$ref": "#/$defs/nullable_string" },
+        "email_verified": { "type": [ "boolean", "null" ] },
+        "phone_number": { "$ref": "#/$defs/nullable_string" },
+        "phone_number_verified": { "type": [ "boolean", "null" ] },
+        "avatar_url": { "$ref": "#/$defs/nullable_string" },
+        "locale": { "$ref": "#/$defs/nullable_string" },
+        "raw_metadata": {
+          "description": "Channel metadata, a JSON object of at most 4 KB.",
+          "type": [ "object", "null" ]
+        },
+        "additional_claims": {
+          "description": "Claims of the adapter: name to string value.",
+          "type": [ "object", "null" ],
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -10,7 +10,8 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 /// <summary>
 /// The one place the slot values of a transaction are assembled (SPEC-036 TPL-124): the caller values
 /// the contract of a message admits, then the server values the core states about the transaction —
-/// the application, the displayable fields of the initiator context and the moment of the outcome. The
+/// the application, the displayable fields of the initiator context, the masked identity of the channel
+/// account, the moment of the request and the moment of the outcome. The
 /// question of a confirmation, the outcome receipt, the sign-in prompt of a messenger and the sign-in
 /// mail ask the same question of the same transaction, so which value fills which server slot is
 /// decided here once.
@@ -47,13 +48,18 @@ internal static class TransactionSlotValues
     /// <param name="contract">Contract of the message being rendered.</param>
     /// <param name="outcomeMoment">Moment the transaction ended; null when the render point states
     /// none.</param>
+    /// <param name="surface">Surface the message is shown on (<see cref="MessageSurfaces"/>,
+    /// <see cref="OutcomeReceiptSurfaces"/>); it decides whether the identity of the channel account may
+    /// be stated at all (<see cref="WithholdsChannelIdentity"/>).</param>
     /// <returns>Slot name → value.</returns>
     public static Dictionary<string, object?> Of(
         TransactionSlotSource? source,
         MessageContract contract,
-        DateTimeOffset? outcomeMoment)
+        DateTimeOffset? outcomeMoment,
+        string surface)
     {
         ArgumentNullException.ThrowIfNull(contract);
+        ArgumentNullException.ThrowIfNull(surface);
 
         var values = new Dictionary<string, object?>(StringComparer.Ordinal);
 
@@ -71,6 +77,7 @@ internal static class TransactionSlotValues
         if (source is not null)
         {
             values[SlotNames.App] = ApplicationOf(source);
+            AddBrandName(values, source.BrandName);
 
             if (source.InitiatorContext is { } initiator)
             {
@@ -79,12 +86,16 @@ internal static class TransactionSlotValues
                     Add(values, field.SlotName, field.SnapshotValue(initiator, Sanitize));
                 }
             }
+
+            if (!WithholdsChannelIdentity(source.TransactionType, surface))
+            {
+                AddChannelIdentity(values, source.ChannelIdentity);
+            }
+
+            AddMoment(values, SlotNames.RequestedAt, source.RequestedAt);
         }
 
-        if (outcomeMoment is not null)
-        {
-            values[SlotNames.OutcomeAt] = outcomeMoment.Value;
-        }
+        AddMoment(values, SlotNames.OutcomeAt, outcomeMoment);
 
         return values;
     }
@@ -109,14 +120,116 @@ internal static class TransactionSlotValues
             Add(values, field.SlotName, field.PromptValue(details, Sanitize));
         }
 
+        AddChannelIdentity(values, details.ChannelIdentity);
+        AddChannelName(values, details.ChannelName);
+        AddBotName(values, details.BotName);
+        AddBrandName(values, details.BrandName);
+        AddMoment(values, SlotNames.RequestedAt, details.RequestedAt);
+
         return values;
     }
 
     /// <summary>
-    /// The value of the application slot, by the type of the transaction (SPEC-036 TPL-124): a
-    /// confirmation names the application by its attribution (TPL-102); any other transaction names it
-    /// by the human-readable name its initiator context carries, and by the attribution when it has no
-    /// initiator context.
+    /// Adds the name of the channel a question is asked in — sanitized, and no value when it is absent or
+    /// nothing is left of it. The one assembly of the value for both branches of the question: the sign-in
+    /// prompt and the subject of a confirmation.
+    /// </summary>
+    /// <param name="values">Accumulator of the slot values.</param>
+    /// <param name="channelName">Name of the channel; null — the channel is not known.</param>
+    public static void AddChannelName(Dictionary<string, object?> values, string? channelName)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        Add(values, SlotNames.ChannelName, Sanitize(channelName));
+    }
+
+    /// <summary>
+    /// Adds the name of the chat of the channel a question is asked in — sanitized, and no value when it is
+    /// absent or nothing is left of it. The one assembly of the value for both branches of the question, as
+    /// <see cref="AddChannelName"/> is.
+    /// </summary>
+    /// <param name="values">Accumulator of the slot values.</param>
+    /// <param name="botName">Name of the chat; null — the channel states none.</param>
+    public static void AddBotName(Dictionary<string, object?> values, string? botName)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        Add(values, SlotNames.BotName, Sanitize(botName));
+    }
+
+    /// <summary>
+    /// Adds the brand name the levels of the transaction state — a configured text the renderer translates
+    /// into the language of the recipient; no value when it is absent or nothing is left of it. The one
+    /// assembly of the value for every text: the questions, the mails, the receipts and the pages.
+    /// </summary>
+    /// <param name="values">Accumulator of the slot values.</param>
+    /// <param name="brandName">Brand name as configured; null — no level states one.</param>
+    public static void AddBrandName(Dictionary<string, object?> values, string? brandName)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        if (Sanitize(brandName) is { } naturalKey)
+        {
+            values[SlotNames.BrandName] = new NaturalKeySlotValue(naturalKey);
+        }
+    }
+
+    /// <summary>
+    /// Whether the identity of the channel account is withheld from a text: a confirmation transaction
+    /// (<c>Type = confirmation</c>) whose text is shown anywhere but inside the channel — a page of the core
+    /// (the interaction page, the pages of a hop, the question page and its receipt), the confirmation page
+    /// of the Email adapter included. The pages are not told apart: any surface other than an in-channel one
+    /// is a page, an unknown surface among them. The channel name and the name of its chat are not withheld.
+    /// </summary>
+    /// <remarks>
+    /// Two grounds, and they are not the same kind:
+    /// <list type="bullet">
+    /// <item><description>a technical one: a page of a confirmation is not bound to a browser by a mark,
+    /// any holder of the <c>session_id</c> opens it, so a page has no one to name the account to — the
+    /// technical reason the "sign-in and confirmation are one user flow" rule requires of any difference
+    /// between the two;</description></item>
+    /// <item><description>for the Email page with <c>AnswerBrowserBound</c>, which IS bound to a browser,
+    /// it is a decision of the human of 2026-10-26, not a technical reason.</description></item>
+    /// </list>
+    /// A sign-in states the account on every surface. Rolling the exception back is removing this member
+    /// and its call, nothing else.
+    /// </remarks>
+    /// <param name="transactionType">Type of the transaction; null when the render point does not know it.</param>
+    /// <param name="surface">Surface the text is shown on.</param>
+    /// <returns><c>true</c> — the masked identity slots get no value.</returns>
+    private static bool WithholdsChannelIdentity(string? transactionType, string surface) =>
+        string.Equals(transactionType, TransactionTypes.Confirmation, StringComparison.Ordinal)
+        && surface is not (MessageSurfaces.InChannel
+            or OutcomeReceiptSurfaces.InChannelMessenger
+            or OutcomeReceiptSurfaces.InChannelPlain);
+
+    /// <summary>
+    /// Adds the masked identity of a channel account — the email address, the phone number, the username
+    /// and the display name of its snapshot, each masked by its rule (<see cref="ChannelIdentityMask"/>)
+    /// and sanitized. A field that is blank, or that its mask leaves nothing of, gets no value, so the
+    /// ladder degrades instead of printing a gap.
+    /// </summary>
+    /// <param name="values">Accumulator of the slot values.</param>
+    /// <param name="snapshot">Channel snapshot of the account; null — no account, and no value.</param>
+    private static void AddChannelIdentity(Dictionary<string, object?> values, ChannelIdentitySnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        Add(values, SlotNames.EmailMasked, Sanitize(ChannelIdentityMask.MaskEmailOrNull(snapshot.Email)));
+        Add(values, SlotNames.PhoneMasked, Sanitize(ChannelIdentityMask.MaskPhoneNumber(snapshot.PhoneNumber)));
+        Add(values, SlotNames.UsernameMasked, Sanitize(ChannelIdentityMask.MaskName(snapshot.Username)));
+        Add(values, SlotNames.DisplayNameMasked, Sanitize(ChannelIdentityMask.MaskName(snapshot.DisplayName)));
+    }
+
+    /// <summary>
+    /// The value of the application slot, one rule for every type of the transaction: the name the
+    /// initiator context carries, through the display decision it already went through; without one —
+    /// a confirmation collects none (SPEC-039 N32) — the display name the transaction took at its
+    /// creation, and the attribution when it took none (a transaction created before the name was kept,
+    /// the attribution of an event).
     /// </summary>
     /// <remarks>
     /// Always there, an empty string when the source states no value: the prompt has always put the
@@ -126,14 +239,9 @@ internal static class TransactionSlotValues
     /// <returns>The value of the application slot.</returns>
     private static string ApplicationOf(TransactionSlotSource source)
     {
-        if (string.Equals(source.TransactionType, TransactionTypes.Confirmation, StringComparison.Ordinal))
-        {
-            return source.ApplicationId ?? string.Empty;
-        }
-
         return source.InitiatorContext is { } initiator
             ? ApplicationNameOf(initiator.ClientApplicationName)
-            : source.ApplicationId ?? string.Empty;
+            : ApplicationNameOf(source.ApplicationName ?? source.ApplicationId);
     }
 
     /// <summary>
@@ -143,6 +251,20 @@ internal static class TransactionSlotValues
     /// <returns>The value of the application slot.</returns>
     private static string ApplicationNameOf(string? name) =>
         MessageValueSanitizer.Sanitize(name) ?? string.Empty;
+
+    /// <summary>
+    /// Adds a moment when there is one.
+    /// </summary>
+    /// <param name="values">Accumulator of the slot values.</param>
+    /// <param name="name">Slot name.</param>
+    /// <param name="moment">The moment, or null when the render point states none.</param>
+    private static void AddMoment(Dictionary<string, object?> values, string name, DateTimeOffset? moment)
+    {
+        if (moment is not null)
+        {
+            values[name] = moment.Value;
+        }
+    }
 
     /// <summary>
     /// Adds a best-effort value when there is one.

@@ -148,7 +148,10 @@ public sealed class PathConfigKeyRegistrar : IRegisterConfigKeys
 
             if (address.Level is ConfigLevel.Core)
             {
-                coreBindings.RegisterCore(declared.Key, point => ReadCore(declared, template, point));
+                coreBindings.RegisterCore(
+                    declared.Key,
+                    point => ReadCore(declared, template, point),
+                    point => ReadCoreWhereNothingIsStated(declared, template, point));
 
                 continue;
             }
@@ -203,11 +206,43 @@ public sealed class PathConfigKeyRegistrar : IRegisterConfigKeys
     private LayerValue<T> ReadCore<T>(
         DeclaredConfigKey<T> declared,
         ConfigAddressTemplate template,
-        ConfigDimensionValues point)
+        ConfigDimensionValues point) =>
+        CoreStep(template, point) is var (node, path)
+            ? ReadValue(declared, node, path, point)
+            : LayerValue<T>.None;
+
+    /// <summary>
+    /// What the core level states at one step of the chain over a record stating nothing — the answer
+    /// the level gives where the value it does state is one the domain of the key does not admit
+    /// (CFG-240). It is the same question a value of a refused shape is answered with
+    /// (<see cref="ReadWhereTheRecordStatesNothing{T}"/>), so a setting the product ships a default for
+    /// answers with that default whichever of the two ways the stated value proved unusable.
+    /// </summary>
+    /// <typeparam name="T">Type of the setting value.</typeparam>
+    /// <param name="declared">Declaration of the key.</param>
+    /// <param name="template">Address of the core level.</param>
+    /// <param name="point">Point of the chain handed in by the resolver.</param>
+    /// <returns>Layer value of the step over a silent record.</returns>
+    private LayerValue<T> ReadCoreWhereNothingIsStated<T>(
+        DeclaredConfigKey<T> declared,
+        ConfigAddressTemplate template,
+        ConfigDimensionValues point) =>
+        CoreStep(template, point) is var (node, path)
+            ? ReadWhereTheRecordStatesNothing(declared, node, path, point)
+            : LayerValue<T>.None;
+
+    /// <summary>
+    /// Splits a core address resolved at a chain point into the node over the SECTION it names and the
+    /// path of the value within that section.
+    /// </summary>
+    /// <param name="template">Address of the core level.</param>
+    /// <param name="point">Point of the chain handed in by the resolver.</param>
+    /// <returns>The node and the path within it; null when the address does not resolve at the point.</returns>
+    private (ConfigNode Node, string Path)? CoreStep(ConfigAddressTemplate template, ConfigDimensionValues point)
     {
         if (template.Resolve(point) is not { } path)
         {
-            return LayerValue<T>.None;
+            return null;
         }
 
         var separator = path.IndexOf(ConfigNode.PathSeparator);
@@ -216,7 +251,7 @@ public sealed class PathConfigKeyRegistrar : IRegisterConfigKeys
             ConfigLevel.Core,
             recordLabel: null);
 
-        return ReadValue(declared, node, path[(separator + 1)..], point);
+        return (node, path[(separator + 1)..]);
     }
 
     /// <summary>
@@ -245,7 +280,7 @@ public sealed class PathConfigKeyRegistrar : IRegisterConfigKeys
     {
         try
         {
-            return ReadOnce(declared, node, path, point);
+            return declared.StatedAtStep(node, path, point);
         }
         // A value stated in a shape the setting is not read from is the ONE failure no parser even got
         // to attempt: the deployment has not been told that what it wrote is outside what the setting
@@ -301,8 +336,10 @@ public sealed class PathConfigKeyRegistrar : IRegisterConfigKeys
     /// not read from already takes — so what it states is the key's own answer. In today's delivery
     /// every protective and gated key answers there with its shipped value and its shipped gate, which
     /// is closed, and every set whose core level is a ceiling answers with its shipped set, which is not
-    /// empty. Not covered: a set whose core level stays out of the intersection — that level is a
-    /// default read only where no level above states a set, so it caps nothing — and every level above
+    /// empty. Not covered: a set whose core level stays out of the intersection — that level caps
+    /// nothing above the tenant, and below the tenant it is the base of the narrowing only while it is
+    /// stated and allows something, so a failed read leaves the step unset (CFG-240) and the levels
+    /// below the tenant intersect among themselves, as for an unstated core set — and every level above
     /// the core, where a failed read leaves the step unset and the value already accumulated below it
     /// stands.
     /// </para>
@@ -315,51 +352,6 @@ public sealed class PathConfigKeyRegistrar : IRegisterConfigKeys
         node.Level is ConfigLevel.Core
         && (declared.Key.Kind is ConfigKeyKind.ProtectiveCeiling or ConfigKeyKind.GatedValue
             || declared.Key is { Kind: ConfigKeyKind.Set, CoreParticipatesInSetIntersection: true });
-
-    /// <summary>
-    /// Reads the value at the resolved address once — through the parse hook of the key where it states
-    /// one, and through what the DECLARATION says otherwise.
-    /// <para>
-    /// This is the ONE seam of the resolution path where a declared member of a key is applied, and its
-    /// counterpart on the walk of a snapshot is the single seam there
-    /// (<c>DeclaredConfigValueCatalog.Enumerate</c>). Two seams and not one because the two paths ask
-    /// different questions — one value of a step against everything a record states — but the reading
-    /// of one address is shared between them (<see cref="DeclaredConfigKey{T}.StatedAt"/>), so a
-    /// declaration cannot mean one thing here and another there.
-    /// </para>
-    /// </summary>
-    /// <typeparam name="T">Type of the setting value.</typeparam>
-    /// <param name="declared">Declaration of the key.</param>
-    /// <param name="node">Subtree the address is relative to.</param>
-    /// <param name="path">Address the step resolved to.</param>
-    /// <param name="point">Point of the chain handed in by the resolver.</param>
-    /// <returns>Layer value of the step.</returns>
-    private static LayerValue<T> ReadOnce<T>(
-        DeclaredConfigKey<T> declared,
-        ConfigNode node,
-        string path,
-        ConfigDimensionValues point)
-    {
-        if (declared.Parse is { } parse)
-        {
-            return parse(node, path, point);
-        }
-
-        // The presence of the record is the whole answer where the owner declared it so: the address
-        // is not what such a key is about, and nothing is read at it.
-        if (declared.PresenceMeans.HasValue)
-        {
-            return declared.PresenceMeans;
-        }
-
-        var stated = declared.StatedAt(node, path);
-
-        // The declared answer of the core level is reached exactly where the record said nothing —
-        // which includes a record silenced whole after a value of a shape the setting is not read from
-        // (see ReadWhereTheRecordStatesNothing). Above the core there is no such answer, and the level
-        // cedes to the one below.
-        return stated.HasValue || node.Level is not ConfigLevel.Core ? stated : declared.Default;
-    }
 
     /// <summary>
     /// What the step is left with after a value stated in a shape the setting is not read from — or any
@@ -404,7 +396,7 @@ public sealed class PathConfigKeyRegistrar : IRegisterConfigKeys
     {
         try
         {
-            return ReadOnce(declared, node.WhereNothingIsStated(), path, point);
+            return declared.StatedAtStep(node.WhereNothingIsStated(), path, point);
         }
         // The guard of this type holds for the second read as well: a hook is the owner's own code, and
         // a hook that fails over a record stating nothing must still not take the resolution down with

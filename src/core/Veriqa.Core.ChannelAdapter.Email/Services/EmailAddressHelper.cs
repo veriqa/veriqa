@@ -15,7 +15,7 @@ using Veriqa.Core.ChannelAdapter.Pipeline;
 namespace Veriqa.Core.ChannelAdapter.Email.Services;
 
 /// <summary>
-/// The single source of truth for normalization, masking and parsing of the Email channel's
+/// The single source of truth for normalization and parsing of the Email channel's
 /// email addresses (SPEC-016 §6.2). Used by both the Pull branch (endpoints) and the Push branch
 /// (inbound processor) to prevent identity divergence between the modes (review feedback).
 /// </summary>
@@ -241,35 +241,6 @@ internal static class EmailAddressHelper
         string CanonicalDomain,
         bool RemoveLocalPartDots,
         bool StripPlusTag);
-
-    /// <summary>
-    /// Masks an email address for safe logging and display (EM-065, CA-121).
-    /// Format: first character + *** + @ + domain. Example: u***@gmail.com.
-    /// </summary>
-    /// <param name="email">The email address.</param>
-    /// <returns>The masked email.</returns>
-    public static string Mask(string? email)
-    {
-        // The method masks the local part of the email to protect personal data
-        if (string.IsNullOrEmpty(email))
-        {
-            return "***";
-        }
-
-        // LastIndexOf — as in Normalize/GetLocalPart: for a quoted local part with '@' inside
-        // ("a@b"@example.com) masking by the first '@' would leak part of the local part
-        var atIndex = email.LastIndexOf('@');
-        if (atIndex <= 0)
-        {
-            return "***";
-        }
-
-        var local = email[..atIndex];
-        var domain = email[atIndex..];
-        var firstChar = local.Length > 0 ? local[0].ToString() : string.Empty;
-
-        return $"{firstChar}***{domain}";
-    }
 
     /// <summary>
     /// Returns the local part of the email address (up to the "@" character) — the verified fallback

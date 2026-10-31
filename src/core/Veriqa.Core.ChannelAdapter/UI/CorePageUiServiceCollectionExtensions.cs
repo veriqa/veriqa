@@ -28,9 +28,11 @@ namespace Veriqa.Core.ChannelAdapter.UI;
 internal static class CorePageUiServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the branding of the generated core pages (SPEC-007 UI-101), the scope of the
+    /// Registers the branding and the text overrides of the generated core pages (SPEC-007 UI-101,
+    /// SPEC-012 §4.3), the scope of the
     /// external resources the page of a request actually links, which the security-headers
-    /// middleware turns into style-src/script-src (UI-054, UI-040).
+    /// middleware turns into style-src/script-src (UI-054, UI-040), and the answer mark of the core
+    /// confirmation page — issued by a channel, read by the page.
     /// </summary>
     /// <remarks>
     /// The branding and the resources are per-request: the branding is resolved over the context of
@@ -48,6 +50,22 @@ internal static class CorePageUiServiceCollectionExtensions
             serviceProvider.GetRequiredService<IConfigurationResolver>(),
             serviceProvider.GetRequiredService<CorePageResourceScope>(),
             serviceProvider.GetRequiredService<ILogger<CorePageBrandingResolver>>()));
+
+        // The text overrides of a page are resolved over the context of the page's own transaction, like
+        // its branding. The set of overridable texts is filled by the owners of the pages; with no owner
+        // contributing, it is empty and every page keeps its regular texts. The catalogs of the snapshot
+        // report are NOT registered here: this method runs in two composition roots, and a second catalog
+        // on one pair "setting + level" stops the host — they travel with the declaration of the key.
+        services.TryAddSingleton<CorePageOverridableTexts>();
+        services.TryAddScoped(serviceProvider => new CorePageTextResolver(
+            serviceProvider.GetRequiredService<IConfigurationResolver>(),
+            serviceProvider.GetRequiredService<CorePageOverridableTexts>(),
+            serviceProvider.GetRequiredService<ILogger<CorePageTextResolver>>()));
+
+        // The answer mark rides on the host's Data Protection key ring. AddDataProtection only adds what
+        // is missing, so a host that configured its own key ring keeps it.
+        services.AddDataProtection();
+        services.TryAddSingleton<CoreConfirmPageAnswerMark>();
 
         return services;
     }

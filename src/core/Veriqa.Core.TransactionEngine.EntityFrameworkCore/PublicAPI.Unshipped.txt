@@ -3,3 +3,8 @@ static Veriqa.Core.TransactionEngine.DependencyInjection.TransactionEngineBuilde
 Veriqa.Core.TransactionEngine.DependencyInjection.TransactionEngineBuilderEntityFrameworkCoreExtensions
 Veriqa.Core.TransactionEngine.Store.EfCore.TransactionDbContext
 Veriqa.Core.TransactionEngine.Store.EfCore.TransactionDbContext.TransactionDbContext(Microsoft.EntityFrameworkCore.DbContextOptions<Veriqa.Core.TransactionEngine.Store.EfCore.TransactionDbContext!>! options) -> void
+static Veriqa.Core.TransactionEngine.DependencyInjection.TransactionEngineBuilderEntityFrameworkCoreExtensions.UseEfCoreCollectedClaimsStore(this Veriqa.Core.TransactionEngine.DependencyInjection.TransactionEngineBuilder! engine, System.Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!>! configure) -> Veriqa.Core.TransactionEngine.DependencyInjection.TransactionEngineBuilder!
+Veriqa.Core.TransactionEngine.CollectedClaims.EfCore.CollectedClaimsDbContext
+Veriqa.Core.TransactionEngine.CollectedClaims.EfCore.CollectedClaimsDbContext.CollectedClaimsDbContext(Microsoft.EntityFrameworkCore.DbContextOptions<Veriqa.Core.TransactionEngine.CollectedClaims.EfCore.CollectedClaimsDbContext!>! options) -> void
+Veriqa.Core.TransactionEngine.CollectedClaims.EfCore.CollectedClaimsMigrationDefaults
+const Veriqa.Core.TransactionEngine.CollectedClaims.EfCore.CollectedClaimsMigrationDefaults.MigrationsHistoryTable = "__CollectedClaimsMigrationsHistory" -> string!

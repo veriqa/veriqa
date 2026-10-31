@@ -28,8 +28,8 @@ public enum SlotSource
     ServerSystem = 1,
 
     /// <summary>
-    /// Server-resolved identity claims (e.g. the recipient's display name for a post-login welcome).
-    /// Reserved for activation (TPL-053, D2): declared in the contract, no producer in v1.
+    /// Server-resolved identity claims (TPL-053): the claims of the identity a completed sign-in
+    /// resolved — e.g. the recipient's display name in the welcome message sent after it.
     /// </summary>
     ServerIdentityClaims = 2,
 

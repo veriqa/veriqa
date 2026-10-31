@@ -1,0 +1,75 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# Veriqa and the reference WhatsApp adapter through Twilio side by side, the adapter plugged in as the HTTP
+# channel whatsapp-twilio. Demonstration only: Veriqa runs in the Development environment with an in-memory
+# OpenIddict store and development certificates, which is not a production configuration.
+#
+#   cp .env.example .env    # then fill it in
+#   docker compose up
+#
+# Veriqa listens on http://127.0.0.1:8080; the state of the channel is at /health/channels. The adapter
+# listens on http://127.0.0.1:8000 for the tunnel that brings the webhooks of Twilio in.
+
+name: veriqa-whatsapp-twilio
+
+services:
+
+  # ── Veriqa ─────────────────────────────────────────────────────────────────
+  veriqa:
+    build:
+      context: ../../..
+      dockerfile: build/docker/Dockerfile
+    image: veriqa-authserver:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Development: OpenIddict makes its own development certificates, and the in-memory store below
+      # is accepted. Nothing survives a restart.
+      ASPNETCORE_ENVIRONMENT: Development
+      Veriqa__OpenIddict__Database__Provider: InMemory
+
+      # The HTTP channel whatsapp-twilio: the adapter is reached by its name in the network of this file.
+      # The network is private to the two services, hence plain HTTP (Veriqa writes a warning at start).
+      # The webhooks of Twilio carry X-Twilio-Signature, which the adapter checks: hence signature.
+      Veriqa__Channels__whatsapp-twilio__InboundVerification: signature
+      Veriqa__Channels__whatsapp-twilio__Http__BaseUrl: http://adapter:8000/
+      Veriqa__Channels__whatsapp-twilio__Http__AllowInsecureHttp: "true"
+      Veriqa__Channels__whatsapp-twilio__Http__TransportSecret: ${VERIQA_TRANSPORT_SECRET}
+      Veriqa__Channels__whatsapp-twilio__Http__DisplayName: WhatsApp (Twilio)
+      # The own setting of the adapter, forwarded verbatim with every call (see the README).
+      Veriqa__Channels__whatsapp-twilio__Http__AdapterSettings: '{"prefill_text": "Send this message to sign in."}'
+
+      # The facts of the channel: the same ones the built-in WhatsApp channel declares, so both channels
+      # word the prompt and the receipt alike.
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__SupportsInChannelConfirmation: "true"
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__SupportsMessageUpdate: "false"
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__DeliversOutcomeNotice: "true"
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__ProvidesRecipientLocale: "false"
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__SupportedMessageKinds__0: plain_text
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__RendersEmoji: "true"
+      # The phone number: the WhatsApp address of the sender is the number itself, so every event carries
+      # it and it is proven. Nothing is asked for — WhatsApp through Twilio has no request for a contact.
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__PhoneNumber__Acquisition__0: Automatic
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__PhoneNumber__Proof: Proven
+
+  # ── The adapter ────────────────────────────────────────────────────────────
+  adapter:
+    build: .
+    image: veriqa-sample-whatsapp-twilio-adapter:latest
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      VERIQA_URL: http://veriqa:8080
+      VERIQA_CHANNEL_TYPE: whatsapp-twilio
+      VERIQA_TRANSPORT_SECRET: ${VERIQA_TRANSPORT_SECRET}
+      TWILIO_PUBLIC_URL: ${TWILIO_PUBLIC_URL}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM}
+      TWILIO_PROMPT_CONTENT_SID: ${TWILIO_PROMPT_CONTENT_SID}
+    volumes:
+      - adapter-data:/data
+
+volumes:
+  adapter-data:

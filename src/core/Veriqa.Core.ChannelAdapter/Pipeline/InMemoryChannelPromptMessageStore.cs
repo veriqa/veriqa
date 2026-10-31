@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 
 using Veriqa.Core.ChannelAdapter.Abstractions;
+using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.TransactionEngine.Domain;
 
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
@@ -83,6 +84,23 @@ internal sealed class InMemoryChannelPromptMessageStore : IChannelPromptMessageS
     }
 
     /// <inheritdoc />
+    public Task<ChannelPromptMessageRef?> FindAsync(TransactionId transactionId, CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<ChannelPromptMessageRef?>(cancellationToken);
+        }
+
+        // A stale (over-retention) entry is treated as absent, as on a take; it is left for the sweep.
+        if (_entries.TryGetValue(transactionId.ToString(), out var entry) && !IsStale(entry))
+        {
+            return Task.FromResult<ChannelPromptMessageRef?>(entry.Reference);
+        }
+
+        return Task.FromResult<ChannelPromptMessageRef?>(null);
+    }
+
+    /// <inheritdoc />
     public Task<ChannelPromptMessageRef?> TakeAsync(TransactionId transactionId, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested)
@@ -98,6 +116,70 @@ internal sealed class InMemoryChannelPromptMessageStore : IChannelPromptMessageS
         }
 
         return Task.FromResult<ChannelPromptMessageRef?>(null);
+    }
+
+    /// <inheritdoc />
+    public Task<ChannelPromptMessageRef?> TakeForChannelAsync(
+        TransactionId transactionId,
+        string channelType,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(channelType);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<ChannelPromptMessageRef?>(cancellationToken);
+        }
+
+        var key = transactionId.ToString();
+
+        // The removal names the very entry that was compared, not just its key: an entry another
+        // channel saved between the read and the removal is a different value, so it is not removed
+        // (SPEC-042 L62). A stale entry of this channel is removed and treated as absent, as on TakeAsync.
+        if (_entries.TryGetValue(key, out var entry)
+            && string.Equals(entry.Reference.ChannelType, channelType, StringComparison.Ordinal)
+            && _entries.TryRemove(KeyValuePair.Create(key, entry))
+            && !IsStale(entry))
+        {
+            return Task.FromResult<ChannelPromptMessageRef?>(entry.Reference);
+        }
+
+        return Task.FromResult<ChannelPromptMessageRef?>(null);
+    }
+
+    /// <inheritdoc />
+    public Task SetPhoneRequestMessageAsync(
+        TransactionId transactionId,
+        string channelType,
+        ChannelMessageRef requestMessage,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(channelType);
+        ArgumentNullException.ThrowIfNull(requestMessage);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled(cancellationToken);
+        }
+
+        var key = transactionId.ToString();
+
+        // The slot is replaced only while it still holds the very entry that was compared: an entry
+        // saved or taken in between is a different value, the replacement fails and nothing is
+        // retried — the record is no longer the one the reference was meant for. The moment the
+        // entry was stored travels over unchanged, so its retention does not start again. A stale
+        // entry is not written to: no read would return it.
+        if (_entries.TryGetValue(key, out var entry)
+            && string.Equals(entry.Reference.ChannelType, channelType, StringComparison.Ordinal)
+            && !IsStale(entry))
+        {
+            _entries.TryUpdate(
+                key,
+                entry with { Reference = entry.Reference with { PhoneRequestMessage = requestMessage } },
+                entry);
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -132,7 +214,7 @@ internal sealed class InMemoryChannelPromptMessageStore : IChannelPromptMessageS
     }
 
     /// <summary>
-    /// Stored prompt entry: coordinates plus the moment they were recorded (for retention).
+    /// Stored entry: the record plus the moment it was recorded (for retention).
     /// </summary>
     private readonly record struct StoredEntry(ChannelPromptMessageRef Reference, DateTimeOffset StoredAt);
 }

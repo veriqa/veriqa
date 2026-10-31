@@ -38,6 +38,14 @@ internal sealed class AuditStoreStartupCheckService : IHostedService
         + $"or '{InfrastructureConfigConstants.TransactionStoreConnectionStringKey}'.";
 
     /// <summary>
+    /// Text of the refusal and of the Development warning when the transaction store provider names Redis:
+    /// the sink borrows nothing from it, so only the key of the sink itself cures it.
+    /// </summary>
+    internal const string AuditStoreInMemoryRedisTransactionStoreMessage =
+        $"{LoggingConfigKeys.CoreSectionName}:Mode is '{nameof(LoggingMode.Audit)}', but the audit store is in memory: "
+        + $"set '{InfrastructureConfigConstants.AuditStoreConnectionStringKey}'.";
+
+    /// <summary>
     /// Host environment, or <see langword="null"/> when the services were assembled outside a host.
     /// </summary>
     private readonly IHostEnvironment? _environment;
@@ -53,19 +61,31 @@ internal sealed class AuditStoreStartupCheckService : IHostedService
     private readonly ILogger<AuditStoreStartupCheckService> _logger;
 
     /// <summary>
+    /// Whether Veriqa:TransactionEngine:Store:Provider names Redis, which picks the text of the refusal and of
+    /// the warning.
+    /// </summary>
+    private readonly bool _transactionStoreOnRedis;
+
+    /// <summary>
     /// Creates the check instance.
     /// </summary>
     /// <param name="environment">Host environment, or null when there is none.</param>
     /// <param name="configurationResolver">Configuration resolver.</param>
     /// <param name="logger">Logger.</param>
+    /// <param name="transactionStoreOnRedis">
+    /// Whether Veriqa:TransactionEngine:Store:Provider names Redis, with or without a connection string: the
+    /// sink then borrows nothing from the transaction store, and the text names the sink key alone.
+    /// </param>
     public AuditStoreStartupCheckService(
         IHostEnvironment? environment,
         IConfigurationResolver configurationResolver,
-        ILogger<AuditStoreStartupCheckService> logger)
+        ILogger<AuditStoreStartupCheckService> logger,
+        bool transactionStoreOnRedis)
     {
         _environment = environment;
         _configurationResolver = configurationResolver;
         _logger = logger;
+        _transactionStoreOnRedis = transactionStoreOnRedis;
     }
 
     /// <inheritdoc />
@@ -86,11 +106,22 @@ internal sealed class AuditStoreStartupCheckService : IHostedService
         // journal exists for. Anywhere else an audit trail that dies with the process stops the host.
         if (_environment is not null && _environment.IsDevelopment())
         {
-            _logger.LogWarning(AuditStoreInMemoryMessage);
+            // Two calls rather than one with a picked text: a log message template stays a constant.
+            if (_transactionStoreOnRedis)
+            {
+                _logger.LogWarning(AuditStoreInMemoryRedisTransactionStoreMessage);
+            }
+            else
+            {
+                _logger.LogWarning(AuditStoreInMemoryMessage);
+            }
+
             return;
         }
 
-        throw new InvalidOperationException(AuditStoreInMemoryMessage);
+        throw new InvalidOperationException(_transactionStoreOnRedis
+            ? AuditStoreInMemoryRedisTransactionStoreMessage
+            : AuditStoreInMemoryMessage);
     }
 
     /// <inheritdoc />

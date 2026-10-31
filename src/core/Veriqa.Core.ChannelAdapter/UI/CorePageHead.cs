@@ -23,7 +23,12 @@ public static class CorePageHead
     /// Content color on the client's branded primary. The brand fill is an arbitrary client color,
     /// so the value is not themed and stays a constant of the branded palette (SPEC-015 §2.1).
     /// </summary>
-    private const string BrandedOnPrimary = "#ffffff";
+    internal const string BrandedOnPrimary = "#ffffff";
+
+    /// <summary>
+    /// Name of the attribute of <c>&lt;html&gt;</c> the theme selectors of the token layer read.
+    /// </summary>
+    private const string ThemeAttributeName = "data-theme";
 
     /// <summary>
     /// HEX color validation pattern (#RRGGBB) to protect against CSS injection.
@@ -48,7 +53,8 @@ public static class CorePageHead
             CorePageStyles.Base,
             rulesCss,
             extraCss ?? string.Empty,
-            BuildBrandedTokens(branding?.PrimaryColor, branding?.PrimaryColorDark));
+            BuildBrandedTokens(branding?.PrimaryColor, branding?.PrimaryColorDark),
+            CorePageChannelButtonColor.BuildRules(branding?.ChannelButtonColors));
 
         return $"<style>{css}</style>{BuildCustomCssLink(branding)}";
     }
@@ -62,6 +68,20 @@ public static class CorePageHead
     public static string BuildServicePageHead(CorePageBranding? branding, string? extraCss = null)
     {
         return BuildPageHead(branding, CorePageStyles.ServicePage, extraCss);
+    }
+
+    /// <summary>
+    /// Builds the theme attribute of the <c>&lt;html&gt;</c> element of a service page (SPEC-015 §2.2).
+    /// It is the one point that spells the attribute for those pages, so none of them can be left
+    /// without it — a page with no attribute is painted light whatever the deployment asked for.
+    /// </summary>
+    /// <param name="branding">Effective page branding (null — the page follows the browser setting).</param>
+    /// <returns>The attribute as <c>data-theme="…"</c>, with no surrounding whitespace.</returns>
+    public static string BuildThemeAttribute(CorePageBranding? branding)
+    {
+        var theme = branding?.Theme ?? CorePageThemes.Auto;
+
+        return $"{ThemeAttributeName}=\"{WebUtility.HtmlEncode(theme)}\"";
     }
 
     /// <summary>

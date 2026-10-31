@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // Runnable sample: a streaming service on a television set. It is not one Veriqa mechanism shown on
-// its own — it is the four a product actually strings together, inside one scenario:
+// its own — it is the five a product actually strings together, inside one scenario:
 //
 //   1. sign-in            the viewer is redirected to the Veriqa sign-in page and comes back known;
 //   2. the person's data  the card on screen is built from the claims their channel gave;
 //   3. recognition        a viewer who has been here before lands straight in the catalogue;
-//   4. step-up            buying a title is confirmed in the channel, BY THE VIEWER WHO ASKED.
+//   4. step-up            buying a title is confirmed in the channel, BY THE VIEWER WHO ASKED;
+//   5. enrichment         what no channel knows — the date of birth, the favourite genre — Veriqa
+//                         asks for itself, inside the sign-in, and remembers.
 //
 // One process plays three roles at once, as in samples/dotnet/inproc/step-up: the Veriqa issuer
 // (inproc), the relying party the viewer signs in to, and the backend that calls the public
@@ -40,14 +42,25 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddVeriqaAuthServer(builder.Configuration, builder.Environment, authServer =>
 {
     authServer.UseInMemoryOpenIddictStore();
-    authServer.ConfigureTransactionEngine(te => te.UseInMemoryStore());
 
-    // The three channels this sample offers. MAX is neither registered nor referenced: a channel a
-    // sample does not offer is left out of the host, not switched off in configuration.
+    // UseCollectedClaimsStore keeps what Veriqa collected on its form (the Veriqa:ScopesClaims catalog of
+    // appsettings.json): a viewer who gave their date of birth once is not asked at the next sign-in.
+    // Veriqa ships no in-memory implementation of this port, so the sample brings its own. A host of
+    // the shipped image gets the same from configuration — Veriqa:CollectedClaims:Store:Enabled.
+    authServer.ConfigureTransactionEngine(te => te
+        .UseInMemoryStore()
+        .UseCollectedClaimsStore<InMemoryCollectedClaimsStore>());
+
+    // The six channels this sample registers. No sign-in page offers all of them: the page shows the
+    // channels of the ui_config record its request names (OnRedirectToIdentityProvider below), and a
+    // record can only narrow what the host has — so the host carries every channel either record lists.
     authServer.AddChannelAdapters(adapters =>
     {
         adapters.AddTelegram();
+        adapters.AddMax();
         adapters.AddWhatsApp();
+        adapters.AddInstagram();
+        adapters.AddMessenger();
         adapters.AddEmail();
     });
 });
@@ -123,6 +136,26 @@ builder.Services
         // literal and wildcards are not supported.
         options.CallbackPath = SampleRoutes.CallbackPath;
 
+        // A viewer who presses "Cancel sign-in" on the Veriqa page comes
+        // back with error=access_denied. That is an answer, not a fault: with the path set the handler
+        // redirects to the interface, which shows an anonymous viewer the sign-in screen again. With no
+        // path set the refusal would go to OnRemoteFailure below, like any other failed return.
+        options.AccessDeniedPath = "/";
+
+        // Every other failed return - Veriqa answering error=server_error, say, because the channel did
+        // not deliver the confirmation - raises OnRemoteFailure; with no handler for it the return ends
+        // in an HTTP 500. The viewer is taken back to the interface, whose sign-in screen then says
+        // that the sign-in did not go through. The error text is deliberately not shown to the viewer:
+        // it is written to the log instead.
+        options.Events.OnRemoteFailure = context =>
+        {
+            context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>()
+                .LogWarning(context.Failure, "The sign-in return carried an error.");
+            context.HandleResponse();
+            context.Response.Redirect(SampleRoutes.SignInFailed);
+            return Task.CompletedTask;
+        };
+
         // Keep the claims under their OIDC names. The handler otherwise renames the well-known ones
         // to the long WS-Federation URIs, and the card below — which reads `given_name`, `picture`,
         // `channel_type` and the rest by the names Veriqa issued them under — would find nothing.
@@ -135,6 +168,21 @@ builder.Services
         options.Scope.Add(SampleScopes.Phone);
         options.Scope.Add(VeriqaScopes.Channel);
         options.Scope.Add(VeriqaScopes.Avatar);
+
+        // The sample's own scope: with it the favourite genre arrives, and a viewer who has not been
+        // asked about it yet is asked on the form of the sign-in. The date of birth needs no line
+        // here — the catalog declares it under profile.
+        options.Scope.Add(SampleScopes.Preferences);
+
+        // The sign-in names the ui_config record whose channels the page offers; the record is
+        // chosen by the language of the browser. Both records are in the client's AllowedUiConfigs —
+        // a code outside that list is refused by the issuer.
+        options.Events.OnRedirectToIdentityProvider = context =>
+        {
+            context.ProtocolMessage.SetParameter(SampleUiConfigs.ParameterName, SignInUiConfig(context.Request));
+
+            return Task.CompletedTask;
+        };
 
         // The avatar travels in the access token only and is read from /connect/userinfo, so without
         // this line a Telegram viewer's picture never reaches the card.
@@ -199,7 +247,7 @@ app.MapGet(SampleRoutes.SignOut, () =>
 
 app.MapGet(SampleRoutes.Session, (ClaimsPrincipal user, CatalogStore catalogue) =>
 {
-    var profile = ViewerProfile.FromClaims(user);
+    var profile = ViewerProfile.FromClaims(user, Age(user), PreferredGenre(user, catalogue));
     if (profile is null)
     {
         return Results.Ok(new SessionResponse(false, false, null));
@@ -227,7 +275,8 @@ app.MapGet(SampleRoutes.Catalog, (ClaimsPrincipal user, CatalogStore catalogue) 
 
     return subject is null
         ? Unauthenticated()
-        : Results.Ok(new CatalogResponse(catalogue.CatalogueFor(subject)));
+        : Results.Ok(new CatalogResponse(
+            catalogue.CatalogueFor(subject, Age(user), PreferredGenre(user, catalogue))));
 });
 
 app.MapPost(SampleRoutes.Purchase, async (
@@ -252,6 +301,14 @@ app.MapPost(SampleRoutes.Purchase, async (
     if (catalogue.Owns(subject, titleId))
     {
         return Results.Json(new ErrorResponse(SampleErrors.AlreadyOwned), statusCode: StatusCodes.Status409Conflict);
+    }
+
+    // The age limit is decided here, whatever the page drew: a title closed to this viewer is refused
+    // before any confirmation is created. The age is read once, at the start — a purchase already
+    // waiting for its confirmation is not looked at again.
+    if (title.IsRestrictedFor(Age(user)))
+    {
+        return Results.Json(new ErrorResponse(SampleErrors.AgeRestricted), statusCode: StatusCodes.Status403Forbidden);
     }
 
     // The step-up itself: the confirmation is addressed to the very person holding this session, by
@@ -363,6 +420,17 @@ static string? Subject(ClaimsPrincipal user) => ViewerProfile.Value(user, Sample
 static IResult Unauthenticated() =>
     Results.Json(new ErrorResponse(SampleErrors.Unauthenticated), statusCode: StatusCodes.Status401Unauthorized);
 
+// The viewer's age in full years today, or null when the session carries no usable date of birth.
+// "Today" is the UTC day: the sample does not know the viewer's time zone, and a service that does
+// would count from the day there.
+static int? Age(ClaimsPrincipal user) => ViewerProfile.AgeOn(
+    ViewerProfile.Value(user, SampleClaims.Birthdate),
+    DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime));
+
+// The viewer's favourite genre, or null when they named none — or named one the catalogue lacks.
+static string? PreferredGenre(ClaimsPrincipal user, CatalogStore catalogue) =>
+    catalogue.KnownGenre(ViewerProfile.Value(user, SampleClaims.PreferredGenre));
+
 // Who the confirmation expects, as Veriqa reads it: the declared comparable type of the channel this
 // session came through, carrying this viewer's identity in that channel.
 static Dictionary<string, string>? ExpectedIdentity(ClaimsPrincipal user)
@@ -382,4 +450,26 @@ static string? ExpectedIdentityType(ClaimsPrincipal user)
     var channelType = ViewerProfile.Value(user, VeriqaClaimTypes.ChannelType);
 
     return channelType is null ? null : SampleIdentityTypes.ForChannel(channelType);
+}
+
+// The ui_config record a sign-in started by this request names: the one with MAX when the browser's
+// first language is Russian, the other for every other language and for a request that states none.
+// "First" is the first entry of Accept-Language as the browser wrote it — the language the person
+// put on top — compared by its primary subtag, so `ru` and `ru-RU` are the same answer. A header
+// that does not parse reads as an empty list. The choice is presentation, not a restriction: the
+// record travels as a request parameter, and anyone may name the other allowed one.
+static string SignInUiConfig(HttpRequest request)
+{
+    var first = request.GetTypedHeaders().AcceptLanguage.FirstOrDefault()?.Value.Value;
+    if (first is null)
+    {
+        return SampleUiConfigs.SignInB;
+    }
+
+    var separator = first.IndexOf(SampleUiConfigs.SubtagSeparator);
+    var primary = separator < 0 ? first : first[..separator];
+
+    return string.Equals(primary, SampleUiConfigs.SignInALanguage, StringComparison.OrdinalIgnoreCase)
+        ? SampleUiConfigs.SignInA
+        : SampleUiConfigs.SignInB;
 }

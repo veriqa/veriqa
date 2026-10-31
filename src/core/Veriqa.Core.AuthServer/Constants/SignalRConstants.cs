@@ -36,6 +36,12 @@ public static class SignalRConstants
     public const string OnChannelStatusChangedMethod = "OnChannelStatusChanged";
 
     /// <summary>
+    /// Name of the server method a page asks for the replacement of its hop QR codes by (SPEC-025
+    /// HOP-152). It answers the caller alone and writes nothing.
+    /// </summary>
+    public const string ReissueHopQrMethod = "ReissueHopQrAsync";
+
+    /// <summary>
     /// Relative path to the locally served SignalR JavaScript client (@microsoft/signalr 8.0.7).
     /// The file ships as a static web asset inside the Veriqa.Core.AuthServer package (RCL),
     /// so it is available from any host by the <c>/_content/{PackageId}/...</c> convention without

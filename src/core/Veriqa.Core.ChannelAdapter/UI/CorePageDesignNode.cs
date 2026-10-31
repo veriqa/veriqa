@@ -26,18 +26,16 @@ namespace Veriqa.Core.ChannelAdapter.UI;
 public static class CorePageDesignNode
 {
     /// <summary>
-    /// Dimensions a themed map of a level is cut by, innermost last — a single one, the theme. It is
-    /// the shape of the level's MAP and never the order of the chain's steps, which the key declares
-    /// (see <see cref="DimensionedConfigValue"/>).
-    /// </summary>
-    private static readonly IReadOnlyList<string> ThemeDimensions =
-        [CorePageBrandingConfigKeys.ThemeDimensionName];
-
-    /// <summary>
     /// Layer value of one step of a THEME-cut text setting: the step that addresses the theme answers
-    /// from the level's themed map, the step that addresses none from the plain member the key's
-    /// address names. A step that states nothing yields <see cref="LayerValue{T}.None"/> and the chain
-    /// moves on to its next step.
+    /// from the entry of the level's themed map that names the theme, the step that addresses none from
+    /// the plain member the key's address names. A step that states nothing yields
+    /// <see cref="LayerValue{T}.None"/> and the chain moves on to its next step.
+    /// <para>
+    /// The map is read entry by entry (<see cref="DimensionedConfigValue"/>): an entry that cannot be
+    /// read as text — a subsection where the text belongs — costs the step of its own theme alone, and
+    /// that theme takes the plain member of the same level or the level below (SPEC-012 CFG-246,
+    /// CFG-240), while a plain member that cannot be read leaves both steps of its level unset.
+    /// </para>
     /// </summary>
     /// <param name="node">Subtree of the level's record.</param>
     /// <param name="path">Address the step resolved to — the plain member.</param>
@@ -50,16 +48,13 @@ public static class CorePageDesignNode
         string path,
         ConfigDimensionValues point,
         string mapMember,
-        string mapRecordMember)
-    {
-        var byTheme = node.TryRead<Dictionary<string, string>>(
+        string mapRecordMember) =>
+        DimensionedConfigValue.Layer(
+            node,
+            point,
+            CorePageBrandingConfigKeys.ThemeDimensionName,
             SiblingAddress(node, path, mapMember, mapRecordMember),
-            out var map)
-            ? map
-            : null;
-
-        return DimensionedConfigValue.Layer(point, ThemeDimensions, byTheme, Text(node, path));
-    }
+            path);
 
     /// <summary>
     /// Layer value of a custom resource stated by a level as the PAIR "path + SRI hash": the hash

@@ -47,10 +47,13 @@ public static class DecisionRefusalClassifier
     /// Reads what a refused write of the decision means.
     /// </summary>
     /// <remarks>
-    /// The four codes below belong to the transaction lifecycle and are reserved for it, so this
+    /// The five codes below belong to the transaction lifecycle and are reserved for it, so this
     /// stays a classification of lifecycle outcomes and not of arbitrary extension-point strings: a
     /// refusal coming from an identity resolver travels out with a code of its own and lands in the
     /// downstream class, which is where it belongs. So does an empty or unknown code.
+    /// A transaction waiting for missing claims (SPEC-041 L91) is one whose user has already
+    /// answered: the answer stands as the completion mark, so the refusal it gives a later decision is
+    /// read as a race.
     /// </remarks>
     /// <param name="errorCode">Code the write failed with.</param>
     /// <returns>What the refusal means for the answer.</returns>
@@ -58,7 +61,9 @@ public static class DecisionRefusalClassifier
     {
         TransactionErrorCodes.TransactionExpired or TransactionErrorCodes.TransactionNotFound
             => DecisionRefusalClass.Expired,
-        TransactionErrorCodes.InvalidStateTransition or TransactionErrorCodes.ConcurrencyConflict
+        TransactionErrorCodes.InvalidStateTransition
+            or TransactionErrorCodes.ConcurrencyConflict
+            or TransactionErrorCodes.ClaimCompletionInProgress
             => DecisionRefusalClass.Race,
         _ => DecisionRefusalClass.Downstream
     };

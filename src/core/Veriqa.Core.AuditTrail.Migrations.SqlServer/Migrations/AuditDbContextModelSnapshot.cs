@@ -57,6 +57,9 @@ namespace Veriqa.Core.AuditTrail.Migrations.SqlServer.Migrations
                     b.Property<string>("CorrelationId")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("DeletionBasis")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Outcome")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");

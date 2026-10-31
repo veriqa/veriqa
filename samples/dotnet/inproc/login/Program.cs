@@ -10,7 +10,6 @@
 // of truth for the code snippet on the demo site: the demo-stand extractor cuts out
 // the body by this marker. Change the Veriqa wiring ONLY here — the snippet updates itself.
 
-using System.Security.Claims;
 using Veriqa.Core.AuthServer.DependencyInjection;
 using Veriqa.Core.ChannelAdapter.DependencyInjection;
 using Veriqa.Core.AuthServer.Infrastructure;
@@ -69,12 +68,9 @@ app.UseVeriqaAuthServer();
 // Veriqa AuthServer OIDC routing (authorize / token / userinfo / callback) — a single call.
 app.MapVeriqaAuthServer();
 
-// Result page: after sign-in it shows "Hello, {name}!".
-// The name is taken from the authenticated user's claims (fallback — "Hello!").
-app.MapGet("/", (ClaimsPrincipal user) =>
-    user.Identity?.IsAuthenticated is true
-        ? $"Hello, {user.Identity!.Name}!"
-        : "Hello!");
+// The issuer has no page of its own to show a signed-in user: a sign-in is started by a relying
+// party and ends there, with the claims in its session. This route only tells the host is up.
+app.MapGet("/", () => "Hello!");
 // endregion:snippet-routing
 
 app.Run();

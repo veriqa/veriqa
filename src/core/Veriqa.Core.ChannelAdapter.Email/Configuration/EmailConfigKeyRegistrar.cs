@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Options;
 
+using Veriqa.Core.ChannelAdapter.Email.Enums;
 using Veriqa.Core.Configuration;
 
 namespace Veriqa.Core.ChannelAdapter.Email.Configuration;
@@ -23,12 +24,19 @@ internal sealed class EmailConfigKeyRegistrar : IRegisterConfigKeys
     private readonly IOptionsMonitor<EmailOptions> _options;
 
     /// <summary>
+    /// Global Email channel settings as bound at the first read — the source of the sign-in mode ceiling.
+    /// </summary>
+    private readonly IOptions<EmailOptions> _snapshot;
+
+    /// <summary>
     /// Creates the registrar of the Email channel keys.
     /// </summary>
     /// <param name="options">Global Email channel settings.</param>
-    public EmailConfigKeyRegistrar(IOptionsMonitor<EmailOptions> options)
+    /// <param name="snapshot">Global Email channel settings as bound at the first read.</param>
+    public EmailConfigKeyRegistrar(IOptionsMonitor<EmailOptions> options, IOptions<EmailOptions> snapshot)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
     }
 
     /// <inheritdoc />
@@ -50,5 +58,39 @@ internal sealed class EmailConfigKeyRegistrar : IRegisterConfigKeys
         coreBindings.RegisterCore(
             EmailConfigKeys.Credentials,
             () => _options.CurrentValue.GetTenantCredentials());
+
+        // The ceiling of the sign-in modes — the modes this deployment serves. It is composed of two
+        // switches rather than written at an address, which is why the key declares its core level
+        // without one and the getter is registered here. The ceiling is read from the IOptions snapshot,
+        // as the guards of the Email endpoints read PullEnabled and PushEnabled (SPEC-016 EM-054): a change
+        // of the served modes takes a restart of the host, and a reload neither adds nor removes a mode.
+        coreBindings.RegisterCore(
+            EmailConfigKeys.SignInModes,
+            () => SignInModeCeiling(_snapshot.Value));
+    }
+
+    /// <summary>
+    /// The modes the deployment serves — the ceiling the levels above the core one narrow: Pull when
+    /// <see cref="EmailOptions.PullEnabled"/> is on, Push when <see cref="EmailOptions.PushEnabled"/> is.
+    /// </summary>
+    /// <param name="options">Global Email channel settings.</param>
+    /// <returns>The modes of the ceiling; empty when both are switched off.</returns>
+    internal static IReadOnlyList<EmailMode> SignInModeCeiling(EmailOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var modes = new List<EmailMode>();
+
+        if (options.PullEnabled)
+        {
+            modes.Add(EmailMode.Pull);
+        }
+
+        if (options.PushEnabled)
+        {
+            modes.Add(EmailMode.Push);
+        }
+
+        return modes;
     }
 }

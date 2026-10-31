@@ -43,9 +43,14 @@ internal sealed class RedisEmailPushCorrelationStore : IEmailPushCorrelationStor
     private const string ExpiresAtField = "ExpiresAt";
 
     /// <summary>
-    /// Hash field holding the moment the compose page was first opened.
+    /// Hash field marking a correlation of the claims completion; absent — a correlation of the sign-in.
     /// </summary>
-    private const string ComposeOpenedAtField = "ComposeOpenedAt";
+    private const string ForClaimCompletionField = "ForClaimCompletion";
+
+    /// <summary>
+    /// Stored value of <see cref="ForClaimCompletionField"/>.
+    /// </summary>
+    private const string FlagSetValue = "1";
 
     /// <summary>
     /// Key segment of the "transaction → live token" index.
@@ -64,7 +69,8 @@ internal sealed class RedisEmailPushCorrelationStore : IEmailPushCorrelationStor
     /// token is stored and every caller is handed that same token back.
     /// KEYS[1] — "transaction → live token" index key.
     /// KEYS[2] — candidate correlation hash key.
-    /// ARGV[1] — TTL in seconds (always >0, validated in C# before the call).
+    /// ARGV[1] — the deadline in Unix milliseconds (alive when checked in C# before the call); absolute,
+    /// so a script delayed on its way does not keep the token past it.
     /// ARGV[2] — candidate token.
     /// ARGV[3..] — hash field/value pairs of the candidate record.
     /// Returns: the token the caller must use.
@@ -72,7 +78,7 @@ internal sealed class RedisEmailPushCorrelationStore : IEmailPushCorrelationStor
     /// <remarks>
     /// The reuse branch deliberately touches nothing: re-rendering the page must not push the
     /// expiry of an already issued token forward, or the token would live for as long as the page
-    /// keeps being reopened. The index carries the same TTL as the record, so both fall away
+    /// keeps being reopened. The index carries the same deadline as the record, so both fall away
     /// together and a stale index cannot outlive the token it points at.
     /// </remarks>
     private const string StoreOrReuseLuaScript = @"
@@ -80,14 +86,15 @@ local existing = redis.call('GET', KEYS[1])
 if existing then
     return existing
 end
-local ttl = tonumber(ARGV[1])
+local deadline = ARGV[1]
 local token = ARGV[2]
 redis.call('DEL', KEYS[2])
 for i = 3, #ARGV, 2 do
     redis.call('HSET', KEYS[2], ARGV[i], ARGV[i + 1])
 end
-redis.call('EXPIRE', KEYS[2], ttl)
-redis.call('SET', KEYS[1], token, 'EX', ttl)
+redis.call('PEXPIREAT', KEYS[2], deadline)
+redis.call('SET', KEYS[1], token)
+redis.call('PEXPIREAT', KEYS[1], deadline)
 return token";
 
     /// <summary>
@@ -122,7 +129,7 @@ return 1";
     private readonly IDatabase _db;
 
     /// <summary>
-    /// Clock the record TTLs and stamps are computed from.
+    /// Clock a record is checked to be alive against before it is written, and its stamps are taken from.
     /// </summary>
     private readonly TimeProvider _timeProvider;
 
@@ -152,15 +159,15 @@ return 1";
         cancellationToken.ThrowIfCancellationRequested();
 
         var key = GetCorrelationKey(token);
-        var lifetime = RedisRecordLifetime.FromExpiry(correlation.ExpiresAt, _timeProvider.GetUtcNow(), EntityDescription);
+        var deadline = RedisRecordLifetime.DeadlineOf(correlation.ExpiresAt, _timeProvider.GetUtcNow(), EntityDescription);
 
-        // DEL + HSET + EXPIRE in one MULTI/EXEC: a write replaces the record wholesale, as the
+        // DEL + HSET + PEXPIREAT in one MULTI/EXEC: a write replaces the record wholesale, as the
         // in-process store assigns over its dictionary slot. The index is left alone on purpose —
         // the in-process StoreAsync does not touch it either; only StoreOrReuseAsync owns it.
         var transaction = _db.CreateTransaction();
         var deleteTask = transaction.KeyDeleteAsync(key);
         var setTask = transaction.HashSetAsync(key, BuildEntries(correlation));
-        var expireTask = transaction.KeyExpireAsync(key, lifetime);
+        var expireTask = transaction.KeyExpireAsync(key, deadline.UtcDateTime);
 
         await transaction.ExecuteAsync();
         await Task.WhenAll(deleteTask, setTask, expireTask);
@@ -172,11 +179,11 @@ return 1";
         ArgumentNullException.ThrowIfNull(correlation);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var lifetime = RedisRecordLifetime.FromExpiry(correlation.ExpiresAt, _timeProvider.GetUtcNow(), EntityDescription);
+        var deadline = RedisRecordLifetime.DeadlineOf(correlation.ExpiresAt, _timeProvider.GetUtcNow(), EntityDescription);
 
         var arguments = new List<RedisValue>(8)
         {
-            (long)Math.Ceiling(lifetime.TotalSeconds),
+            deadline.ToUnixTimeMilliseconds(),
             token,
         };
 
@@ -267,22 +274,6 @@ return 1";
     }
 
     /// <inheritdoc />
-    public async Task<bool> TryMarkComposeOpenedAsync(string token, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        // HSETNX guarded by the existence of the correlation hash: exactly one concurrent open wins,
-        // and a consumed or expired correlation records none — so "compose_opened" is published once
-        // however many times the page is refreshed.
-        var result = await _db.ScriptEvaluateAsync(
-            RedisChannelStoreScripts.MarkFieldOnce,
-            new RedisKey[] { GetCorrelationKey(token) },
-            new RedisValue[] { ComposeOpenedAtField, RedisChannelStoreTimestamps.Format(_timeProvider.GetUtcNow()) });
-
-        return (long)result == 1L;
-    }
-
-    /// <inheritdoc />
     public async Task<bool> IsMessageProcessedAsync(string messageId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -313,15 +304,16 @@ return 1";
     /// <returns>Hash entries to write.</returns>
     private static HashEntry[] BuildEntries(EmailPushCorrelation correlation)
     {
-        var entries = new List<HashEntry>(3)
+        var entries = new List<HashEntry>(4)
         {
             new(TransactionIdField, correlation.TransactionId),
             new(ExpiresAtField, RedisChannelStoreTimestamps.Format(correlation.ExpiresAt)),
         };
 
-        if (correlation.ComposeOpenedAt is { } composeOpenedAt)
+        // Written only when set, so a record of the sign-in keeps the shape it always had.
+        if (correlation.ForClaimCompletion)
         {
-            entries.Add(new HashEntry(ComposeOpenedAtField, RedisChannelStoreTimestamps.Format(composeOpenedAt)));
+            entries.Add(new HashEntry(ForClaimCompletionField, FlagSetValue));
         }
 
         return entries.ToArray();
@@ -367,8 +359,10 @@ return 1";
         return new EmailPushCorrelation(
             transactionId.ToString(),
             expiresAt,
-            ConsumedAt: null,
-            ComposeOpenedAt: RedisChannelStoreTimestamps.Parse(fields.GetValueOrDefault(ComposeOpenedAtField)));
+            ConsumedAt: null)
+        {
+            ForClaimCompletion = fields.GetValueOrDefault(ForClaimCompletionField) == FlagSetValue
+        };
     }
 
     /// <summary>

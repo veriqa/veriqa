@@ -5,17 +5,18 @@ namespace Veriqa.Core.Configuration;
 
 /// <summary>
 /// Synchronous reader of CORE-level bindings, for the composition steps a framework performs
-/// synchronously BEFORE the DI container exists — the OpenIddict server options and the rate-limiter
-/// policies. Both read the core level and nothing else, and the core level is pure memory (a closure
-/// over <c>IOptions</c>): there is no input/output there and, by the way the level is built, there
-/// cannot be.
+/// synchronously — the OpenIddict server options and the rate-limiter policies BEFORE the DI container
+/// exists, and the mapping of routes whose need is decided once at startup. They read the core level
+/// and nothing else, and the core level is pure memory (a closure over the host configuration): there
+/// is no input/output there and, by the way the level is built, there cannot be.
 /// <para>
 /// This is NOT a resolver and not a second entry of resolution (SPEC-012 §10.6 — one
 /// resolution, no fork). It has no precedence, no
 /// level other than <see cref="ConfigLevel.Core"/>, none of the key semantics
 /// (<see cref="ConfigKeyKind.Set"/> / <see cref="ConfigKeyKind.ProtectiveCeiling"/> /
-/// <see cref="ConfigKeyKind.GatedValue"/>), no cache, no degradation and no dimensions. It evaluates
-/// one core binding, which is the same closure the resolver itself would evaluate.
+/// <see cref="ConfigKeyKind.GatedValue"/>), no cache and no degradation. It evaluates one core
+/// binding — for a composite key, at the steps of the key's own fallback chain — which is the same
+/// closure the resolver itself would evaluate.
 /// </para>
 /// <para>
 /// Everywhere an asynchronous seam exists, the single asynchronous
@@ -53,9 +54,28 @@ public sealed class ConfigCoreValues
     /// <typeparam name="T">Type of the setting value.</typeparam>
     /// <param name="key">Setting key.</param>
     /// <returns>Core-level value; <c>default</c> when the key declared no core getter.</returns>
-    public T Read<T>(ConfigKey<T> key)
+    public T Read<T>(ConfigKey<T> key) => Read(key, ConfigDimensionValues.None);
+
+    /// <summary>
+    /// Reads the core-level value of a key at the dimension values asked — the answer the core level
+    /// alone gives to them. For a composite key the steps of its fallback chain are tried in order over
+    /// the one core getter, each with the point it actually addresses, and the first step that states a
+    /// value answers: the same walk the resolver makes inside a level, restricted to the core one. A step
+    /// whose value the domain of the key rejects states nothing here, as an unstated one does.
+    /// </summary>
+    /// <typeparam name="T">Type of the setting value.</typeparam>
+    /// <param name="key">Setting key.</param>
+    /// <param name="dimensions">
+    /// Dimension values of a composite key — what is being asked; <see cref="ConfigDimensionValues.None"/>
+    /// for a key without dimensions.
+    /// </param>
+    /// <returns>Core-level value; <c>default</c> when the key declared no core getter or no step states one.</returns>
+    /// <exception cref="ArgumentException">A dimension value was passed that the key does not declare.</exception>
+    public T Read<T>(ConfigKey<T> key, ConfigDimensionValues dimensions)
     {
         ArgumentNullException.ThrowIfNull(key);
+
+        dimensions.ValidateAgainst(key.Name, key.Dimensions);
 
         // The core getter is a closure over global options — nothing is awaited here, because there is
         // nothing to await: the asynchronous binding of this very level is built from the same closure.
@@ -65,9 +85,23 @@ public sealed class ConfigCoreValues
             return default!;
         }
 
-        var value = getter(ConfigDimensionValues.None);
+        // A key without dimensions is the degenerate chain of one step, asked at the point that
+        // addresses nothing.
+        IEnumerable<ConfigDimensionValues> points = key.Dimensions is { } declared
+            ? declared.Fallback.Select(dimensions.Project)
+            : [ConfigDimensionValues.None];
 
-        return value.HasValue ? value.Value! : default!;
+        foreach (var point in points)
+        {
+            var value = getter(point);
+
+            if (value.HasValue)
+            {
+                return value.Value!;
+            }
+        }
+
+        return default!;
     }
 
     /// <summary>

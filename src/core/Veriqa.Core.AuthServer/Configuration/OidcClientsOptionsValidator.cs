@@ -46,6 +46,22 @@ namespace Veriqa.Core.AuthServer.Configuration;
 public sealed class OidcClientsOptionsValidator : IValidateOptions<OidcClientsOptions>
 {
     /// <summary>
+    /// The claims catalog section — the source of the core catalog of scopes and claims an entry is
+    /// judged against (SPEC-041 C30). Bound on its own rather than read off the root options: reading the
+    /// root would validate all of it on every read of the client entries.
+    /// </summary>
+    private readonly IOptions<ScopesClaimsOptions> _scopesClaims;
+
+    /// <summary>
+    /// Creates the validator of the OIDC client options.
+    /// </summary>
+    /// <param name="scopesClaims">The claims catalog section holding the core catalog of scopes and claims.</param>
+    public OidcClientsOptionsValidator(IOptions<ScopesClaimsOptions> scopesClaims)
+    {
+        _scopesClaims = scopesClaims ?? throw new ArgumentNullException(nameof(scopesClaims));
+    }
+
+    /// <summary>
     /// Validates the OIDC client options.
     /// </summary>
     /// <param name="name">Options instance name.</param>
@@ -56,11 +72,12 @@ public sealed class OidcClientsOptionsValidator : IValidateOptions<OidcClientsOp
         // The method verifies the configuration of each client
 
         var failures = new List<string>();
+        var scopeCatalog = _scopesClaims.Value.Scopes;
 
         for (var i = 0; i < options.Clients.Count; i++)
         {
             // Normalization was done in OidcClientsOptionsPostConfigure — collections are guaranteed non-null
-            failures.AddRange(OidcClientValidationRules.Collect(options.Clients[i], i));
+            failures.AddRange(OidcClientValidationRules.Collect(options.Clients[i], i, scopeCatalog));
         }
 
         // ClientId addresses the whole entry — every reading site looks it up and takes the first

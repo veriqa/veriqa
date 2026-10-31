@@ -22,7 +22,7 @@ public enum EmailInboundProvider
 
     /// <summary>
     /// SmtpRelay — Veriqa receives messages through its own SMTP relay.
-    /// Advanced mode.
+    /// Reserved: no receiver is shipped, and selecting it with Push enabled fails the start.
     /// </summary>
     SmtpRelay,
 

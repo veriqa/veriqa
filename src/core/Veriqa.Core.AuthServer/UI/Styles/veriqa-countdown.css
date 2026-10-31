@@ -1,0 +1,20 @@
+/*
+ * Copyright (c) Dmitrii Erusov
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * Rules of the countdown of the "Core" contour: the sign-in window and the page that collects
+ * the missing details show the same figure. Loaded after veriqa-core-base.css, whose tokens the
+ * rules use, next to the rules of the page itself.
+ * The file is inlined into the generated document, not served over a URL. Every comment of it
+ * therefore reaches the end user's browser verbatim: the norms these rules implement are named
+ * in PageCountdown (C#), not here.
+ */
+.veriqa-countdown {
+    margin-top: var(--veriqa-spacing-sm);
+    font-size: 0.6875rem;
+    font-family: var(--veriqa-font-mono);
+    color: var(--veriqa-soft);
+}
+.veriqa-countdown.warning { color: var(--veriqa-error); }
+/* Right under a row of buttons the figure is set apart from them as other content of the card is */
+.veriqa-actions + .veriqa-countdown { margin-top: var(--veriqa-spacing-md); }

@@ -1,5 +1,6 @@
 #nullable enable
 override Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart.GetHashCode() -> int
+override Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.GetHashCode() -> int
 static Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart.operator !=(Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart left, Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart right) -> bool
 static Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart.operator ==(Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart left, Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart right) -> bool
 Veriqa.Core.TransactionEngine.Common.DbTransientErrorDetector
@@ -122,12 +123,42 @@ Veriqa.Core.TransactionEngine.Domain.CompletionSnapshot.Claims.init -> void
 Veriqa.Core.TransactionEngine.Domain.CompletionSnapshot.CompletedAt.get -> System.DateTimeOffset
 Veriqa.Core.TransactionEngine.Domain.CompletionSnapshot.CompletedAt.init -> void
 Veriqa.Core.TransactionEngine.Domain.CompletionSnapshot.CompletionSnapshot() -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel.IfAvailable = 0 -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel.Optional = 1 -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel.Required = 2 -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.<Clone>$() -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirement!
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Claim.get -> string!
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Claim.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.ClaimRequirement(string! Claim, Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel Level, Veriqa.Core.TransactionEngine.Domain.ClaimRequirementSource Source, bool HasCompletionPath) -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Deconstruct(out string! Claim, out Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel Level, out Veriqa.Core.TransactionEngine.Domain.ClaimRequirementSource Source, out bool HasCompletionPath) -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Equals(Veriqa.Core.TransactionEngine.Domain.ClaimRequirement? other) -> bool
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.HasCompletionPath.get -> bool
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.HasCompletionPath.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Level.get -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Level.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Source.get -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementSource
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Source.init -> void
+override Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.Equals(object? obj) -> bool
+override Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.GetHashCode() -> int
+override Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.ToString() -> string!
+static Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.operator !=(Veriqa.Core.TransactionEngine.Domain.ClaimRequirement? left, Veriqa.Core.TransactionEngine.Domain.ClaimRequirement? right) -> bool
+static Veriqa.Core.TransactionEngine.Domain.ClaimRequirement.operator ==(Veriqa.Core.TransactionEngine.Domain.ClaimRequirement? left, Veriqa.Core.TransactionEngine.Domain.ClaimRequirement? right) -> bool
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirementSource
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirementSource.Configuration = 1 -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementSource
+Veriqa.Core.TransactionEngine.Domain.ClaimRequirementSource.Request = 0 -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementSource
 Veriqa.Core.TransactionEngine.Domain.ConfirmationSnapshot
 Veriqa.Core.TransactionEngine.Domain.ConfirmationSnapshot.ActionType.get -> string?
 Veriqa.Core.TransactionEngine.Domain.ConfirmationSnapshot.ActionType.init -> void
 Veriqa.Core.TransactionEngine.Domain.ConfirmationSnapshot.ConfirmationSnapshot() -> void
 Veriqa.Core.TransactionEngine.Domain.ConfirmationSnapshot.SlotValues.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
 Veriqa.Core.TransactionEngine.Domain.ConfirmationSnapshot.SlotValues.init -> void
+Veriqa.Core.TransactionEngine.Domain.HopObservationMark
+Veriqa.Core.TransactionEngine.Domain.HopObservationMark.ChannelLaunched = 2 -> Veriqa.Core.TransactionEngine.Domain.HopObservationMark
+Veriqa.Core.TransactionEngine.Domain.HopObservationMark.FirstResolve = 0 -> Veriqa.Core.TransactionEngine.Domain.HopObservationMark
+Veriqa.Core.TransactionEngine.Domain.HopObservationMark.InterstitialOpened = 1 -> Veriqa.Core.TransactionEngine.Domain.HopObservationMark
+Veriqa.Core.TransactionEngine.Domain.HopObservationMark.RepeatResolve = 3 -> Veriqa.Core.TransactionEngine.Domain.HopObservationMark
 Veriqa.Core.TransactionEngine.Domain.InitiatorContextFields
 Veriqa.Core.TransactionEngine.Domain.InitiatorContextFields.AnomalySignals
 Veriqa.Core.TransactionEngine.Domain.InitiatorContextFields.DeviceTypes
@@ -180,6 +211,30 @@ Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot.ResolvedIdentitySn
 Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot.Subject.get -> string!
 Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot.Subject.init -> void
 Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot.WithFrozenClaims() -> Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot!
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.Browser.get -> string?
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.Browser.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.CapturedAt.get -> System.DateTimeOffset
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.CapturedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.CollectorVersion.get -> string!
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.CollectorVersion.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.DeviceType.get -> string?
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.DeviceType.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.Fingerprint.get -> string?
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.Fingerprint.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.GeoCountry.get -> string?
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.GeoCountry.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.IpAddress.get -> string?
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.IpAddress.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.IpTrusted.get -> bool
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.IpTrusted.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.OsPlatform.get -> string?
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.OsPlatform.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.RawMetadata.get -> System.Text.Json.JsonElement?
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.RawMetadata.init -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.ScannerContextSnapshot() -> void
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.ScannedAt.get -> System.DateTimeOffset
+Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot.ScannedAt.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction
 Veriqa.Core.TransactionEngine.Domain.Transaction.AllowedChannelTypes.get -> System.Collections.Generic.IReadOnlySet<string!>!
 Veriqa.Core.TransactionEngine.Domain.Transaction.AllowedChannelTypes.init -> void
@@ -197,6 +252,14 @@ Veriqa.Core.TransactionEngine.Domain.Transaction.CreatedAt.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.ExpiresAt.get -> System.DateTimeOffset
 Veriqa.Core.TransactionEngine.Domain.Transaction.ExpiresAt.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.HasRunOutOfTime(System.DateTimeOffset now) -> bool
+Veriqa.Core.TransactionEngine.Domain.Transaction.HopChannelLaunchedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.Transaction.HopChannelLaunchedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.Transaction.HopRepeatResolvedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.Transaction.HopRepeatResolvedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.Transaction.HopFirstResolvedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.Transaction.HopFirstResolvedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.Transaction.HopInterstitialOpenedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.Transaction.HopInterstitialOpenedAt.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.Id.get -> Veriqa.Core.TransactionEngine.Domain.TransactionId
 Veriqa.Core.TransactionEngine.Domain.Transaction.Id.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.IdempotencyKey.get -> string?
@@ -206,6 +269,8 @@ Veriqa.Core.TransactionEngine.Domain.Transaction.IdempotencyScope.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.IdentityMatch.get -> Veriqa.Core.TransactionEngine.Services.IdentityMatchState?
 Veriqa.Core.TransactionEngine.Domain.Transaction.InitiatorContextSnapshot.get -> Veriqa.Core.TransactionEngine.Domain.InitiatorContextSnapshot?
 Veriqa.Core.TransactionEngine.Domain.Transaction.InitiatorContextSnapshot.init -> void
+Veriqa.Core.TransactionEngine.Domain.Transaction.ClaimRequirements.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimRequirement!>!
+Veriqa.Core.TransactionEngine.Domain.Transaction.ClaimRequirements.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.IsAwaitingWebConfirmation() -> bool
 Veriqa.Core.TransactionEngine.Domain.Transaction.IsExpired(System.DateTimeOffset now) -> bool
 Veriqa.Core.TransactionEngine.Domain.Transaction.IsSubjectToExpiry() -> bool
@@ -217,6 +282,8 @@ Veriqa.Core.TransactionEngine.Domain.Transaction.RequestContext.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.RequestedChannelType.get -> string?
 Veriqa.Core.TransactionEngine.Domain.Transaction.RequestedChannelType.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.ResolvedIdentitySnapshot.get -> Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot?
+Veriqa.Core.TransactionEngine.Domain.Transaction.ScannerContextSnapshot.get -> Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot?
+Veriqa.Core.TransactionEngine.Domain.Transaction.ScannerContextSnapshot.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.State.get -> Veriqa.Core.TransactionEngine.Domain.TransactionState
 Veriqa.Core.TransactionEngine.Domain.Transaction.StateReasonCode.get -> string?
 Veriqa.Core.TransactionEngine.Domain.Transaction.ToSnapshot() -> Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot!
@@ -244,6 +311,14 @@ Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.CreatedAt.get -> System
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.CreatedAt.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ExpiresAt.get -> System.DateTimeOffset
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ExpiresAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.HopChannelLaunchedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.HopChannelLaunchedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.HopRepeatResolvedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.HopRepeatResolvedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.HopFirstResolvedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.HopFirstResolvedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.HopInterstitialOpenedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.HopInterstitialOpenedAt.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.Id.get -> Veriqa.Core.TransactionEngine.Domain.TransactionId
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.Id.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.IdempotencyKey.get -> string?
@@ -254,6 +329,8 @@ Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.IdentityMatch.get -> Ve
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.IdentityMatch.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.InitiatorContextSnapshot.get -> Veriqa.Core.TransactionEngine.Domain.InitiatorContextSnapshot?
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.InitiatorContextSnapshot.init -> void
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ClaimRequirements.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimRequirement!>!
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ClaimRequirements.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.OidcContext.get -> Veriqa.Core.TransactionEngine.Services.OidcContext?
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.OidcContext.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.RequestContext.get -> Veriqa.Core.TransactionEngine.Services.TransactionRequestContext?
@@ -262,6 +339,8 @@ Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.RequestedChannelType.ge
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.RequestedChannelType.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ResolvedIdentitySnapshot.get -> Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot?
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ResolvedIdentitySnapshot.init -> void
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ScannerContextSnapshot.get -> Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ScannerContextSnapshot.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.State.get -> Veriqa.Core.TransactionEngine.Domain.TransactionState
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.State.init -> void
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.StateReasonCode.get -> string?
@@ -301,6 +380,8 @@ Veriqa.Core.TransactionEngine.Events.TransactionChannelAuditEvent.EventCode.get 
 Veriqa.Core.TransactionEngine.Events.TransactionChannelAuditEvent.EventCode.init -> void
 Veriqa.Core.TransactionEngine.Events.TransactionChannelAuditEvent.TransactionChannelAuditEvent() -> void
 Veriqa.Core.TransactionEngine.Events.TransactionChannelIdentityAttachedEvent
+Veriqa.Core.TransactionEngine.Events.TransactionChannelIdentityAttachedEvent.AnswerBrowserBound.get -> bool
+Veriqa.Core.TransactionEngine.Events.TransactionChannelIdentityAttachedEvent.AnswerBrowserBound.init -> void
 Veriqa.Core.TransactionEngine.Events.TransactionChannelIdentityAttachedEvent.ChannelType.get -> string!
 Veriqa.Core.TransactionEngine.Events.TransactionChannelIdentityAttachedEvent.ChannelType.init -> void
 Veriqa.Core.TransactionEngine.Events.TransactionChannelIdentityAttachedEvent.Equals(Veriqa.Core.TransactionEngine.Events.TransactionChannelIdentityAttachedEvent? other) -> bool
@@ -416,6 +497,7 @@ Veriqa.Core.TransactionEngine.MessageTemplates.MessageSlotOptions.Type.get -> st
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageSlotOptions.Type.init -> void
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageSlotOptions.Values.get -> System.Collections.Generic.IList<string!>?
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageSlotOptions.Values.init -> void
+Veriqa.Core.TransactionEngine.MessageTemplates.MessageLinkPurposes
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageSurfaces
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateEdition
@@ -426,6 +508,8 @@ Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByActi
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByAction.init -> void
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByChannel.get -> System.Collections.Generic.IDictionary<string!, Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions!>!
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByChannel.init -> void
+Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByLinkPurpose.get -> System.Collections.Generic.IDictionary<string!, Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions!>!
+Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByLinkPurpose.init -> void
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.BySurface.get -> System.Collections.Generic.IDictionary<string!, Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions!>!
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.BySurface.init -> void
 Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByType.get -> System.Collections.Generic.IDictionary<string!, Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions!>!
@@ -514,6 +598,13 @@ Veriqa.Core.TransactionEngine.MessageTemplates.SlotValueValidator
 Veriqa.Core.TransactionEngine.MessageTemplates.ValidatedCallerValues
 Veriqa.Core.TransactionEngine.MessageTemplates.ValidatedCallerValues.ValidatedCallerValues(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! values) -> void
 Veriqa.Core.TransactionEngine.MessageTemplates.ValidatedCallerValues.Values.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict
+Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.ChannelAdmissibilityVerdict() -> void
+Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.Equals(Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict other) -> bool
+Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.IsDenied.get -> bool
+Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.ReasonCode.get -> string?
+Veriqa.Core.TransactionEngine.RestrictionPolicies.IChannelAdmissibilityCheck
+Veriqa.Core.TransactionEngine.RestrictionPolicies.IChannelAdmissibilityCheck.EvaluateAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot! identity, Veriqa.Core.Configuration.ResolutionContext! resolutionContext, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict>
 Veriqa.Core.TransactionEngine.Services.ChannelTransactionFinalizer
 Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest
 Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.AllowedChannelTypes.get -> System.Collections.Generic.IReadOnlyList<string!>?
@@ -533,6 +624,8 @@ Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.IdentityMatch.ge
 Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.IdentityMatch.init -> void
 Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.InitiatorContext.get -> Veriqa.Core.TransactionEngine.Domain.InitiatorContextSnapshot?
 Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.InitiatorContext.init -> void
+Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.ClaimRequirements.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimRequirement!>!
+Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.ClaimRequirements.init -> void
 Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.OidcContext.get -> Veriqa.Core.TransactionEngine.Services.OidcContext?
 Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.OidcContext.init -> void
 Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest.RequestContext.get -> Veriqa.Core.TransactionEngine.Services.TransactionRequestContext?
@@ -551,11 +644,12 @@ Veriqa.Core.TransactionEngine.Services.DecisionRefusalClassifier
 Veriqa.Core.TransactionEngine.Services.IClientTenantResolver
 Veriqa.Core.TransactionEngine.Services.IClientTenantResolver.ResolveTenantAsync(string? clientId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string?>
 Veriqa.Core.TransactionEngine.Services.ITransactionService
-Veriqa.Core.TransactionEngine.Services.ITransactionService.AttachChannelIdentityAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot! identity, string! concurrencyToken, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
+Veriqa.Core.TransactionEngine.Services.ITransactionService.AttachChannelIdentityAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot! identity, string! concurrencyToken, bool bindAnswerToBrowser = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
 Veriqa.Core.TransactionEngine.Services.ITransactionService.CancelTransactionAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, string! concurrencyToken, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
 Veriqa.Core.TransactionEngine.Services.ITransactionService.CompleteTransactionAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot! resolvedIdentity, string! concurrencyToken, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
 Veriqa.Core.TransactionEngine.Services.ITransactionService.ConfirmTransactionAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot! channelIdentity, string! concurrencyToken, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
 Veriqa.Core.TransactionEngine.Services.ITransactionService.CreateTransactionAsync(Veriqa.Core.TransactionEngine.Services.CreateTransactionRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
+Veriqa.Core.TransactionEngine.Services.ITransactionService.ExpireOverdueAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Veriqa.Core.TransactionEngine.Services.ITransactionService.FailTransactionAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, string! reasonCode, string! concurrencyToken, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
 Veriqa.Core.TransactionEngine.Services.ITransactionService.GetTransactionAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
 Veriqa.Core.TransactionEngine.Services.ITransactionService.TryMarkIdentityTokenIssuedAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
@@ -592,6 +686,8 @@ Veriqa.Core.TransactionEngine.Services.OidcContext.State.get -> string?
 Veriqa.Core.TransactionEngine.Services.OidcContext.State.init -> void
 Veriqa.Core.TransactionEngine.Services.OidcContext.TenantId.get -> string?
 Veriqa.Core.TransactionEngine.Services.OidcContext.TenantId.init -> void
+Veriqa.Core.TransactionEngine.Services.OidcContext.TenantResolutionFailed.get -> bool
+Veriqa.Core.TransactionEngine.Services.OidcContext.TenantResolutionFailed.init -> void
 Veriqa.Core.TransactionEngine.Services.OidcContext.UiConfigCode.get -> string?
 Veriqa.Core.TransactionEngine.Services.OidcContext.UiConfigCode.init -> void
 Veriqa.Core.TransactionEngine.Services.OidcContext.UiLocale.get -> string?
@@ -625,6 +721,9 @@ Veriqa.Core.TransactionEngine.Store.ITransactionStore.GetByIdempotencyKeyAsync(s
 Veriqa.Core.TransactionEngine.Store.ITransactionStore.GetExpiredAsync(System.DateTimeOffset now, int batchSize, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
 Veriqa.Core.TransactionEngine.Store.ITransactionStore.GetStaleTerminalAsync(System.DateTimeOffset olderThan, int batchSize, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
 Veriqa.Core.TransactionEngine.Store.ITransactionStore.GetStalledConfirmedAsync(System.DateTimeOffset confirmedBefore, int batchSize, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
+Veriqa.Core.TransactionEngine.Store.ITransactionStore.TryAttachScannerContextAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.ScannerContextSnapshot! snapshot, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.TransactionEngine.Store.ITransactionStore.TryFillScannerFingerprintAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, string! fingerprint, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.TransactionEngine.Store.ITransactionStore.TryMarkHopObservationAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.HopObservationMark mark, System.DateTimeOffset markedAt, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Veriqa.Core.TransactionEngine.Store.ITransactionStore.UpdateAsync(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction, string! expectedConcurrencyToken, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Veriqa.Core.TransactionEngine.Store.InvalidStateTransitionException
 Veriqa.Core.TransactionEngine.Store.InvalidStateTransitionException.From.get -> Veriqa.Core.TransactionEngine.Domain.TransactionState
@@ -678,6 +777,7 @@ const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.InvalidStateTra
 const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.InvalidTransactionType = "invalid_transaction_type" -> string!
 const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.LocaleInvalid = "locale_invalid" -> string!
 const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.TimeZoneInvalid = "time_zone_invalid" -> string!
+const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.RestrictionPolicyViolation = "restriction_policy_violation" -> string!
 const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.SecurityPolicyViolation = "security_policy_violation" -> string!
 const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.SlotRequiredMissing = "slot_required_missing" -> string!
 const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.SlotUndeclared = "slot_undeclared" -> string!
@@ -691,21 +791,44 @@ const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.TransactionNotF
 const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.UserRateLimitExceeded = "user_rate_limit_exceeded" -> string!
 const Veriqa.Core.TransactionEngine.Domain.TransactionTypes.Confirmation = "confirmation" -> string!
 const Veriqa.Core.TransactionEngine.Domain.TransactionTypes.Login = "login" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.ChannelAnswerLine = "channel-answer-line" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.ChannelLaunchedLine = "channel-launched-line" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.ClaimCodeLinkMail = "claim-code-link-mail" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.SignInCodeLinkMail = "sign-in-code-link-mail" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.SignInCodeMail = "sign-in-code-mail" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.ClaimCodeMail = "claim-code-mail" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.ClaimFormLink = "claim-form-link" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.ClaimLinkMail = "claim-link-mail" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.ConfirmationPrompt = "confirmation-prompt" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.DeeplinkPrefill = "deeplink-prefill" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.HopChannelHint = "hop-channel-hint" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.OutcomeReceiptAwaitingClaims = "outcome-receipt-awaiting-claims" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.OutcomeReceiptConfirmed = "outcome-receipt-confirmed" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.OutcomeReceiptDeclined = "outcome-receipt-declined" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.OutcomeReceiptExpired = "outcome-receipt-expired" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.PhoneNumberRequest = "phone-number-request" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.PhoneNumberRequestRequired = "phone-number-request-required" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.PostLoginMenu = "post-login-menu" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.PostLoginRedirect = "post-login-redirect" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.PostLoginWelcome = "post-login-welcome" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.QrScannedLine = "qr-scanned-line" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.SignInMail = "sign-in-mail" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageKinds.WebConfirmationNotice = "web-confirmation-notice" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageLinkPurposes.Button = "button" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageLinkPurposes.DirectQr = "direct-qr" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageLinkPurposes.HopQr = "hop-qr" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageSurfaces.CorePage = "core-page" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageSurfaces.InChannel = "in-channel" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.ActionTypeDimensionName = "action_type" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.ByActionGroup = "ByAction" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.ByChannelGroup = "ByChannel" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.ByLinkPurposeGroup = "ByLinkPurpose" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.BySurfaceGroup = "BySurface" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.ByTypeGroup = "ByType" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.ChannelDimensionName = "channel" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.ContractKeyName = "MessageTemplates.Contract" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.KindDimensionName = "kind" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.LinkPurposeDimensionName = "link_purpose" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.SurfaceDimensionName = "surface" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.TemplateKeyName = "MessageTemplates.Template" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.TransactionTypeDimensionName = "transaction_type" -> string!
@@ -728,28 +851,41 @@ const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillMailSubject = "Sign in" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillWithoutPayload = "Send this message to sign in." -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptAnomalyGeneric = "⚠ This request looks unusual — confirm only if it was you" -> string!
-const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptApplicationOnly = "Confirm sign-in to \"{app}\"" -> string!
-const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptDefault = "Confirm sign-in" -> string!
-const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptFull = "Confirm sign-in to \"{app}\" — request from {browser} on {os}, {region}" -> string!
-const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptWithoutRegion = "Confirm sign-in to \"{app}\" — request from {browser} on {os}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptApplicationOnly = "Confirm sign-in to \"{app}\"\n\nIf it was not you, decline the request." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptDefault = "Confirm sign-in\n\nIf it was not you, decline the request." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptFull = "Confirm sign-in to \"{app}\" — request at {requested_at} from {browser} on {os}, {region}\n\nIf it was not you, decline the request." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptRequestTimeOnly = "Confirm sign-in to \"{app}\" — request at {requested_at}\n\nIf it was not you, decline the request." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptWithoutRegion = "Confirm sign-in to \"{app}\" — request at {requested_at} from {browser} on {os}\n\nIf it was not you, decline the request." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.SignInWithoutLinkReply = "To keep sign-ins secure, this chat answers only a sign-in started from the sign-in page. Send the code shown on that page here, or scan its QR code again." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.SignInWithoutLinkScanAgainReply = "To keep sign-ins secure, this chat answers only a sign-in started from the sign-in page. Scan the QR code on that page again, or tap its button once more." -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.StaleLinkReply = "This sign-in link has expired or is no longer valid. Return to the application and start the sign-in again." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.UnmatchedCodeReply = "This code did not work. Check the code shown on the sign-in page and send it again, or open the sign-in page again to get a new one." -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.WhatsappPrefillWithApp = "Sign in to {app}\nSend this message to sign in.\n\nAccess code\n{code}" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.WhatsappPrefillWithoutApp = "Send this message to sign in.\n\nAccess code\n{code}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.WhatsappRuledPrefillWithApp = "------------------------\n   SIGN IN TO {app}\n------------------------\nJust send this message.\n\nAccess code:\n{code}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.WhatsappRuledPrefillWithoutApp = "------------------------\nJust send this message to sign in.\n------------------------\n\nAccess code:\n{code}" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplatesOptions.GroupName = "MessageTemplates" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplatesOptions.RootSectionName = "Veriqa" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplatesOptions.SectionName = "Veriqa:MessageTemplates" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.App = "app" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.BotName = "bot_name" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.Browser = "browser" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.ChannelName = "channel_name" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.Code = "code" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.DisplayNameMasked = "display_name_masked" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.EmailMasked = "email_masked" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.Lang = "lang" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.Link = "link" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.Name = "name" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.Os = "os" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.OutcomeAt = "outcome_at" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.PhoneMasked = "phone_masked" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.QrCid = "qr_cid" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.QrUrl = "qr_url" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.Region = "region" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.RequestedAt = "requested_at" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.Token = "token" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.UsernameMasked = "username_masked" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.ValidUntil = "valid_until" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotValidationRuleNames.CharCategory = "char_category" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.SlotValidationRuleNames.ControlChars = "control_chars" -> string!
@@ -817,6 +953,10 @@ override sealed Veriqa.Core.TransactionEngine.Events.TransactionExpiredEvent.Equ
 override sealed Veriqa.Core.TransactionEngine.Events.TransactionFailedEvent.Equals(Veriqa.Core.TransactionEngine.Events.TransactionEvent? other) -> bool
 static Veriqa.Core.TransactionEngine.Common.DbTransientErrorDetector.IsTransient(System.Exception! ex) -> bool
 static Veriqa.Core.TransactionEngine.Common.MigrationRetryRunner.RunWithRetryAsync(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task!>! migrateAsync, Microsoft.Extensions.Logging.ILogger! logger, string! operationName, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+static Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.Allowed.get -> Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict
+static Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.Deny(string! reasonCode) -> Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict
+static Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.operator !=(Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict left, Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict right) -> bool
+static Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.operator ==(Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict left, Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict right) -> bool
 static Veriqa.Core.TransactionEngine.Configuration.IdentityMatchConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
 static Veriqa.Core.TransactionEngine.Configuration.IdentityMatchConfigKeys.ComparableTypes.get -> Veriqa.Core.Configuration.ConfigKey<System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Configuration.ComparableIdentityType!>!>!
 static Veriqa.Core.TransactionEngine.Configuration.InitiatorContextConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
@@ -891,5 +1031,214 @@ Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateVariant.TextParts(
 virtual Veriqa.Core.TransactionEngine.Events.TransactionEvent.EqualityContract.get -> System.Type!
 virtual Veriqa.Core.TransactionEngine.Events.TransactionEvent.Equals(Veriqa.Core.TransactionEngine.Events.TransactionEvent? other) -> bool
 virtual Veriqa.Core.TransactionEngine.Events.TransactionEvent.PrintMembers(System.Text.StringBuilder! builder) -> bool
+~override Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.Equals(object obj) -> bool
+~override Veriqa.Core.TransactionEngine.RestrictionPolicies.ChannelAdmissibilityVerdict.ToString() -> string
 ~override Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart.Equals(object obj) -> bool
 ~override Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateTextPart.ToString() -> string
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Equals(object? obj) -> bool
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.GetHashCode() -> int
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.ToString() -> string!
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Equals(object? obj) -> bool
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.GetHashCode() -> int
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.ToString() -> string!
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.Equals(object? obj) -> bool
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.GetHashCode() -> int
+override Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.ToString() -> string!
+static Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.operator ==(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem? left, Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem? right) -> bool
+static Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.operator !=(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem? left, Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem? right) -> bool
+static Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.operator ==(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult? left, Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult? right) -> bool
+static Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.operator !=(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult? left, Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult? right) -> bool
+static Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.operator ==(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState? left, Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState? right) -> bool
+static Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.operator !=(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState? left, Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState? right) -> bool
+Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod
+Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod.ChannelRequest = 0 -> Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod
+Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod.EmailCode = 3 -> Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod
+Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod.EmailMagicLink = 4 -> Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod
+Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod.EmailPush = 2 -> Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod
+Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod.EmailUnverified = 5 -> Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod
+Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod.Form = 1 -> Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.<Clone>$() -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem!
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.ClaimCompletionItem(string! Claim, Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel Level, Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep Step) -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Claim.get -> string!
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Claim.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Deconstruct(out string! Claim, out Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel Level, out Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep Step) -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Equals(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem? other) -> bool
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Level.get -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Level.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Step.get -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem.Step.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.<Clone>$() -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult!
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.ClaimCompletionResult(string! Claim, string? Value, bool Verified, Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod? Method, System.DateTimeOffset RecordedAt) -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Claim.get -> string!
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Claim.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Deconstruct(out string! Claim, out string? Value, out bool Verified, out Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod? Method, out System.DateTimeOffset RecordedAt) -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Equals(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult? other) -> bool
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Method.get -> Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod?
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Method.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.RecordedAt.get -> System.DateTimeOffset
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.RecordedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Value.get -> string?
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Value.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Verified.get -> bool
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult.Verified.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.<Clone>$() -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState!
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.ClaimCompletionState() -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.ConfirmedAt.get -> System.DateTimeOffset
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.ConfirmedAt.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.Equals(Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState? other) -> bool
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.FormTokenHash.get -> string?
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.FormTokenHash.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.Items.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem!>!
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.Items.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.OpenItems() -> System.Collections.Generic.IEnumerable<Veriqa.Core.TransactionEngine.Domain.ClaimCompletionItem!>!
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.Results.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult!>!
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.Results.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.Surface.get -> Veriqa.Core.TransactionEngine.Domain.WebStepSurface?
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState.Surface.init -> void
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep.Phone = 0 -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep
+Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep.WebStep = 1 -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep
+Veriqa.Core.TransactionEngine.Domain.Transaction.ClaimCompletion.get -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ClaimCompletion.get -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionState?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.ClaimCompletion.init -> void
+Veriqa.Core.TransactionEngine.Domain.WebStepSurface
+Veriqa.Core.TransactionEngine.Domain.WebStepSurface.CrossDevicePage = 1 -> Veriqa.Core.TransactionEngine.Domain.WebStepSurface
+Veriqa.Core.TransactionEngine.Domain.WebStepSurface.InitiatingPage = 0 -> Veriqa.Core.TransactionEngine.Domain.WebStepSurface
+Veriqa.Core.TransactionEngine.Store.ITransactionStore.TryRecordClaimResultAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult! result, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.TransactionEngine.Store.ITransactionStore.TrySetClaimFormTokenHashAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, string! tokenHash, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.TransactionEngine.Store.ITransactionStore.TrySetWebStepSurfaceAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.WebStepSurface? expected, Veriqa.Core.TransactionEngine.Domain.WebStepSurface surface, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.ClaimCompletionInProgress = "claim_completion_in_progress" -> string!
+const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.ClaimCompletionWriteRefused = "claim_completion_write_refused" -> string!
+const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.RequiredClaimUnobtainable = "required_claim_unobtainable" -> string!
+override sealed Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.Equals(Veriqa.Core.TransactionEngine.Events.TransactionEvent? other) -> bool
+override Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.<Clone>$() -> Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent!
+override Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.Equals(object? obj) -> bool
+override Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.GetHashCode() -> int
+override Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.ToString() -> string!
+static Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.operator ==(Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent? left, Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent? right) -> bool
+static Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.operator !=(Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent? left, Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent? right) -> bool
+Veriqa.Core.TransactionEngine.Domain.Transaction.GetCurrentClaimCompletionStep() -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep?
+Veriqa.Core.TransactionEngine.Domain.Transaction.IsCompletingClaims() -> bool
+Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent
+Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.Equals(Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent? other) -> bool
+Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.Step.get -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep
+Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.Step.init -> void
+Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.Surface.get -> Veriqa.Core.TransactionEngine.Domain.WebStepSurface?
+Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.Surface.init -> void
+Veriqa.Core.TransactionEngine.Events.TransactionClaimCompletionStepEvent.TransactionClaimCompletionStepEvent() -> void
+Veriqa.Core.TransactionEngine.Services.IClaimCompletionStepStarter
+Veriqa.Core.TransactionEngine.Services.IClaimCompletionStepStarter.StartAsync(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+Veriqa.Core.TransactionEngine.Services.IClaimCompletionStepStarter.Step.get -> Veriqa.Core.TransactionEngine.Domain.ClaimCompletionStep
+Veriqa.Core.TransactionEngine.Services.ITransactionService.RecordClaimValueAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, string! claim, string! value, bool verified, Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod method, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
+Veriqa.Core.TransactionEngine.Services.ITransactionService.SkipClaimAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, string! claim, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
+const Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.CoreEmailMethodsAddress = "Veriqa:ClaimCompletion:EmailMethods" -> string!
+const Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.EmailMethodsRecordMember = "ClaimCompletionEmailMethods" -> string!
+Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys
+static Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.EmailCodeAttempts.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.EmailMailsPerAddress.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.EmailMailsPerDomain.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.EmailMailsPerSubject.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.EmailMailsPerTransaction.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.EmailMethods.get -> Veriqa.Core.Configuration.ConfigKey<System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod>!>!
+Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod
+Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod.Code = 1 -> Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod
+Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod.MagicLink = 2 -> Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod
+Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod.Push = 0 -> Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod
+Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod.Unverified = 3 -> Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod
+Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethods
+static Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethods.ToCollectionMethod(Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod method) -> Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod
+static Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethods.TryFromCollectionMethod(Veriqa.Core.TransactionEngine.Domain.ClaimCollectionMethod method, out Veriqa.Core.TransactionEngine.Domain.EmailCompletionMethod emailMethod) -> bool
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsStore
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsStore.DeleteAsync(string? tenantId, string! subject, System.DateTimeOffset? unusedBefore = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsStore.FindSubjectsAsync(string? tenantId, string! applicationId, string! issuedSubject, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string!>!>!
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsStore.ListTenantsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string?>!>!
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsStore.ListUnusedSubjectsAsync(string? tenantId, System.DateTimeOffset before, int limit, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string!>!>!
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsStore.ReadForSignInAsync(string? tenantId, string! subject, System.DateTimeOffset now, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult!>!>!
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsStore.SaveAsync(string? tenantId, string! subject, System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult!>! records, System.DateTimeOffset now, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsStore.SaveIssuedSubjectAsync(string? tenantId, string! subject, string! applicationId, string! issuedSubject, System.DateTimeOffset now, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Veriqa.Core.TransactionEngine.DependencyInjection.TransactionEngineBuilder.UseCollectedClaimsStore<TStore>() -> Veriqa.Core.TransactionEngine.DependencyInjection.TransactionEngineBuilder!
+Veriqa.Core.TransactionEngine.Domain.Transaction.StoredClaimValues.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult!>!
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.StoredClaimValues.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.ClaimCompletionResult!>!
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.StoredClaimValues.init -> void
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsDeletion
+Veriqa.Core.TransactionEngine.CollectedClaims.ICollectedClaimsDeletion.DeleteBySubjectAsync(string? tenantId, string? applicationId, string! subject, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+static Veriqa.Core.TransactionEngine.Configuration.ClaimCompletionConfigKeys.CollectedClaimsRetentionDays.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.ChannelSubjectMismatch = "channel_subject_mismatch" -> string!
+override Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.Equals(object? obj) -> bool
+override Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.GetHashCode() -> int
+override Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ToString() -> string!
+static Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.operator ==(Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding? left, Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding? right) -> bool
+static Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.operator !=(Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding? left, Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding? right) -> bool
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.<Clone>$() -> Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding!
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ChannelSubjectBinding() -> void
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.AnswerBrowserBound.get -> bool
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.AnswerBrowserBound.init -> void
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ChannelType.get -> string!
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ChannelType.init -> void
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ChannelUserId.get -> string!
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ChannelUserId.init -> void
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.Equals(Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding? other) -> bool
+Veriqa.Core.TransactionEngine.Domain.Transaction.SubjectBinding.get -> Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding?
+Veriqa.Core.TransactionEngine.Domain.Transaction.IsBoundToAnotherSubject(Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot! sender) -> bool
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.SubjectBinding.get -> Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.SubjectBinding.init -> void
+Veriqa.Core.TransactionEngine.Services.ITransactionService.BindChannelSubjectAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot! sender, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
+Veriqa.Core.TransactionEngine.Domain.Transaction.AuthorizationCodeIssuedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.AuthorizationCodeIssuedAt.get -> System.DateTimeOffset?
+Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.AuthorizationCodeIssuedAt.init -> void
+Veriqa.Core.TransactionEngine.Services.ITransactionService.TryMarkAuthorizationCodeIssuedAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+const Veriqa.Core.TransactionEngine.Domain.TransactionErrorCodes.SupersededByNewSignIn = "superseded_by_new_sign_in" -> string!
+override Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.Equals(object? obj) -> bool
+override Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.GetHashCode() -> int
+override Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.ToString() -> string!
+static Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.Of(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction) -> Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope?
+static Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.operator ==(Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope? left, Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope? right) -> bool
+static Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.operator !=(Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope? left, Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope? right) -> bool
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.<Clone>$() -> Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope!
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.ApplicationId.get -> string!
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.ApplicationId.init -> void
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.ChannelType.get -> string!
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.ChannelType.init -> void
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.ChannelUserId.get -> string!
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.ChannelUserId.init -> void
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.Equals(Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope? other) -> bool
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.SignInSubjectScope() -> void
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.TenantId.get -> string?
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.TenantId.init -> void
+Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope.ToFingerprint() -> string!
+Veriqa.Core.TransactionEngine.Store.ITransactionStore.GetPendingSignInsAsync(Veriqa.Core.TransactionEngine.Domain.SignInSubjectScope! scope, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.Domain.Transaction!>!>!
+Veriqa.Core.TransactionEngine.Domain.Transaction.IsAwaitingAnswerInChannel() -> bool
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.ByDeviceGroup = "ByDevice" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateConfigKeys.DeviceTypeDimensionName = "device_type" -> string!
+Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByDevice.get -> System.Collections.Generic.IDictionary<string!, Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions!>!
+Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateKindOptions.ByDevice.init -> void
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailButton = "Continue to confirmation" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailButtonHint = "Press the button below to continue the confirmation." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailForwardWarning = "Do not forward this mail: the link lets anyone continue the confirmation on your behalf." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailIgnoreNotice = "If you did not request this confirmation, simply ignore this mail." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailQrAlt = "Confirmation QR code" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailQrInstruction = "Or scan the QR code to continue the confirmation on another device:" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailTextIntro = "A confirmation was requested." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailSubject = "Confirmation for {app}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailTitle = "Confirmation required" -> string!
+Veriqa.Core.TransactionEngine.Services.OidcContext.ApplicationName.get -> string?
+Veriqa.Core.TransactionEngine.Services.OidcContext.ApplicationName.init -> void
+Veriqa.Core.TransactionEngine.Services.OidcContext.BrandName.get -> string?
+Veriqa.Core.TransactionEngine.Services.OidcContext.BrandName.init -> void
+Veriqa.Core.TransactionEngine.Services.TransactionRequestContext.ApplicationName.get -> string?
+Veriqa.Core.TransactionEngine.Services.TransactionRequestContext.ApplicationName.init -> void
+Veriqa.Core.TransactionEngine.Services.TransactionRequestContext.BrandName.get -> string?
+Veriqa.Core.TransactionEngine.Services.TransactionRequestContext.BrandName.init -> void
+static Veriqa.Core.TransactionEngine.Services.TransactionContextExtensions.GetApplicationName(this Veriqa.Core.TransactionEngine.Domain.Transaction! transaction) -> string?
+static Veriqa.Core.TransactionEngine.Services.TransactionContextExtensions.GetBrandName(this Veriqa.Core.TransactionEngine.Domain.Transaction! transaction) -> string?
+const Veriqa.Core.TransactionEngine.MessageTemplates.SlotNames.BrandName = "brand_name" -> string!
+Veriqa.Core.TransactionEngine.Events.TransactionEventContext.ApplicationName.get -> string?
+Veriqa.Core.TransactionEngine.Events.TransactionEventContext.ApplicationName.init -> void
+Veriqa.Core.TransactionEngine.Events.TransactionEventContext.BrandName.get -> string?
+Veriqa.Core.TransactionEngine.Events.TransactionEventContext.BrandName.init -> void

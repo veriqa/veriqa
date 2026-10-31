@@ -13,7 +13,7 @@
     <PackageId>Veriqa.Core.TransactionEngine.Migrations.SqlServer</PackageId>
     <Authors>Veriqa</Authors>
     <Description>SQL Server migrations for the Veriqa Transaction Engine schema (host-referenced migrations assembly).</Description>
-    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;transactions;efcore;migrations;sqlserver</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;transactions;efcore;entity-framework-core;migrations;sqlserver</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->
@@ -34,6 +34,10 @@
     <!-- Pinned above the version the provider brings (6.x): the 6.x line depends on Azure.Identity
          and Azure.Core, the 7.x line does not, so the dependency graph stays free of Azure packages. -->
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+    <!-- Pinned above the version Microsoft.Data.SqlClient brings: 7.0.x resolves 9.0.x/10.0.0, both under
+         advisories GHSA-846f-f764-76mx and GHSA-2fmv-rv2c-59x7 (fixed in 10.0.13). Drop once the client
+         itself depends on a fixed version. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>

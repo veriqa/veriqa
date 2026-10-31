@@ -1,34 +1,25 @@
 /*
  * Nova Stream — the sign-in page of Veriqa as a television shows it.
  *
- * The page itself belongs to the core and is rendered by it; the only thing this sheet does is take
- * away what a ten-foot screen has no use for. It is attached through Veriqa:AuthPageDesign:
- * CustomCssPath, and attaching ANY sheet makes the core ignore the design preset and render its base
- * look — so nothing below is a second theme: it takes away, it enlarges, and it restates for old
- * engines what they cannot read.
+ * The page itself belongs to the core and is rendered by it; this sheet only fits it to a ten-foot
+ * screen. It is attached through Veriqa:AuthPageDesign:CustomCssPath, and attaching ANY sheet makes
+ * the core ignore the design preset and render its base look — so nothing below is a second theme:
+ * it enlarges, and it restates for old engines what they cannot read.
+ *
+ * What a television has no use for — the "Sign in with ..." calls to action of the channels — is not
+ * taken away here: that is a setting of the page (Veriqa:AuthPageDesign:ChannelButton:
+ * ShowChannelButton, MobileOnly in appsettings.json). Showing every channel's QR code at once is a
+ * setting as well (Veriqa:AuthPageDesign:ChannelLayout, Grid).
  *
  * Written for the engines televisions ship — webOS 4.x runs Chromium 53, Tizen 5.5 and webOS 5 run
- * 68-69: plain class selectors only, no :is(), no :has(), no nesting.
+ * 68-69: class selectors and :not() over a class only, no :is(), no :has(), no nesting.
  */
-
-/*
- * "Open in Telegram" and the other channel calls to action. On a television nobody can follow them:
- * the page is read across the room and the way in is the QR code, scanned with a phone. A phone that
- * opens this page keeps them: there the core hides the QR (ShowQrCode: DesktopOnly marks the root
- * data-device="mobile"), and the buttons are the only way in left. The core
- * emits the button unconditionally — no setting of the page hides it, which is why this is a sheet
- * and not a configuration value. !important is insurance rather than necessity: the link to this
- * sheet comes after the core's own styles, so source order already wins, and the flag keeps the rule
- * true if the button is ever shown from a script (the page already drives display that way for its
- * panels and spinner).
- */
-html:not([data-device="mobile"]) .veriqa-btn-channel { display: none !important; }
 
 /*
  * Size. The core sizes the card in pixels (420 px wide, a 220 px QR), which on a full-HD television
  * browser — 1920 CSS pixels at a device pixel ratio of 1 — is a stamp in the middle of the screen,
  * far smaller than the same page on a laptop, whose ratio is above 1. zoom enlarges the whole card,
- * text, tabs and QR together. It goes on the children of body rather than on html: an old engine
+ * text and QR codes together. It goes on the children of body rather than on html: an old engine
  * zooms viewport units as well, and the core's min-height: 100vh would then push the card below
  * the fold. A desktop monitor 1600 CSS pixels or wider gets the same enlargement — this sample is
  * a television first.
@@ -42,9 +33,14 @@ html:not([data-device="mobile"]) .veriqa-btn-channel { display: none !important;
  * padding-inline), which Chromium learned in 79 and 87. An engine that does not know them drops the
  * declarations: the card collapses to the width of its content and loses its padding, the QR
  * touching the edges. The same geometry, restated in properties every engine reads.
+ *
+ * The width is restated for the one-column card only. Under the grid layout the core sizes the card
+ * by the row of its channels (.veriqa-container--grid) and does it in calc() and max-width, which
+ * these engines read; a 420 px restated over that — this sheet comes after the core's own rules —
+ * would put the row back into a column. Read through, not run on an engine that old.
  */
 @supports not (width: min(1px, 2px)) {
-    .veriqa-container { width: 420px; max-width: calc(100% - 48px); }
+    .veriqa-container:not(.veriqa-container--grid) { width: 420px; max-width: calc(100% - 48px); }
 }
 
 @supports not (padding-inline: 1px) {

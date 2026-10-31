@@ -30,7 +30,7 @@ internal static class RateLimitCoreValues
     /// validates the option values nor null-checks <paramref name="config"/>: it moves values 1:1.
     /// </summary>
     /// <param name="config">Bound rate-limit options (normally <c>IOptions&lt;RateLimitOptions&gt;.Value</c>).</param>
-    /// <returns>Reader of all 22 rate-limit core values.</returns>
+    /// <returns>Reader of all 26 rate-limit core values.</returns>
     internal static ConfigCoreValues Declare(RateLimitOptions config) =>
         ConfigCoreValues.Declare(provider => Declare(provider, () => config));
 
@@ -41,7 +41,7 @@ internal static class RateLimitCoreValues
     /// <param name="options">Source of the current rate-limit options.</param>
     private static void Declare(IConfigCoreBindings provider, Func<RateLimitOptions> options)
     {
-        // Declare all endpoint (10 permit + 10 window) and UserAuth (permit + window) getters.
+        // Declare all endpoint (12 permit + 12 window) and UserAuth (permit + window) getters.
         provider.RegisterCore(RateLimitConfigKeys.AuthorizePermitLimit, () => options().AuthorizePermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.SignalRPermitLimit, () => options().SignalRPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.WebhookPermitLimit, () => options().WebhookPermitLimit);
@@ -52,6 +52,8 @@ internal static class RateLimitCoreValues
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationCreatePermitLimit, () => options().ConfirmationCreatePermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationResultPermitLimit, () => options().ConfirmationResultPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationPagesPermitLimit, () => options().ConfirmationPagesPermitLimit);
+        provider.RegisterCore(RateLimitConfigKeys.HopResolvePermitLimit, () => options().HopResolvePermitLimit);
+        provider.RegisterCore(RateLimitConfigKeys.HopSignalPermitLimit, () => options().HopSignalPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.AuthorizeWindowSeconds, () => options().AuthorizeWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.SignalRWindowSeconds, () => options().SignalRWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.WebhookWindowSeconds, () => options().WebhookWindowSeconds);
@@ -62,6 +64,8 @@ internal static class RateLimitCoreValues
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationCreateWindowSeconds, () => options().ConfirmationCreateWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationResultWindowSeconds, () => options().ConfirmationResultWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationPagesWindowSeconds, () => options().ConfirmationPagesWindowSeconds);
+        provider.RegisterCore(RateLimitConfigKeys.HopResolveWindowSeconds, () => options().HopResolveWindowSeconds);
+        provider.RegisterCore(RateLimitConfigKeys.HopSignalWindowSeconds, () => options().HopSignalWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.UserAuthPermitLimit, () => options().UserAuthPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.UserAuthWindowSeconds, () => options().UserAuthWindowSeconds);
     }

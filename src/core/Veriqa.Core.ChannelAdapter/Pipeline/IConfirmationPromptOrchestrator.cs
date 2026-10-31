@@ -24,14 +24,16 @@ public interface IConfirmationPromptOrchestrator
     /// </summary>
     /// <param name="transaction">Transaction (source of the InitiatorContextSnapshot).</param>
     /// <param name="adapter">Confirmation channel adapter.</param>
-    /// <param name="channelUserId">User identifier within the channel.</param>
+    /// <param name="sender">Identity snapshot of the sender of the AuthStart event — the user the question
+    /// is asked of (its <see cref="ChannelIdentitySnapshot.ChannelUserId"/> is the recipient within the
+    /// channel) and the account the text of the question may name.</param>
     /// <param name="recipientLocale">Recipient locale from channel data (SPEC-017 §7.2; null — base language).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The outcome the caller must act on.</returns>
     Task<AuthStartConfirmationOutcome> HandleAuthStartConfirmationAsync(
         Transaction transaction,
         IChannelAdapter adapter,
-        string channelUserId,
+        ChannelIdentitySnapshot sender,
         string? recipientLocale,
         CancellationToken cancellationToken = default);
 

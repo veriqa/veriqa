@@ -41,6 +41,12 @@ public sealed class WhatsAppOptions
     /// </summary>
     public MetaCloudApiOptions MetaCloudApi { get; set; } = new();
 
+    /// <summary>
+    /// Twilio provider settings.
+    /// Filled when <see cref="Provider"/> is <see cref="WhatsAppProviderNames.Twilio"/>.
+    /// </summary>
+    public TwilioOptions Twilio { get; set; } = new();
+
     // --- Backward compatibility: flat properties duplicating MetaCloudApi ---
     // Keep the existing configuration working without changes.
 
@@ -111,5 +117,5 @@ public sealed class WhatsAppOptions
     /// </summary>
     /// <returns>Tenant-credential settings group.</returns>
     public WhatsAppTenantCredentials GetTenantCredentials() =>
-        new(Provider, BusinessPhoneNumber, MetaCloudApi);
+        new(Provider, BusinessPhoneNumber, MetaCloudApi, Twilio);
 }

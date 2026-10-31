@@ -50,13 +50,29 @@ public static class ChannelTransactionFinalizer
     /// </returns>
     /// <remarks>
     /// What an error leaves behind differs by step, and callers that must not leave a transaction
-    /// hanging have to know which: a refusal at the confirmation step changed nothing and there is
-    /// nothing to compensate — the transaction stays exactly as it was; a refusal at the identity
+    /// hanging have to know which: a refusal at the confirmation step leaves nothing to compensate here —
+    /// it is not Confirmed, and whatever that step itself wrote is listed in the remarks of
+    /// <see cref="ITransactionService.ConfirmTransactionAsync"/>: a refusal by the deadline
+    /// (<see cref="TransactionErrorCodes.TransactionExpired"/>) has already moved a Created or Pending
+    /// transaction into Expired and published its <c>TransactionExpiredEvent</c>, a required claim nothing
+    /// can obtain (<see cref="TransactionErrorCodes.RequiredClaimUnobtainable"/>) has already failed it, and
+    /// a refusal while missing claims are still open
+    /// (<see cref="TransactionErrorCodes.ClaimCompletionInProgress"/>) keeps it Pending, though the claims
+    /// completion may have written it first — unless taking a vanished stored value off found its required
+    /// claim unobtainable and failed the transaction (SPEC-041 E86); a refusal at the identity
     /// resolution step and a failure at the completion step are both compensated here, because by
     /// then the transaction is already Confirmed and would otherwise stall. The two compensated
     /// steps differ only in the code the transaction is failed with — <c>identity_not_resolved</c>
     /// after a refused resolution, <c>downstream_finalize_failed</c> after a failed completion —
     /// while the error returned to the caller stays the one the failing step produced.
+    /// <para>
+    /// Claims completion (SPEC-041 L91): when the confirmation leaves the transaction waiting for
+    /// missing claims (<see cref="Transaction.IsCompletingClaims"/>), the sequence stops there and
+    /// returns that transaction — it is not confirmed, and resolving or completing it would sign in
+    /// without the claims. The identity is resolved from the snapshot of the CONFIRMED transaction, not
+    /// from <paramref name="identity"/>: the confirmation that ends a claims completion confirms with the
+    /// snapshot the transaction froze.
+    /// </para>
     /// </remarks>
     public static async Task<Result<Transaction>> ConfirmAndCompleteAsync(
         ChannelIdentitySnapshot identity,
@@ -94,10 +110,21 @@ public static class ChannelTransactionFinalizer
 
         var confirmedTx = confirmResult.Value;
 
+        // The confirmation set the claims completion mark instead of confirming: nothing to resolve or
+        // complete yet — the completion check finalizes the transaction once the claims are in.
+        if (confirmedTx.IsCompletingClaims())
+        {
+            logger.LogInformation(
+                "Transaction waits for missing claims; finalization deferred. TransactionId: {TransactionId}",
+                transactionId);
+            return confirmResult;
+        }
+
         // Resolve the identity via IIdentityResolutionService (TASK-002):
-        // it stores the ChannelIdentity and builds the ResolvedIdentitySnapshot.
+        // it stores the ChannelIdentity and builds the ResolvedIdentitySnapshot. The snapshot is the one
+        // the confirmation stored — the passed one is not it when a claims completion ends.
         var resolveResult = await identityResolutionService.ResolveAsync(
-            identity,
+            confirmedTx.ChannelIdentitySnapshot ?? identity,
             cancellationToken);
 
         if (resolveResult.IsFailure)

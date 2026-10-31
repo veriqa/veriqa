@@ -101,6 +101,12 @@ public sealed record AuditMetadata
     public string? ChannelInboundVerification { get; init; }
 
     /// <summary>
+    /// Basis of a deletion of collected claims — a token of <see cref="AuditDeletionBases"/>
+    /// (SPEC-041 L85). Null on every record that is not a deletion.
+    /// </summary>
+    public string? DeletionBasis { get; init; }
+
+    /// <summary>
     /// Parameters of the confirmed operation. Null unless the deployment turned them on explicitly
     /// and the event belongs to a confirmation transaction that carries them.
     /// </summary>

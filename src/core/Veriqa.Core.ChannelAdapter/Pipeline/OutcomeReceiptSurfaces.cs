@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using Veriqa.Core.ChannelAdapter.Abstractions;
-using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.ChannelAdapter.Domain;
+using Veriqa.Core.TransactionEngine.MessageTemplates;
 
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
@@ -22,13 +22,14 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 public static class OutcomeReceiptSurfaces
 {
     /// <summary>
-    /// Inside a messenger the product ships an adapter for (Telegram / WhatsApp / MAX): emoji render.
+    /// Inside a channel that declares <see cref="ChannelCapabilities.RendersEmoji"/> as
+    /// <c>true</c>: emoji render.
     /// </summary>
     public const string InChannelMessenger = "in-channel-messenger";
 
     /// <summary>
-    /// Inside a channel that states no wording of its own — a third-party platform, where emoji are
-    /// not guaranteed to render.
+    /// Inside a channel that does not declare <see cref="ChannelCapabilities.RendersEmoji"/> as
+    /// <c>true</c>, where emoji are not guaranteed to render.
     /// </summary>
     public const string InChannelPlain = "in-channel-plain";
 
@@ -38,9 +39,10 @@ public static class OutcomeReceiptSurfaces
     public const string EmailConfirmPage = "email-confirm-page";
 
     /// <summary>
-    /// The confirmation page of the core, where the question is asked on the web (SPEC-039 R37).
+    /// The confirmation page of the core, where the question is asked on the web (SPEC-039 R37) — the
+    /// same place the question itself is addressed at, so it is spelled by that one constant (SPEC-036 §4.3).
     /// </summary>
-    public const string CorePage = "core-page";
+    public const string CorePage = MessageSurfaces.CorePage;
 
     /// <summary>
     /// The interaction page of a confirmation transaction (SPEC-039 C15): a transaction with no
@@ -52,15 +54,13 @@ public static class OutcomeReceiptSurfaces
     /// The in-channel surface a channel is worded for. It is the ONE rule of the two in-channel
     /// surfaces, and it is a property of the channel rather than of the render point (SPEC-036
     /// TPL-123), so every point showing a receipt inside a channel asks it here instead of restating
-    /// the list.
+    /// the rule.
     /// </summary>
     /// <remarks>
-    /// The channel ANSWERS FIRST, through <see cref="ChannelCapabilities.RendersEmoji"/>: a channel
-    /// that renders emoji is worded as a messenger whoever ships it, so a third-party adapter states
-    /// the same fact about itself that the product's own channels are known by. The list below is
-    /// the fallback for a channel that states nothing, and it names the messengers the product ships
-    /// an adapter for — the same shape as the sign-in page's tab label, where a declared display
-    /// name wins and the built-in list answers for the rest.
+    /// The channel alone answers, through <see cref="ChannelCapabilities.RendersEmoji"/>: a channel
+    /// that declares it renders emoji is worded as a messenger whoever ships it, and a channel that
+    /// declares <c>false</c> or nothing is worded plain. The core keeps no list of channel types
+    /// here — the product's own adapters declare the capability like any other.
     /// </remarks>
     /// <param name="adapter">Adapter of the channel the receipt is shown in.</param>
     /// <returns>The surface value the receipt is addressed with.</returns>
@@ -71,22 +71,7 @@ public static class OutcomeReceiptSurfaces
         return adapter.Capabilities.RendersEmoji switch
         {
             true => InChannelMessenger,
-            false => InChannelPlain,
-            null => ForShippedChannel(adapter.ChannelType)
+            false or null => InChannelPlain
         };
     }
-
-    /// <summary>
-    /// The in-channel surface of a channel that states no rule of its own — the shipped messengers
-    /// by name.
-    /// </summary>
-    /// <param name="channelType">Channel type (<see cref="ChannelTypes"/>); null — unknown.</param>
-    /// <returns>The surface value the receipt is addressed with.</returns>
-    private static string ForShippedChannel(string? channelType) => channelType switch
-    {
-        ChannelTypes.Telegram or ChannelTypes.WhatsApp or ChannelTypes.Max => InChannelMessenger,
-        // Email included: it declares DeliversOutcomeNotice = false and shows no in-channel receipt
-        // at all, so which of the two it would map to is not observable.
-        _ => InChannelPlain
-    };
 }

@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MIT
 
+using Veriqa.Core.ChannelAdapter.Domain;
+
 namespace Veriqa.Sample.CustomChannel.Adapter;
 
 /// <summary>
@@ -33,6 +35,20 @@ public static class AcmeChatConstants
     /// Query parameter of the transaction in the deep link.
     /// </summary>
     public const string DeepLinkTransactionParameter = "tx";
+
+    /// <summary>
+    /// The message a user sends to the bot to start a sign-in by code. The wording is the channel's
+    /// own; the core substitutes the code for the placeholder and shows the result on its pages.
+    /// </summary>
+    public const string StartMessageTemplate = "/veriqa " + ChannelCodeStart.CodePlaceholder;
+
+    /// <summary>
+    /// What the bot answers to a code the core found no sign-in by. The wording is the channel's
+    /// own, and it is one sentence for every reason — mistyped, expired, already used — so the answer
+    /// does not tell whether such a code ever existed.
+    /// </summary>
+    public const string UnmatchedCodeReplyText =
+        "This code did not work. Check the code on the sign-in page and send it again, or open the page again.";
 
     /// <summary>
     /// Inner markup of the channel glyph (viewBox 0 0 24 24): a neutral "A" lettermark,

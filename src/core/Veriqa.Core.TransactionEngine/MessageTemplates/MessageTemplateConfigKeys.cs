@@ -22,9 +22,9 @@ namespace Veriqa.Core.TransactionEngine.MessageTemplates;
 /// generated from the dimensions: the generated ladder nests the attributes strictly one inside the
 /// other, and a step naming the surface WITHOUT the transaction type is one a message needs. The
 /// composition follows two rules — what the action is about outranks where it is shown
-/// (<c>action_type</c> ⟩ <c>surface</c>), and the channel refines the surface, so it is the most
-/// specific attribute and never appears without one. The kind is the IDENTITY dimension: "the text of
-/// WHICH message" is the question itself, so it stands in every step.
+/// (<c>action_type</c> ⟩ <c>surface</c>), and the channel refines the surface, as the link purpose
+/// refines the channel, so neither appears without what it refines. The kind is the IDENTITY
+/// dimension: "the text of WHICH message" is the question itself, so it stands in every step.
 /// </para>
 /// <para>
 /// The <c>channel</c> axis was declared before its first consumer, and that order paid off: the
@@ -57,8 +57,27 @@ public static class MessageTemplateConfigKeys
     /// <summary>Surface the message is shown on (in-channel, a served page, a mail).</summary>
     public const string SurfaceDimensionName = "surface";
 
-    /// <summary>Channel the message goes through — a refinement of the surface.</summary>
-    public const string ChannelDimensionName = "channel";
+    /// <summary>
+    /// Channel the message goes through — a refinement of the surface. The name itself is spelled
+    /// once, in <see cref="ConfigDimensionNames.Channel"/>; this member stays as the name the message
+    /// keys are declared with.
+    /// </summary>
+    public const string ChannelDimensionName = ConfigDimensionNames.Channel;
+
+    /// <summary>
+    /// Purpose of the link a message is placed in (<c>button</c>, <c>hop-qr</c>, <c>direct-qr</c> —
+    /// <see cref="MessageLinkPurposes"/>) — a refinement of the channel, so it never stands without one.
+    /// A step naming it that states no value cedes to the same step without it, which is the template of
+    /// the channel: the ordinary descent of the ladder, with no chain of its own between the purposes.
+    /// </summary>
+    public const string LinkPurposeDimensionName = "link_purpose";
+
+    /// <summary>
+    /// Type of the device the transaction was started on, as the initiator context states it
+    /// (<c>desktop</c>, <c>mobile</c>, <c>tablet</c>, <c>unknown</c>). It refines ANY step of the
+    /// template ladder and, unlike the channel, stands without a surface as well.
+    /// </summary>
+    public const string DeviceTypeDimensionName = "device_type";
 
     /// <summary>Canonical name of the message-contract key.</summary>
     public const string ContractKeyName = "MessageTemplates.Contract";
@@ -97,6 +116,16 @@ public static class MessageTemplateConfigKeys
     public const string ByChannelGroup = "ByChannel";
 
     /// <summary>
+    /// Group of a declaration node narrowing by the purpose of the link — nested in the channel group.
+    /// </summary>
+    public const string ByLinkPurposeGroup = "ByLinkPurpose";
+
+    /// <summary>
+    /// Group of a declaration node narrowing by the type of the initiator's device.
+    /// </summary>
+    public const string ByDeviceGroup = "ByDevice";
+
+    /// <summary>
     /// Address of a declaration node inside the record of a level: the kind, then the axis groups a
     /// step keeps. A group the step does not address is dropped whole, which is what lets ONE address
     /// serve every step of the ladder (SPEC-012 CFG-238).
@@ -113,12 +142,16 @@ public static class MessageTemplateConfigKeys
 
     /// <summary>
     /// Address of the template ladder inside the record of a level — the contract's address with the
-    /// two presentation axes the template has and the contract has not.
+    /// four presentation axes the template has and the contract has not. The link purpose stands under
+    /// the channel it refines. The device group is the innermost one: it stands under whichever node the
+    /// rest of the step addresses.
     /// </summary>
     private const string TemplateAddress =
         NodeAddress
         + ":[" + BySurfaceGroup + ":{" + SurfaceDimensionName + "}]"
         + ":[" + ByChannelGroup + ":{" + ChannelDimensionName + "}]"
+        + ":[" + ByLinkPurposeGroup + ":{" + LinkPurposeDimensionName + "}]"
+        + ":[" + ByDeviceGroup + ":{" + DeviceTypeDimensionName + "}]"
         + ":" + TemplatesMember;
 
     /// <summary>
@@ -153,17 +186,45 @@ public static class MessageTemplateConfigKeys
     /// Ladder of the TEMPLATE (SPEC-036 §4.6): the subject first, the surface after it, the channel as
     /// a refinement of the surface. The steps naming a surface without a transaction type are what the
     /// generated ladder cannot express and the reason this one is written out.
+    /// <para>
+    /// The device type refines EVERY step and stands immediately before the step it refines, so the
+    /// order of the steps that do not name it is the order they always had. The ladder is exhausted
+    /// within one level of the configuration, which is what bounds the seniority of a device step: a
+    /// level above the core that states a step answers whole, and at the core level a device step the
+    /// product ships outranks a step of the deployment that is as coarse or coarser and names no device.
+    /// </para>
+    /// <para>
+    /// The link purpose refines every step that names the channel and stands immediately before it, with
+    /// its own device refinement first; it outranks the device, as the channel does. A purpose with no
+    /// value at a level is answered by the step without it — the template of the channel — so the order
+    /// of the steps that name no purpose is the order they always had.
+    /// </para>
     /// </summary>
     private static readonly string[][] TemplateLadder =
     [
+        [KindDimensionName, TransactionTypeDimensionName, ActionTypeDimensionName, SurfaceDimensionName, ChannelDimensionName, LinkPurposeDimensionName, DeviceTypeDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, ActionTypeDimensionName, SurfaceDimensionName, ChannelDimensionName, LinkPurposeDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, ActionTypeDimensionName, SurfaceDimensionName, ChannelDimensionName, DeviceTypeDimensionName],
         [KindDimensionName, TransactionTypeDimensionName, ActionTypeDimensionName, SurfaceDimensionName, ChannelDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, ActionTypeDimensionName, SurfaceDimensionName, DeviceTypeDimensionName],
         [KindDimensionName, TransactionTypeDimensionName, ActionTypeDimensionName, SurfaceDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, ActionTypeDimensionName, DeviceTypeDimensionName],
         [KindDimensionName, TransactionTypeDimensionName, ActionTypeDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, SurfaceDimensionName, ChannelDimensionName, LinkPurposeDimensionName, DeviceTypeDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, SurfaceDimensionName, ChannelDimensionName, LinkPurposeDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, SurfaceDimensionName, ChannelDimensionName, DeviceTypeDimensionName],
         [KindDimensionName, TransactionTypeDimensionName, SurfaceDimensionName, ChannelDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, SurfaceDimensionName, DeviceTypeDimensionName],
         [KindDimensionName, TransactionTypeDimensionName, SurfaceDimensionName],
+        [KindDimensionName, TransactionTypeDimensionName, DeviceTypeDimensionName],
         [KindDimensionName, TransactionTypeDimensionName],
+        [KindDimensionName, SurfaceDimensionName, ChannelDimensionName, LinkPurposeDimensionName, DeviceTypeDimensionName],
+        [KindDimensionName, SurfaceDimensionName, ChannelDimensionName, LinkPurposeDimensionName],
+        [KindDimensionName, SurfaceDimensionName, ChannelDimensionName, DeviceTypeDimensionName],
         [KindDimensionName, SurfaceDimensionName, ChannelDimensionName],
+        [KindDimensionName, SurfaceDimensionName, DeviceTypeDimensionName],
         [KindDimensionName, SurfaceDimensionName],
+        [KindDimensionName, DeviceTypeDimensionName],
         [KindDimensionName]
     ];
 
@@ -172,16 +233,13 @@ public static class MessageTemplateConfigKeys
     /// <c>Core</c>; <c>ui_config</c> is deliberately NOT among them (TPL-108), which is what makes the
     /// slot allowlist unreachable from a record a request parameter selects.
     /// <para>
-    /// The WALK of a configuration snapshot does not read this pair, and says so itself: the address of
-    /// every level substitutes the IDENTITY dimension of the key outside its groups, so there is no
-    /// address of a step narrowing nothing for a walk to read the records at, and the report names the
-    /// pair as standing outside it (<see cref="IDimensionBoundCatalog"/>). What such a walk would run
-    /// into if that ever changed is stated here rather than left to be discovered: the type of the key
-    /// is the CONTRACT, while a record states the OPTIONS a contract is read from, so a reading by the
-    /// address alone would fail — <see cref="MessageContract"/> has only a private constructor. It
-    /// would need the reading DECLARED, the way a key declares one today
-    /// (<c>ConfigKeyBuilder.EnumTokens</c>), and not the parse hook, which reads a step of the chain
-    /// and is applied by the path of reading that calls it.
+    /// The address of every level substitutes the IDENTITY dimension of the key outside its groups, so
+    /// there is no address of a step narrowing nothing. The WALK of a configuration snapshot therefore
+    /// reads the CORE level by the kinds the configuration of the host states, each through the parse
+    /// hook of the key — the reading of a step the resolution makes — and names the pairs above the
+    /// core as standing outside it (<see cref="IDimensionBoundCatalog"/>). A reading by the address
+    /// alone would fail there: the type of the key is the CONTRACT, while a record states the OPTIONS
+    /// a contract is read from, and <see cref="MessageContract"/> has only a private constructor.
     /// </para>
     /// </summary>
     public static ConfigKey<MessageContract?> Contract { get; } = Declared
@@ -219,7 +277,9 @@ public static class MessageTemplateConfigKeys
             TransactionTypeDimensionName,
             ActionTypeDimensionName,
             SurfaceDimensionName,
-            ChannelDimensionName)
+            ChannelDimensionName,
+            LinkPurposeDimensionName,
+            DeviceTypeDimensionName)
         .Fallback(TemplateLadder)
         .At(ConfigLevel.Tenant, TemplateAddress)
         .At(ConfigLevel.Application, TemplateAddress)

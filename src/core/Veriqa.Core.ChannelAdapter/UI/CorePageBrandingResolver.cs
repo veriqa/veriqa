@@ -9,8 +9,8 @@ namespace Veriqa.Core.ChannelAdapter.UI;
 
 /// <summary>
 /// Resolves the branding of a service page of the "Core" contour through the canonical resolver — the
-/// preset, the integrator's stylesheet and the brand color, over the context of the page's own
-/// transaction (SPEC-007 UI-101, SPEC-012 §10.6). It is the single consumer-side point where a
+/// preset, the color scheme, the integrator's stylesheet and the brand color, over the context of the
+/// page's own transaction (SPEC-007 UI-101, SPEC-012 §10.6). It is the single consumer-side point where a
 /// service page gathers its branding, so a level added to any of those keys reaches every such page
 /// without a line of change here.
 /// <para>
@@ -89,23 +89,45 @@ public sealed class CorePageBrandingResolver
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Effective branding; all design values unset when nothing is branded or the resolution
     /// failed.</returns>
-    public async Task<CorePageBranding> ResolveAsync(
+    public Task<CorePageBranding> ResolveAsync(
         ResolutionContext context,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ResolveAsync(context, [], cancellationToken);
+
+    /// <summary>
+    /// Resolves the branding of a page that leads into the given channels: the branding of
+    /// <see cref="ResolveAsync(ResolutionContext, CancellationToken)"/> together with the colors the levels
+    /// state for the buttons of those channels.
+    /// </summary>
+    /// <param name="context">Resolution context of the page's own transaction.</param>
+    /// <param name="buttonChannels">Types of the channels whose buttons the page shows.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Effective branding.</returns>
+    internal async Task<CorePageBranding> ResolveAsync(
+        ResolutionContext context,
+        IReadOnlyCollection<string> buttonChannels,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(buttonChannels);
 
         CorePageCustomResource? customCss;
         DesignPreset declaredPreset;
+        AuthPageTheme declaredTheme;
         string? primaryLight;
         string? primaryDark;
+        string? brandName;
+        IReadOnlyDictionary<string, string>? buttonColors;
 
         try
         {
             customCss = await ValueOfAsync(CorePageBrandingConfigKeys.CustomCss, context, ConfigDimensionValues.None, cancellationToken);
             declaredPreset = await ValueOfAsync(CorePageBrandingConfigKeys.Preset, context, ConfigDimensionValues.None, cancellationToken);
+            declaredTheme = await ValueOfAsync(CorePageBrandingConfigKeys.Theme, context, ConfigDimensionValues.None, cancellationToken);
             primaryLight = await ValueOfAsync(CorePageBrandingConfigKeys.PrimaryColor, context, LightTheme, cancellationToken);
             primaryDark = await ValueOfAsync(CorePageBrandingConfigKeys.PrimaryColor, context, DarkTheme, cancellationToken);
+            brandName = await ValueOfAsync(CorePageBrandingConfigKeys.BrandName, context, ConfigDimensionValues.None, cancellationToken);
+            buttonColors = await ChannelButtonColorsAsync(context, buttonChannels, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -127,19 +149,92 @@ public sealed class CorePageBrandingResolver
             return new CorePageBranding();
         }
 
-        // The preset rule and the brand-color rule are the contour's, shared with the sign-in window:
-        // a custom stylesheet forces the base preset, and only a Branded page honours the client color.
+        // The preset rule, the theme rule and the brand-color rule are the contour's, shared with the
+        // sign-in window: a custom stylesheet forces the base preset, the Dark preset darkens a page
+        // whose color scheme is Auto, and only a Branded page honours the client color.
         var preset = CorePageBrandingRules.EffectivePreset(declaredPreset, customCss?.Path);
 
         _resourceScope.Declare(customCss?.Path);
 
         return new CorePageBranding
         {
+            BrandName = brandName,
             CustomCssPath = customCss?.Path,
             CssSriHash = customCss?.SriHash,
             PrimaryColor = CorePageBrandingRules.BrandPrimary(preset, primaryLight),
-            PrimaryColorDark = CorePageBrandingRules.BrandPrimary(preset, primaryDark)
+            PrimaryColorDark = CorePageBrandingRules.BrandPrimary(preset, primaryDark),
+            Theme = CorePageBrandingRules.EffectiveTheme(declaredTheme, preset),
+            ChannelButtonColors = buttonColors
         };
+    }
+
+    /// <summary>
+    /// Resolves the colors the levels state for the buttons of the given channels — for a page that
+    /// assembles its branding by itself (the sign-in window) rather than through
+    /// <see cref="ResolveAsync(ResolutionContext, IReadOnlyCollection{string}, CancellationToken)"/>. Never
+    /// throws over the colors, for the reason the branding does not: a failure leaves every button the color
+    /// of its channel and is logged.
+    /// </summary>
+    /// <param name="context">Resolution context of the page's own transaction.</param>
+    /// <param name="channelTypes">Types of the channels whose buttons the page shows.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Colors by channel type; null — no level states one.</returns>
+    internal async Task<IReadOnlyDictionary<string, string>?> ResolveChannelButtonColorsAsync(
+        ResolutionContext context,
+        IReadOnlyCollection<string> channelTypes,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(channelTypes);
+
+        try
+        {
+            return await ChannelButtonColorsAsync(context, channelTypes, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "The colors of the channel buttons of this page could not be resolved; every button keeps "
+                + "the color of its channel.");
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the color of the button of every given channel, leaving out the channels no level states one
+    /// for.
+    /// </summary>
+    /// <param name="context">Resolution context.</param>
+    /// <param name="channelTypes">Channel types.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Colors by channel type; null — none stated.</returns>
+    private async Task<IReadOnlyDictionary<string, string>?> ChannelButtonColorsAsync(
+        ResolutionContext context,
+        IReadOnlyCollection<string> channelTypes,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<string, string>? colors = null;
+        foreach (var channelType in channelTypes.Distinct(StringComparer.Ordinal))
+        {
+            var color = await ValueOfAsync(
+                CorePageBrandingConfigKeys.ChannelButtonColor,
+                context,
+                ConfigDimensionValues.Of((ConfigDimensionNames.Channel, channelType)),
+                cancellationToken);
+
+            if (color is not null)
+            {
+                (colors ??= new Dictionary<string, string>(StringComparer.Ordinal))[channelType] = color;
+            }
+        }
+
+        return colors;
     }
 
     /// <summary>

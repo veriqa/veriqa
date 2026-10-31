@@ -34,6 +34,18 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
         OutboundPath + ":" + nameof(EmailOutboundOptions.Smtp);
 
     /// <summary>
+    /// Address of the <c>Inbound:Imap</c> group inside the host configuration.
+    /// </summary>
+    private static readonly string ImapPath =
+        InboundPath + ":" + nameof(EmailInboundOptions.Imap);
+
+    /// <summary>
+    /// Address of the <c>Inbound:Imap:OAuth</c> group inside the host configuration.
+    /// </summary>
+    private static readonly string ImapOAuthPath =
+        ImapPath + ":" + nameof(EmailImapOptions.OAuth);
+
+    /// <summary>
     /// The outbound providers this build can actually deliver mail with. The enumeration declares
     /// more members than that — <c>SendGrid</c>, <c>Postmark</c> and <c>Mailgun</c> are reserved
     /// names with no sender behind them (SPEC-016 §7.1) — and a reserved name has always ended the
@@ -50,6 +62,24 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
     /// </summary>
     private static readonly string[] ImplementedOutboundProviderNames =
         [.. ImplementedOutboundProviders.Select(static provider => provider.ToString())];
+
+    /// <summary>
+    /// Names of the inbound providers this build can receive mail with — every member of the
+    /// enumeration except the reserved <c>SmtpRelay</c> (SPEC-016 §7.2).
+    /// </summary>
+    private static readonly string[] ImplementedInboundProviderNames =
+        [.. Enum.GetValues<EmailInboundProvider>()
+            .Where(static provider => provider is not EmailInboundProvider.SmtpRelay)
+            .Select(static provider => provider.ToString())];
+
+    /// <summary>
+    /// Names of the verification policies a mailbox read over IMAP can serve: every member but
+    /// <see cref="EmailVerificationPolicy.ProviderVerified"/>, whose input a mailbox does not supply.
+    /// </summary>
+    private static readonly string[] ImapVerificationPolicyNames =
+        [.. Enum.GetValues<EmailVerificationPolicy>()
+            .Where(static policy => policy is not EmailVerificationPolicy.ProviderVerified)
+            .Select(static policy => policy.ToString())];
 
     /// <summary>
     /// Host environment — used to separate prod/dev validation rules.
@@ -108,6 +138,15 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
         if (publicBaseUrlResult.Failed)
         {
             return publicBaseUrlResult;
+        }
+
+        // The interval between two mails belongs to no mode: the sign-in mail of Pull and the mails of
+        // the claims completion are both held by it. Zero is a value — the interval switched off.
+        if (options.MailResendInterval < TimeSpan.Zero)
+        {
+            return ValidateOptionsResult.Fail(
+                $"{EmailOptions.SectionName}:{nameof(EmailOptions.MailResendInterval)} must not be negative; "
+                + "00:00:00 switches the interval off.");
         }
 
         // At least one mode must be enabled
@@ -312,6 +351,17 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
                 $"The {InboundPath} section is required when the Email adapter Push mode is enabled.");
         }
 
+        // SPEC-016 EM-184: SmtpRelay is a reserved name with no receiver behind it. Left to start, the
+        // host would register the processor while no transport ever calls it — mail accepted by no
+        // path, silently.
+        if (options.Inbound.Provider is EmailInboundProvider.SmtpRelay)
+        {
+            return ValidateOptionsResult.Fail(
+                $"{InboundPath}:{nameof(EmailInboundOptions.Provider)} is "
+                + $"'{nameof(EmailInboundProvider.SmtpRelay)}', which this build ships no receiver for. "
+                + $"Allowed values: {string.Join(", ", ImplementedInboundProviderNames)}.");
+        }
+
         // VerificationPolicy=None is forbidden in the Production environment (EM-030).
         // In the dev environment (DemoCore profile) it is allowed to simplify local debugging.
         if (isProduction && options.Inbound.VerificationPolicy is EmailVerificationPolicy.None)
@@ -322,8 +372,8 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
                 + $"Use {nameof(EmailVerificationPolicy.DmarcAlignedPass)} or another verification policy.");
         }
 
-        // InboundAddress is required in Production; in dev it may be left unset
-        // to test the compose-helper UI without a real inbound provider
+        // InboundAddress is required in Production. Outside it an unset address does not stop the host:
+        // the Push sign-in mail then has no recipient, and the channel offers no Push target
         if (isProduction && string.IsNullOrWhiteSpace(options.Inbound.InboundAddress))
         {
             return ValidateOptionsResult.Fail(
@@ -333,7 +383,7 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
         // Plus-addressing puts the correlation token before the domain of InboundAddress, so an address
         // with no domain part silently yields a recipient with no token in it: the reply would reach no
         // transaction to match. Fail at startup instead — a set-but-malformed address is a typo in either
-        // environment, unlike an unset one, which dev is allowed to leave for the compose-helper UI.
+        // environment, unlike an unset one, which does not stop a host outside Production.
         var inboundAddress = options.Inbound.InboundAddress?.Trim();
         if (options.Inbound.UsePlusAddressing && !string.IsNullOrEmpty(inboundAddress))
         {
@@ -366,7 +416,195 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
                 + $"{InboundPath}:{nameof(EmailInboundOptions.Provider)}={nameof(EmailInboundProvider.Webhook)} (webhook security).");
         }
 
+        // The mailbox section is judged only when the mailbox is what the deployment reads: with any
+        // other provider the section is ignored, whatever it holds.
+        if (options.Inbound.Provider is EmailInboundProvider.ImapPolling)
+        {
+            var imapViolations = ImapPollingViolations(options.Inbound);
+            if (imapViolations.Count > 0)
+            {
+                return ValidateOptionsResult.Fail(imapViolations);
+            }
+        }
+
         return ValidateOptionsResult.Success;
+    }
+
+    /// <summary>
+    /// Judges the inbound group of a deployment that reads its mailbox over IMAP: what the
+    /// <c>Imap</c> section must supply, and what the rest of the group may not say next to it.
+    /// Every violation is reported, not the first one — the section is filled in as a whole.
+    /// </summary>
+    /// <remarks>
+    /// The rule takes the inbound group rather than the whole options because the group is what a
+    /// tenant's credentials carry (<see cref="EmailTenantCredentials.Inbound"/>): values resolved
+    /// for a tenant at run time never pass through the start-up validation, and the rule stays
+    /// applicable to them as it stands. The messages name configuration addresses and the admitted
+    /// values only — never the value of a password, a client secret or a refresh token: they end up
+    /// in logs.
+    /// </remarks>
+    /// <param name="inbound">Inbound settings whose provider is the IMAP mailbox.</param>
+    /// <returns>One message per violation; empty when the group is acceptable.</returns>
+    internal static IReadOnlyList<string> ImapPollingViolations(EmailInboundOptions inbound)
+    {
+        ArgumentNullException.ThrowIfNull(inbound);
+
+        var providerIsImap =
+            $"{InboundPath}:{nameof(EmailInboundOptions.Provider)}={nameof(EmailInboundProvider.ImapPolling)}";
+        var failures = new List<string>();
+
+        // The mailbox address is what the user's mail client writes the letter to. A webhook
+        // deployment may leave it unset outside Production, with no inbound provider behind it; a
+        // deployment that reads a mailbox has one by definition.
+        if (string.IsNullOrWhiteSpace(inbound.InboundAddress))
+        {
+            failures.Add(
+                $"{InboundPath}:{nameof(EmailInboundOptions.InboundAddress)} is required when {providerIsImap}.");
+        }
+
+        // A mailbox states no verified sender: the value this policy trusts is supplied by an inbound
+        // provider calling the webhook, and nothing fills it on this path.
+        if (inbound.VerificationPolicy is EmailVerificationPolicy.ProviderVerified)
+        {
+            failures.Add(
+                $"{InboundPath}:{nameof(EmailInboundOptions.VerificationPolicy)}="
+                + $"{nameof(EmailVerificationPolicy.ProviderVerified)} cannot be used when {providerIsImap}: "
+                + "a mailbox read over IMAP supplies no provider-verified sender. Allowed values: "
+                + $"{string.Join(", ", ImapVerificationPolicyNames)}.");
+        }
+
+        var imap = inbound.Imap;
+        if (imap is null)
+        {
+            failures.Add($"The {ImapPath} section is required when {providerIsImap}.");
+            return failures;
+        }
+
+        RequireValue(imap.Host, $"{ImapPath}:{nameof(EmailImapOptions.Host)}", providerIsImap);
+        RequireValue(imap.Username, $"{ImapPath}:{nameof(EmailImapOptions.Username)}", providerIsImap);
+        RequireValue(imap.Folder, $"{ImapPath}:{nameof(EmailImapOptions.Folder)}", providerIsImap);
+
+        RequireRange(
+            imap.Port,
+            EmailAdapterConfigDefaults.MinTcpPort,
+            EmailAdapterConfigDefaults.MaxTcpPort,
+            $"{ImapPath}:{nameof(EmailImapOptions.Port)}");
+
+        RequireRange(
+            imap.PollIntervalSeconds,
+            EmailAdapterConfigDefaults.MinImapPollIntervalSeconds,
+            EmailAdapterConfigDefaults.MaxImapPollIntervalSeconds,
+            $"{ImapPath}:{nameof(EmailImapOptions.PollIntervalSeconds)}");
+
+        // SPF, DKIM and DMARC results are read from the header of the mailbox's own server, and the
+        // identifier is how that header is told from one the sender wrote. Without it the two
+        // policies that judge by those results would refuse every letter.
+        if (inbound.VerificationPolicy
+                is EmailVerificationPolicy.DmarcAlignedPass or EmailVerificationPolicy.SpfOrDkimPass
+            && string.IsNullOrWhiteSpace(imap.AuthservId))
+        {
+            failures.Add(
+                $"{ImapPath}:{nameof(EmailImapOptions.AuthservId)} is required when "
+                + $"{InboundPath}:{nameof(EmailInboundOptions.VerificationPolicy)}={inbound.VerificationPolicy} "
+                + $"and {providerIsImap}: it names the mail server whose Authentication-Results header is trusted.");
+        }
+
+        var authModePath = $"{ImapPath}:{nameof(EmailImapOptions.AuthMode)}";
+
+        switch (imap.AuthMode)
+        {
+            case EmailImapAuthMode.Password:
+                // The OAuth section is not looked at here, whatever it holds.
+                RequireValue(
+                    imap.Password,
+                    $"{ImapPath}:{nameof(EmailImapOptions.Password)}",
+                    $"{authModePath}={nameof(EmailImapAuthMode.Password)}");
+                break;
+
+            case EmailImapAuthMode.OAuth2:
+                // The password is not looked at here, set or not.
+                AddOAuthViolations(imap.OAuth, $"{authModePath}={nameof(EmailImapAuthMode.OAuth2)}");
+                break;
+
+            default:
+                // A raw number outside the enumeration: the binder converts it into a member that
+                // does not exist (SPEC-012 §8.2). Judged here rather than with the four axes checked
+                // for every deployment, because this axis belongs to a section that is read only
+                // when the mailbox is.
+                failures.Add(
+                    $"{authModePath} is '{imap.AuthMode}', which is not a known value. "
+                    + $"Allowed values: {string.Join(", ", Enum.GetNames<EmailImapAuthMode>())}.");
+                break;
+        }
+
+        return failures;
+
+        void RequireValue(string? value, string path, string condition)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                failures.Add($"{path} is required when {condition}.");
+            }
+        }
+
+        void RequireRange(int value, int min, int max, string path)
+        {
+            if (value < min || value > max)
+            {
+                failures.Add($"{path} is {value}, which is out of range. Allowed values: {min} to {max}.");
+            }
+        }
+
+        void AddOAuthViolations(EmailImapOAuthOptions? oauth, string authModeIsOAuth)
+        {
+            if (oauth is null)
+            {
+                failures.Add($"The {ImapOAuthPath} section is required when {authModeIsOAuth}.");
+                return;
+            }
+
+            var tokenEndpointPath = $"{ImapOAuthPath}:{nameof(EmailImapOAuthOptions.TokenEndpoint)}";
+
+            if (string.IsNullOrWhiteSpace(oauth.TokenEndpoint))
+            {
+                failures.Add($"{tokenEndpointPath} is required when {authModeIsOAuth}.");
+            }
+            else if (!Uri.TryCreate(oauth.TokenEndpoint, UriKind.Absolute, out var tokenEndpoint))
+            {
+                failures.Add($"{tokenEndpointPath} must be an absolute {Uri.UriSchemeHttps} URL.");
+            }
+            else if (!string.Equals(tokenEndpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                // The request to this address carries the client secret or the refresh token.
+                failures.Add(
+                    $"{tokenEndpointPath} uses the '{tokenEndpoint.Scheme}' scheme. "
+                    + $"Allowed scheme: {Uri.UriSchemeHttps}.");
+            }
+
+            RequireValue(
+                oauth.ClientId,
+                $"{ImapOAuthPath}:{nameof(EmailImapOAuthOptions.ClientId)}",
+                authModeIsOAuth);
+
+            // No refresh token means the token is obtained by the credentials of the application
+            // (RFC 6749 §4.4), and that grant cannot be made without the secret and the scope. With a
+            // refresh token both are optional and sent only when set.
+            if (string.IsNullOrWhiteSpace(oauth.RefreshToken))
+            {
+                var refreshTokenIsEmpty =
+                    $"{authModeIsOAuth} and "
+                    + $"{ImapOAuthPath}:{nameof(EmailImapOAuthOptions.RefreshToken)} is empty";
+
+                RequireValue(
+                    oauth.ClientSecret,
+                    $"{ImapOAuthPath}:{nameof(EmailImapOAuthOptions.ClientSecret)}",
+                    refreshTokenIsEmpty);
+                RequireValue(
+                    oauth.Scope,
+                    $"{ImapOAuthPath}:{nameof(EmailImapOAuthOptions.Scope)}",
+                    refreshTokenIsEmpty);
+            }
+        }
     }
 
     /// <summary>

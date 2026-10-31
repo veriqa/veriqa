@@ -27,15 +27,17 @@ public sealed class EmailInboundOptions
     public bool UsePlusAddressing { get; set; } = true;
 
     /// <summary>
-    /// Direct-mailto Push mode (SPEC-016 §5.3): when true, the Push QR/button carries a direct
-    /// <c>mailto:{token}@{domain}</c> (the correlation token IS the recipient local part, requiring a
-    /// catch-all mailbox such as a Cloudflare Email Worker) instead of the compose-helper page URL, and the
-    /// inbound processor extracts the token from the full recipient local part. The token is lower-case
-    /// Base32 and the local part is folded to lower case before the lookup, so a mail client or provider
-    /// that changes the case of the address does not break the correlation (SPEC-016 §5.4). This keeps the QR
-    /// self-contained (no hosted compose page) with a short subject/body. Default — false (compose-helper,
-    /// backward compatible). Mutually exclusive in intent with <see cref="UsePlusAddressing"/>: with a
-    /// catch-all local-part token there is no plus segment.
+    /// Form of the recipient address of the Push sign-in mail (SPEC-016 §5.3). The Push QR/button carries a
+    /// direct <c>mailto:</c> at either value; the setting chooses where the correlation token rides.
+    /// True — <c>mailto:{token}@{domain}</c>: the token IS the recipient local part (requires a catch-all
+    /// mailbox such as a Cloudflare Email Worker), and the inbound processor extracts it from the full
+    /// recipient local part. The token is lower-case Base32 and the local part is folded to lower case
+    /// before the lookup, so a mail client or provider that changes the case of the address does not break
+    /// the correlation (SPEC-016 §5.4); the subject and the body stay short. False (default) — the
+    /// recipient is the fixed <see cref="InboundAddress"/> (with the token in a plus segment when
+    /// <see cref="UsePlusAddressing"/> is on), and the subject and the body of the mail carry the token.
+    /// Mutually exclusive in intent with <see cref="UsePlusAddressing"/>: with a catch-all local-part
+    /// token there is no plus segment.
     /// </summary>
     public bool TokenInLocalPart { get; set; } = false;
 
@@ -56,4 +58,10 @@ public sealed class EmailInboundOptions
     /// Must be stored via the standard secrets mechanism from SPEC-012 (EM-052).
     /// </summary>
     public string WebhookSecretToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The mailbox Veriqa reads over IMAP. Used only when <see cref="Provider"/> is
+    /// <see cref="EmailInboundProvider.ImapPolling"/>; ignored with any other provider.
+    /// </summary>
+    public EmailImapOptions Imap { get; set; } = new();
 }

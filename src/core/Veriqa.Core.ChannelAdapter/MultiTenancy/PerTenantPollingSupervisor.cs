@@ -252,7 +252,7 @@ internal abstract class PerTenantPollingSupervisor : BackgroundService
         _logger.LogInformation(
             "Polling loop of channel {ChannelType} started for tenant {TenantId}",
             ChannelType,
-            tenantId ?? "<default>");
+            tenantId ?? ChannelTenantContext.DefaultTenantDisplayName);
     }
 
     /// <summary>
@@ -277,7 +277,7 @@ internal abstract class PerTenantPollingSupervisor : BackgroundService
                 ex,
                 "Polling loop of channel {ChannelType} for tenant {TenantId} finished with an error",
                 ChannelType,
-                tenantId ?? "<default>");
+                tenantId ?? ChannelTenantContext.DefaultTenantDisplayName);
         }
     }
 

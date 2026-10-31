@@ -6,9 +6,11 @@ using Microsoft.Extensions.Options;
 using Veriqa.Core.ChannelAdapter.Abstractions;
 using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
+using Veriqa.Core.ChannelAdapter.UI;
 using Veriqa.Core.Configuration;
 using Veriqa.Core.TransactionEngine.Configuration;
 using Veriqa.Core.TransactionEngine.Domain;
+using Veriqa.Core.TransactionEngine.MessageTemplates;
 using Veriqa.Core.TransactionEngine.Services;
 
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
@@ -29,7 +31,8 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
     private readonly IInitiatorAnomalyDetector _anomalyDetector;
 
     /// <summary>
-    /// Configuration resolver: per-application resolution of DisplayFields/Enabled.
+    /// Configuration resolver: per-application resolution of DisplayFields/Enabled, and the configured name
+    /// of the chat of the channel the question is asked in.
     /// </summary>
     private readonly IConfigurationResolver _configResolver;
 
@@ -51,6 +54,12 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
     private readonly ILogger<ConfirmationPromptContextFactory> _logger;
 
     /// <summary>
+    /// Registered channel adapters — the label a third-party channel declared for itself names it in the
+    /// text of the question, and the adapter names its chat there, as both do on the pages.
+    /// </summary>
+    private readonly IEnumerable<IChannelAdapter> _adapters;
+
+    /// <summary>
     /// Creates the confirmation context factory.
     /// </summary>
     /// <param name="initiatorContextOptions">Initiator context check settings.</param>
@@ -59,13 +68,15 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
     /// <param name="messageTemplates">Accessor of the messages of the template mechanism.</param>
     /// <param name="promptLocalizer">Localizer of the Natural Keys of a template.</param>
     /// <param name="logger">Logger of the render degradations.</param>
+    /// <param name="adapters">Registered channel adapters.</param>
     public ConfirmationPromptContextFactory(
         IOptions<InitiatorContextOptions> initiatorContextOptions,
         IInitiatorAnomalyDetector anomalyDetector,
         IConfigurationResolver configResolver,
         IMessageTemplateAccessor messageTemplates,
         IConfirmationPromptLocalizer promptLocalizer,
-        ILogger<ConfirmationPromptContextFactory> logger)
+        ILogger<ConfirmationPromptContextFactory> logger,
+        IEnumerable<IChannelAdapter> adapters)
     {
         _initiatorContextOptions = initiatorContextOptions;
         _anomalyDetector = anomalyDetector;
@@ -73,15 +84,44 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
         _messageTemplates = messageTemplates;
         _promptLocalizer = promptLocalizer;
         _logger = logger;
+        _adapters = adapters;
     }
 
     /// <inheritdoc />
     public async Task<ConfirmationPromptContext> CreateAsync(
         Transaction transaction,
-        string channelType,
-        string channelUserId,
+        ConfirmationPromptRecipient recipient,
         string? recipientLocale,
+        string surface,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(recipient);
+        ArgumentNullException.ThrowIfNull(surface);
+
+        var context = await CreateVariantAsync(transaction, recipient, recipientLocale, surface, cancellationToken);
+
+        // The brand is stated on every variant alike: it is not an initiator detail, so neither the type
+        // of the transaction nor a suppression of the details takes it away from a text.
+        return context with { BrandName = transaction.GetBrandName() };
+    }
+
+    /// <summary>
+    /// Builds the variant of the context the transaction calls for — its subject, its initiator details
+    /// or "no details" with the reason.
+    /// </summary>
+    /// <param name="transaction">Transaction the question is asked about.</param>
+    /// <param name="recipient">The one the question is asked of.</param>
+    /// <param name="recipientLocale">Locale of the current channel event (null — none stated).</param>
+    /// <param name="surface">Surface the question is shown on.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The context, without the brand name.</returns>
+    private async Task<ConfirmationPromptContext> CreateVariantAsync(
+        Transaction transaction,
+        ConfirmationPromptRecipient recipient,
+        string? recipientLocale,
+        string surface,
+        CancellationToken cancellationToken)
     {
         // The method builds the confirmation context: filters fields by DisplayFields
         // and applies the anomaly heuristic (only when the configuration is enabled and history is available)
@@ -112,7 +152,7 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
         if (string.Equals(transaction.Type, TransactionTypes.Confirmation, StringComparison.Ordinal))
         {
             return await CreateSubjectContextAsync(
-                transaction, resolutionContext, effectiveLocale, recipientTimeZone, cancellationToken);
+                transaction, recipient, surface, resolutionContext, effectiveLocale, recipientTimeZone, cancellationToken);
         }
 
         var snapshot = transaction.InitiatorContextSnapshot;
@@ -149,7 +189,8 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
         var anomaly = InitiatorAnomalyResult.None;
         if (options.AnomalyDetection.Enabled && _anomalyDetector.HasHistorySource)
         {
-            anomaly = await _anomalyDetector.EvaluateAsync(channelType, channelUserId, snapshot, cancellationToken);
+            anomaly = await _anomalyDetector.EvaluateAsync(
+                recipient.ChannelType, recipient.ChannelUserId, snapshot, cancellationToken);
         }
 
         // Only fields allowed by DisplayFields are passed to the adapter (ICC-015, ICC-040): the display
@@ -157,6 +198,7 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
         // collected; in the shipped table that is DeviceType, a derived non-personal field of the
         // SPEC-017 §7.1 contract.
         var shown = display.Apply(snapshot);
+        var botName = await BotNameOfAsync(recipient, resolutionContext, cancellationToken);
         return new DetailedConfirmationPromptContext
         {
             Ownership = resolutionContext,
@@ -167,8 +209,15 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
             GeoCountry = shown.GeoCountry,
             GeoCity = shown.GeoCity,
             InitiatedAt = shown.InitiatedAt,
+            RequestedAt = transaction.CreatedAt,
             AnomalyFlag = anomaly.IsAnomalous,
             AnomalyReasonKey = anomaly.ReasonKey,
+            // The account asked, the channel it is asked in and the chat of that channel — the masked
+            // identity slots, the channel name and the bot name of the text (SPEC-036 TPL-136). A sign-in
+            // states them on every surface.
+            ChannelIdentity = recipient.Identity,
+            ChannelName = ChannelNameOf(recipient, effectiveLocale),
+            BotName = botName,
             // Recipient locale (SPEC-017 §7.2) and the zone its moments are shown in: resolved once
             // above, for every context variant alike
             RecipientLocale = effectiveLocale,
@@ -188,6 +237,8 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
     /// mechanism's own diagnostic and is logged by it (SPEC-036 TPL-120).
     /// </remarks>
     /// <param name="transaction">Transaction being confirmed.</param>
+    /// <param name="recipient">The one the question is asked of.</param>
+    /// <param name="surface">Surface the subject is shown on.</param>
     /// <param name="ownership">Ownership context of the transaction, carried by every variant.</param>
     /// <param name="recipientLocale">Effective recipient locale (null — base language).</param>
     /// <param name="recipientTimeZone">Time zone the moments of the subject are shown in (null — UTC
@@ -196,6 +247,8 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
     /// <returns>The subject context, or a suppressed context when there is no subject to show.</returns>
     private async Task<ConfirmationPromptContext> CreateSubjectContextAsync(
         Transaction transaction,
+        ConfirmationPromptRecipient recipient,
+        string surface,
         ResolutionContext ownership,
         string? recipientLocale,
         string? recipientTimeZone,
@@ -233,13 +286,28 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
 
         // The subject is worded outside the initiator-context branch (SPEC-039 N32): no initiator
         // context takes part in it, whatever the transaction carries, since no display decision was made
-        // for it here.
+        // for it here. The account is the one the question is asked of, exactly as the caller names it —
+        // never the snapshot of the transaction in its place: a recipient that knows no account (the mail
+        // of the Email channel) names none, whatever channel the transaction is bound to. Whether the
+        // surface may name it is decided by the assembly of the values.
+        var source = TransactionSlotSource.From(transaction) with
+        {
+            InitiatorContext = null,
+            ChannelIdentity = recipient.Identity
+        };
+        var values = TransactionSlotValues.Of(source, message.Contract, outcomeMoment: null, surface);
+
+        TransactionSlotValues.AddChannelName(values, ChannelNameOf(recipient, recipientLocale));
+
+        // The adapter is asked for the name only when the contract of the subject declares the slot.
+        if (message.Contract.FindSlot(SlotNames.BotName) is not null)
+        {
+            TransactionSlotValues.AddBotName(values, await BotNameOfAsync(recipient, ownership, cancellationToken));
+        }
+
         var text = MessageTextRenderer.Render(
             message,
-            TransactionSlotValues.Of(
-                TransactionSlotSource.From(transaction) with { InitiatorContext = null },
-                message.Contract,
-                outcomeMoment: null),
+            values,
             recipientLocale,
             recipientTimeZone,
             _promptLocalizer,
@@ -261,6 +329,48 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
             RecipientTimeZone = recipientTimeZone
         };
     }
+
+    /// <summary>
+    /// The name of the channel the question is asked in, in the language of the text, by the one rule a
+    /// channel is named by on the pages (<see cref="ChannelNames.NameChannel"/>). The text overrides of a
+    /// page do not take part: the channel has none, and the rule is one for both surfaces.
+    /// </summary>
+    /// <param name="recipient">The one the question is asked of.</param>
+    /// <param name="recipientLocale">Effective recipient locale (null — base language).</param>
+    /// <returns>The name; null when the channel is not known.</returns>
+    private string? ChannelNameOf(ConfirmationPromptRecipient recipient, string? recipientLocale) =>
+        string.IsNullOrEmpty(recipient.ChannelType)
+            ? null
+            : ChannelNames.NameChannel(
+                recipient.ChannelType,
+                _adapters,
+                _promptLocalizer,
+                recipientLocale ?? ChannelLocalizationOptions.DefaultBaseLocale,
+                _logger);
+
+    /// <summary>
+    /// The name of the chat of the channel the question is asked in, by the one rule the pages name it by
+    /// (<see cref="ChannelBotNames"/>): the name a level states for the channel, otherwise the one its
+    /// adapter reports. The adapter is asked under the tenant of the ownership context, which the rule
+    /// opens itself — the pages ask for a question outside any tenant scope.
+    /// </summary>
+    /// <param name="recipient">The one the question is asked of.</param>
+    /// <param name="ownership">Ownership context of the transaction.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The name; null when the channel is not known or states none.</returns>
+    private async Task<string?> BotNameOfAsync(
+        ConfirmationPromptRecipient recipient,
+        ResolutionContext ownership,
+        CancellationToken cancellationToken) =>
+        string.IsNullOrEmpty(recipient.ChannelType)
+            ? null
+            : await ChannelBotNames.ReadAsync(
+                recipient.ChannelType,
+                _adapters,
+                _configResolver,
+                ownership,
+                _logger,
+                cancellationToken);
 
     /// <summary>
     /// The ownership context a SUBJECT is worded over: the tenant and the application, and no

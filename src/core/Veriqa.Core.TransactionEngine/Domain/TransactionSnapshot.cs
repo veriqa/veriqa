@@ -112,6 +112,12 @@ public sealed class TransactionSnapshot
     public ChannelIdentitySnapshot? ChannelIdentitySnapshot { get; init; }
 
     /// <summary>
+    /// Bound channel subject (see <see cref="Transaction.SubjectBinding"/>). Not <c>required</c>: a record
+    /// stored before the field existed has none, and null is exactly what such a transaction states.
+    /// </summary>
+    public ChannelSubjectBinding? SubjectBinding { get; init; }
+
+    /// <summary>
     /// Resolved identity (see <see cref="Transaction.ResolvedIdentitySnapshot"/>).
     /// </summary>
     public ResolvedIdentitySnapshot? ResolvedIdentitySnapshot { get; init; }
@@ -146,4 +152,58 @@ public sealed class TransactionSnapshot
     /// Initiator context (see <see cref="Transaction.InitiatorContextSnapshot"/>).
     /// </summary>
     public InitiatorContextSnapshot? InitiatorContextSnapshot { get; init; }
+
+    /// <summary>
+    /// Requirement set fixed at creation (see <see cref="Transaction.ClaimRequirements"/>). Not
+    /// <c>required</c>: a record stored before the field existed has none, and the empty set is exactly
+    /// what such a transaction states.
+    /// </summary>
+    public IReadOnlyList<ClaimRequirement> ClaimRequirements { get; init; } = [];
+
+    /// <summary>
+    /// Claims completion fields, all parts of them (see <see cref="Transaction.ClaimCompletion"/>). Not
+    /// <c>required</c>: a record stored before the field existed has none, and null is exactly what such
+    /// a transaction states.
+    /// </summary>
+    public ClaimCompletionState? ClaimCompletion { get; init; }
+
+    /// <summary>
+    /// Values taken from the collected claims store (see <see cref="Transaction.StoredClaimValues"/>). Not
+    /// <c>required</c>: a record stored before the field existed has none, and the empty list is exactly
+    /// what such a transaction states.
+    /// </summary>
+    public IReadOnlyList<ClaimCompletionResult> StoredClaimValues { get; init; } = [];
+
+    /// <summary>
+    /// Moment the authorization code of the sign-in was issued
+    /// (see <see cref="Transaction.AuthorizationCodeIssuedAt"/>). Not <c>required</c>: a record stored
+    /// before the field existed has none, and null is exactly what such a transaction states.
+    /// </summary>
+    public DateTimeOffset? AuthorizationCodeIssuedAt { get; init; }
+
+    /// <summary>
+    /// Context of the scanning device, including its fingerprint when one was filled
+    /// (see <see cref="Transaction.ScannerContextSnapshot"/>).
+    /// </summary>
+    public ScannerContextSnapshot? ScannerContextSnapshot { get; init; }
+
+    /// <summary>
+    /// First human resolve of the hop link (see <see cref="Transaction.HopFirstResolvedAt"/>).
+    /// </summary>
+    public DateTimeOffset? HopFirstResolvedAt { get; init; }
+
+    /// <summary>
+    /// Interstitial page shown (see <see cref="Transaction.HopInterstitialOpenedAt"/>).
+    /// </summary>
+    public DateTimeOffset? HopInterstitialOpenedAt { get; init; }
+
+    /// <summary>
+    /// Start of the transition into the channel (see <see cref="Transaction.HopChannelLaunchedAt"/>).
+    /// </summary>
+    public DateTimeOffset? HopChannelLaunchedAt { get; init; }
+
+    /// <summary>
+    /// Repeat human resolve from another browser (see <see cref="Transaction.HopRepeatResolvedAt"/>).
+    /// </summary>
+    public DateTimeOffset? HopRepeatResolvedAt { get; init; }
 }

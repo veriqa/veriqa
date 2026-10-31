@@ -10,7 +10,6 @@
 // Run this project through the AppHost (`dotnet run` in the parent directory), not on its own:
 // without Aspire the connection string is absent and startup fails with an explicit error.
 
-using System.Security.Claims;
 using Veriqa.Core.AuthServer.DependencyInjection;
 using Veriqa.Core.ChannelAdapter.DependencyInjection;
 using Veriqa.Core.AuthServer.Infrastructure;
@@ -65,10 +64,8 @@ app.UseVeriqaAuthServer();
 // Veriqa AuthServer OIDC routing (authorize / token / userinfo / callback) — a single call.
 app.MapVeriqaAuthServer();
 
-// Result page: after sign-in it shows "Hello, {name}!".
-app.MapGet("/", (ClaimsPrincipal user) =>
-    user.Identity?.IsAuthenticated is true
-        ? $"Hello, {user.Identity!.Name}!"
-        : "Hello!");
+// The issuer has no page of its own to show a signed-in user: a sign-in is started by a relying
+// party and ends there, with the claims in its session. This route only tells the host is up.
+app.MapGet("/", () => "Hello!");
 
 app.Run();

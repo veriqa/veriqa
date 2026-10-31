@@ -102,7 +102,7 @@ public static class TransactionTelemetry
 /// is known in advance.
 /// </summary>
 /// <remarks>
-/// Deliberately not the channel's <c>TransactionOutcomeCodes</c>, despite three of the four values
+/// Deliberately not the channel's <c>TransactionOutcomeCodes</c>, despite three of the values
 /// reading the same. That vocabulary answers "what is shown to the user in the messenger"
 /// (SPEC-003 §6.2) and its first value is <c>confirmed</c>; this one answers "which terminal state
 /// the engine recorded", and the state is <c>completed</c> — the sign-in is finished only once the
@@ -130,4 +130,10 @@ public static class TransactionOutcomes
     /// The transaction ended in a failure that is not the user's refusal.
     /// </summary>
     public const string Failed = "failed";
+
+    /// <summary>
+    /// The sign-in was closed because the same channel subject began a newer one. Kept apart from
+    /// <see cref="Failed"/> so that repeated attempts do not raise the share of failures.
+    /// </summary>
+    public const string Superseded = "superseded";
 }

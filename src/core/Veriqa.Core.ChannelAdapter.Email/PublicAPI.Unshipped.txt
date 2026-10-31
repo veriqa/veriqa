@@ -4,11 +4,47 @@ Veriqa.Core.ChannelAdapter.Email.Abstractions.IEmailInboundProcessor
 Veriqa.Core.ChannelAdapter.Email.Abstractions.IEmailInboundProcessor.ProcessInboundEmailAsync(Veriqa.Core.ChannelAdapter.Email.Domain.InboundEmailMessage! message, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Domain.ChannelInboundResult!>!
 Veriqa.Core.ChannelAdapter.Email.Abstractions.IEmailOutboundSender
 Veriqa.Core.ChannelAdapter.Email.Abstractions.IEmailOutboundSender.SendLoginEmailAsync(Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage! message, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Email.Domain.EmailSendResult!>!
+Veriqa.Core.ChannelAdapter.Email.Abstractions.IEmailOutboundSender.SendClaimCompletionEmailAsync(Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage! message, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Email.Domain.EmailSendResult!>!
+Veriqa.Core.ChannelAdapter.Email.Abstractions.IEmailOutboundSender.SupportsClaimCompletionEmail.get -> bool
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailConfigKeys
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.EmailImapOAuthOptions() -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.ClientId.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.ClientId.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.ClientSecret.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.ClientSecret.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.RefreshToken.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.RefreshToken.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.Scope.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.Scope.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.TokenEndpoint.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions.TokenEndpoint.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.EmailImapOptions() -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.AuthMode.get -> Veriqa.Core.ChannelAdapter.Email.Enums.EmailImapAuthMode
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.AuthMode.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.AuthservId.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.AuthservId.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Folder.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Folder.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Host.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Host.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.OAuth.get -> Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOAuthOptions!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.OAuth.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Password.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Password.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.PollIntervalSeconds.get -> int
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.PollIntervalSeconds.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Port.get -> int
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Port.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Username.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions.Username.set -> void
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions.AllowedDomains.get -> System.Collections.Generic.IReadOnlyList<string!>!
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions.AllowedDomains.set -> void
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions.EmailInboundOptions() -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions.Imap.get -> Veriqa.Core.ChannelAdapter.Email.Configuration.EmailImapOptions!
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions.Imap.set -> void
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions.InboundAddress.get -> string!
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions.InboundAddress.set -> void
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions.Provider.get -> Veriqa.Core.ChannelAdapter.Email.Enums.EmailInboundProvider
@@ -36,6 +72,8 @@ Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.Enabled.set -> void
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.GetTenantCredentials() -> Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials!
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.Inbound.get -> Veriqa.Core.ChannelAdapter.Email.Configuration.EmailInboundOptions!
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.Inbound.set -> void
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.MailResendInterval.get -> System.TimeSpan
+Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.MailResendInterval.set -> void
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.Normalization.get -> Veriqa.Core.ChannelAdapter.Email.Configuration.EmailNormalizationOptions!
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.Normalization.set -> void
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.Outbound.get -> Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOutboundOptions!
@@ -95,6 +133,27 @@ Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials.PublicBase
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials.TokenTtl.get -> System.TimeSpan?
 Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials.TokenTtl.init -> void
 Veriqa.Core.ChannelAdapter.Email.Constants.EmailChannelStatuses
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.<Clone>$() -> Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage!
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ClientName.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ClientName.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Code.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Code.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Deconstruct(out string! ToAddress, out string! ClientName, out string? Code, out string? Link, out System.DateTimeOffset ExpiresAt, out string? Locale) -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.EmailClaimCompletionMessage(string! ToAddress, string! ClientName, string? Code, string? Link, System.DateTimeOffset ExpiresAt, string? Locale) -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Equals(Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage? other) -> bool
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ExpiresAt.get -> System.DateTimeOffset
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ExpiresAt.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Link.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Link.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Locale.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Locale.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Ownership.get -> Veriqa.Core.Configuration.ResolutionContext!
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Ownership.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.TimeZone.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.TimeZone.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ToAddress.get -> string!
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ToAddress.init -> void
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.<Clone>$() -> Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage!
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.ActionToken.get -> string!
@@ -161,6 +220,9 @@ Veriqa.Core.ChannelAdapter.Email.Domain.InboundEmailMessage.Subject.init -> void
 Veriqa.Core.ChannelAdapter.Email.Domain.InboundEmailMessage.ToAddress.get -> string!
 Veriqa.Core.ChannelAdapter.Email.Domain.InboundEmailMessage.ToAddress.init -> void
 Veriqa.Core.ChannelAdapter.Email.EmailAuthEndpoints
+Veriqa.Core.ChannelAdapter.Email.Enums.EmailImapAuthMode
+Veriqa.Core.ChannelAdapter.Email.Enums.EmailImapAuthMode.OAuth2 = 1 -> Veriqa.Core.ChannelAdapter.Email.Enums.EmailImapAuthMode
+Veriqa.Core.ChannelAdapter.Email.Enums.EmailImapAuthMode.Password = 0 -> Veriqa.Core.ChannelAdapter.Email.Enums.EmailImapAuthMode
 Veriqa.Core.ChannelAdapter.Email.Enums.EmailInboundProvider
 Veriqa.Core.ChannelAdapter.Email.Enums.EmailInboundProvider.Custom = 3 -> Veriqa.Core.ChannelAdapter.Email.Enums.EmailInboundProvider
 Veriqa.Core.ChannelAdapter.Email.Enums.EmailInboundProvider.ImapPolling = 1 -> Veriqa.Core.ChannelAdapter.Email.Enums.EmailInboundProvider
@@ -200,15 +262,15 @@ Veriqa.Core.ChannelAdapter.Email.Services.EmailActionToken.UsedAt.get -> System.
 Veriqa.Core.ChannelAdapter.Email.Services.EmailActionToken.UsedAt.init -> void
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.<Clone>$() -> Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation!
-Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.ComposeOpenedAt.get -> System.DateTimeOffset?
-Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.ComposeOpenedAt.init -> void
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.ConsumedAt.get -> System.DateTimeOffset?
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.ConsumedAt.init -> void
-Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.Deconstruct(out string! TransactionId, out System.DateTimeOffset ExpiresAt, out System.DateTimeOffset? ConsumedAt, out System.DateTimeOffset? ComposeOpenedAt) -> void
-Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.EmailPushCorrelation(string! TransactionId, System.DateTimeOffset ExpiresAt, System.DateTimeOffset? ConsumedAt = null, System.DateTimeOffset? ComposeOpenedAt = null) -> void
+Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.Deconstruct(out string! TransactionId, out System.DateTimeOffset ExpiresAt, out System.DateTimeOffset? ConsumedAt) -> void
+Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.EmailPushCorrelation(string! TransactionId, System.DateTimeOffset ExpiresAt, System.DateTimeOffset? ConsumedAt = null) -> void
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.Equals(Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation? other) -> bool
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.ExpiresAt.get -> System.DateTimeOffset
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.ExpiresAt.init -> void
+Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.ForClaimCompletion.get -> bool
+Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.ForClaimCompletion.init -> void
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.IsConsumed.get -> bool
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.IsExpired(System.DateTimeOffset now) -> bool
 Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.TransactionId.get -> string!
@@ -225,7 +287,6 @@ Veriqa.Core.ChannelAdapter.Email.Services.IEmailPushCorrelationStore.IsMessagePr
 Veriqa.Core.ChannelAdapter.Email.Services.IEmailPushCorrelationStore.StoreAsync(string! token, Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation! correlation, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Veriqa.Core.ChannelAdapter.Email.Services.IEmailPushCorrelationStore.StoreOrReuseAsync(string! token, Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation! correlation, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
 Veriqa.Core.ChannelAdapter.Email.Services.IEmailPushCorrelationStore.TryConsumeAsync(string! token, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
-Veriqa.Core.ChannelAdapter.Email.Services.IEmailPushCorrelationStore.TryMarkComposeOpenedAsync(string! token, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Veriqa.Core.ChannelAdapter.Email.Services.IEmailPushCorrelationStore.TryRegisterProcessedMessageAsync(string! messageId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent
 Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent.<Clone>$() -> Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent!
@@ -245,12 +306,15 @@ Veriqa.Core.ChannelAdapter.Email.Templates.IEmailMessageComposer.ComposeAsync(Ve
 const Veriqa.Core.ChannelAdapter.Email.Configuration.EmailOptions.SectionName = "Veriqa:Channels:Email" -> string!
 const Veriqa.Core.ChannelAdapter.Email.Constants.EmailChannelStatuses.PullOpened = "opened" -> string!
 const Veriqa.Core.ChannelAdapter.Email.Constants.EmailChannelStatuses.PullSent = "sent" -> string!
-const Veriqa.Core.ChannelAdapter.Email.Constants.EmailChannelStatuses.PushComposeOpened = "compose_opened" -> string!
 const Veriqa.Core.ChannelAdapter.Email.Constants.EmailChannelStatuses.PushMailReceived = "mail_received" -> string!
+const Veriqa.Core.ChannelAdapter.Email.Constants.EmailChannelStatuses.PushSubjectMismatch = "subject_mismatch" -> string!
 const Veriqa.Core.ChannelAdapter.Email.Constants.EmailChannelStatuses.PushVerified = "verified" -> string!
 override Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials.Equals(object? obj) -> bool
 override Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials.GetHashCode() -> int
 override Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials.ToString() -> string!
+override Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ToString() -> string!
 override Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.Equals(object? obj) -> bool
 override Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.GetHashCode() -> int
 override Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.ToString() -> string!
@@ -274,6 +338,8 @@ static Veriqa.Core.ChannelAdapter.Email.Configuration.EmailConfigKeys.Credential
 static Veriqa.Core.ChannelAdapter.Email.Configuration.EmailConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
 static Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials.operator !=(Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials? left, Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials? right) -> bool
 static Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials.operator ==(Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials? left, Veriqa.Core.ChannelAdapter.Email.Configuration.EmailTenantCredentials? right) -> bool
+static Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.operator !=(Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage? left, Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage? right) -> bool
+static Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.operator ==(Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage? left, Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage? right) -> bool
 static Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.operator !=(Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage? left, Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage? right) -> bool
 static Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.operator ==(Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage? left, Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage? right) -> bool
 static Veriqa.Core.ChannelAdapter.Email.Domain.EmailSendResult.Fail(string! errorCode, string? errorMessage = null) -> Veriqa.Core.ChannelAdapter.Email.Domain.EmailSendResult!
@@ -289,3 +355,11 @@ static Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.operator !
 static Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation.operator ==(Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation? left, Veriqa.Core.ChannelAdapter.Email.Services.EmailPushCorrelation? right) -> bool
 static Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent.operator !=(Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent? left, Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent? right) -> bool
 static Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent.operator ==(Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent? left, Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent? right) -> bool
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.TransactionType.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.TransactionType.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.CarriesLink.get -> bool
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.CarriesLink.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.Code.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.Code.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.BrandName.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.BrandName.init -> void

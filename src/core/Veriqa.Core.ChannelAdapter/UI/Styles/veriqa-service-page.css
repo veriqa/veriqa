@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: MPL-2.0
  *
  * Rules of the "Core" contour service pages - the sign-in confirmation page, the expired-callback
- * page and the email adapter pages (compose helper, pull form, confirmation from the letter).
- * One rule set for all four: they are one page family, so title size, button shape and plate
- * paddings are the same on each of them by design.
+ * page, the email adapter pages (pull form, confirmation from the letter) and the
+ * form of the claims completion. One rule set for all of them: they are one page family, so title
+ * size, button shape and plate paddings are the same on each of them by design.
  *
  * Loaded together with veriqa-core-base.css and never together with veriqa-auth-page.css, so
  * class names shared with the sign-in window (.veriqa-title, .veriqa-status) cannot collide.
@@ -19,7 +19,6 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
     background: var(--veriqa-surface);
     color: var(--veriqa-text);
 }
@@ -33,8 +32,6 @@ body {
     background: var(--veriqa-bg);
     text-align: center;
 }
-.veriqa-card-wide { width: min(calc(100% - var(--veriqa-spacing-48)), 480px); }
-.veriqa-card--start { text-align: left; }
 /* The bottom margin of the text blocks must not add up with the card padding */
 .veriqa-card > :last-child { margin-bottom: 0; }
 
@@ -66,14 +63,6 @@ body {
     text-align: left;
     margin-bottom: var(--veriqa-spacing-sm);
 }
-.veriqa-warning-note code {
-    font-family: var(--veriqa-font-mono);
-    font-size: 0.6875rem;
-    background: var(--veriqa-surface);
-    border: 1px solid var(--veriqa-surface-variant);
-    border-radius: 3px;
-    padding: 1px var(--veriqa-spacing-xs);
-}
 
 /* Buttons: the primitive itself is declared once in veriqa-core-base.css;
    here are only what the service pages add to it. */
@@ -82,34 +71,76 @@ body {
    child is excluded by the selector rather than by the guard above: both are class-and-child
    selectors of equal specificity, so a guard declared earlier would lose to this rule. */
 .veriqa-card > .veriqa-btn:not(:last-child) { margin-bottom: var(--veriqa-spacing-md); }
-/* "No" of the confirmation question - the same button in the secondary, outlined variant */
-.veriqa-btn-decline {
-    border-color: var(--veriqa-soft);
-    background: var(--veriqa-bg);
-    color: var(--veriqa-text);
-}
 
 .veriqa-actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--veriqa-spacing-12);
     justify-content: center;
+    /* The narrowest share an action keeps in a row: below it the label of a button would break into
+       lines, so a row too narrow for all its actions stacks them one under another instead. */
+    --veriqa-action-min-width: 10rem;
 }
-.veriqa-actions form { flex: 1 1 auto; }
+/* The actions of a row share it in equal parts, whatever the length of their texts */
+.veriqa-actions form { flex: 1 1 var(--veriqa-action-min-width); }
+/* An action that has no form of its own (the button that closes the tab, "Continue" of the claims completion
+   form below its email block) is wrapped and shares the row the same way: a share of a row is counted without
+   the paddings of the box, so a bare button would get its paddings on top of its share */
+.veriqa-actions > .veriqa-field { flex: 1 1 var(--veriqa-action-min-width); margin-bottom: 0; }
+/* A text line sharing the row with actions (the hint of the button that closes the tab) */
+.veriqa-actions > .veriqa-instruction { margin: 0; align-self: center; }
+/* The row of the final actions of the claims completion form is set apart from the email block above it */
+.veriqa-card > .veriqa-fields + .veriqa-actions { margin-top: var(--veriqa-spacing-lg); }
+/* The default button of a form whose own "Continue" stands outside it: it takes Enter in a field, and is
+   never seen. Kept rendered (not display: none) so that every browser treats it as the default button. */
+.veriqa-default-submit {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+/* A form followed by more content of the card is separated from it, as a standalone button is */
+.veriqa-card > form:not(:last-child) { margin-bottom: var(--veriqa-spacing-md); }
+/* The same separation for a group of fields followed by more content of the card */
+.veriqa-card > .veriqa-fields:not(:last-child) { margin-bottom: var(--veriqa-spacing-md); }
 
-/* Email entry form */
+/* Email entry form. The field never grows past its container, whatever intrinsic width the browser
+   gives a filled control (a date), and its text is 1rem: a mobile browser zooms the page in on focus
+   of a control whose text is smaller. */
 .veriqa-input {
     display: block;
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     padding: var(--veriqa-spacing-11) var(--veriqa-spacing-14);
     border: 1px solid var(--veriqa-surface-variant);
     border-radius: var(--veriqa-radius);
-    font-size: 0.8125rem;
+    font-size: 1rem;
     color: var(--veriqa-text);
     background: var(--veriqa-surface);
     margin-bottom: var(--veriqa-spacing-10);
     transition: border-color var(--veriqa-transition-fast);
     font-family: inherit;
+}
+/* iOS Safari draws a date control natively: it keeps an intrinsic width past the container whatever the
+   width rule says, and centers its value. Only the engine of iOS is matched, so the date control of every
+   other browser keeps its own look and its picker. */
+@supports (-webkit-touch-callout: none) {
+    .veriqa-input[type="date"] {
+        -webkit-appearance: none;
+        appearance: none;
+        /* An empty control without its native look collapses to no height: it keeps the height of a
+           text field — a line of the 1rem text plus the paddings and the border. */
+        min-height: calc(1.25rem + 2 * var(--veriqa-spacing-11) + 2px);
+    }
+    .veriqa-input[type="date"]::-webkit-date-and-time-value {
+        margin: 0;
+        text-align: start;
+    }
 }
 /* The focus indicator of the contour is a :focus-visible outline, never an
    outline: none plus a border tint - see the same rule of the sign-in window. */
@@ -119,6 +150,12 @@ body {
     border-color: var(--veriqa-primary);
     background: var(--veriqa-bg);
 }
+/* The input of a code sent by mail - the look of the code input of the sign-in window. */
+.veriqa-code-input {
+    text-align: center;
+    letter-spacing: 0.3em;
+    font-family: var(--veriqa-font-mono);
+}
 .veriqa-msg {
     margin-top: var(--veriqa-spacing-10);
     font-size: 0.75rem;
@@ -127,6 +164,8 @@ body {
 }
 .veriqa-msg.ok { color: var(--veriqa-success); }
 .veriqa-msg.err { color: var(--veriqa-error); }
+/* A message the server rendered with its text is shown from the start */
+.veriqa-msg:not(:empty) { display: block; }
 
 /* Status plate of the confirmation page */
 .veriqa-status {
@@ -160,8 +199,49 @@ body {
     font-family: var(--veriqa-font-mono);
 }
 
-/* Fields of the letter being composed */
+/* Labelled fields of a form */
 .veriqa-fields { margin-top: var(--veriqa-spacing-md); text-align: left; }
+/* A message of a group of fields — an error of the email block — and the lines of the email block are
+   centered, like the buttons they stand with */
+.veriqa-fields .veriqa-msg,
+.veriqa-fields .veriqa-instruction { text-align: center; }
+/* An input with a mark in its right part - whether the email address is confirmed. The input leaves
+   room for the mark; the mark takes the focus, so its tip shows on hover and on a tap alike. */
+.veriqa-marked-input { position: relative; }
+.veriqa-marked-input > .veriqa-input { padding-right: calc(var(--veriqa-spacing-14) * 2 + 20px); }
+.veriqa-input-mark {
+    position: absolute;
+    top: 50%;
+    right: var(--veriqa-spacing-14);
+    transform: translateY(-50%);
+    display: inline-flex;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: help;
+}
+.veriqa-input-mark svg { width: 20px; height: 20px; }
+.veriqa-input-mark--warn { color: var(--veriqa-soft); }
+.veriqa-input-mark--ok { color: var(--veriqa-text); }
+.veriqa-input-mark:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; }
+.veriqa-input-mark-tip {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + var(--veriqa-spacing-xs));
+    z-index: 1;
+    padding: var(--veriqa-spacing-xs) var(--veriqa-spacing-sm);
+    border: 1px solid var(--veriqa-surface-variant);
+    border-radius: var(--veriqa-radius);
+    background: var(--veriqa-surface);
+    color: var(--veriqa-text);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+.veriqa-input-mark:hover > .veriqa-input-mark-tip,
+.veriqa-input-mark:focus > .veriqa-input-mark-tip { display: block; }
+/* A secondary action of an input - "Change" under a recorded address - at the end of the line under it. */
+.veriqa-text-link--end { width: auto; margin-left: auto; text-align: right; margin-top: var(--veriqa-spacing-6); }
 .veriqa-field { margin-bottom: var(--veriqa-spacing-10); }
 .veriqa-field-label {
     display: block;
@@ -173,29 +253,7 @@ body {
     font-family: var(--veriqa-font-mono);
     margin-bottom: var(--veriqa-spacing-xs);
 }
-.veriqa-field-value {
-    font-family: var(--veriqa-font-mono);
-    font-size: 0.6875rem;
-    background: var(--veriqa-surface);
-    border: 1px solid var(--veriqa-surface-variant);
-    border-radius: 6px;
-    padding: var(--veriqa-spacing-sm) var(--veriqa-spacing-10);
-    word-break: break-all;
-    color: var(--veriqa-text);
-    text-align: left;
-}
-.veriqa-code {
-    background: var(--veriqa-code-bg);
-    color: var(--veriqa-on-code-bg);
-    font-family: var(--veriqa-font-mono);
-    font-size: 0.6875rem;
-    border-radius: var(--veriqa-radius);
-    padding: var(--veriqa-spacing-12) var(--veriqa-spacing-14);
-    margin-bottom: var(--veriqa-spacing-md);
-    white-space: pre-wrap;
-    word-break: break-all;
-    text-align: left;
-}
+.veriqa-field-optional { font-weight: 400; }
 
 /* Secondary action in link styling */
 .veriqa-link {

@@ -4,6 +4,7 @@
 using Microsoft.Extensions.Logging;
 
 using Veriqa.Core.AuthServer.Configuration.Enums;
+using Veriqa.Core.ChannelAdapter.MultiTenancy;
 using Veriqa.Core.Configuration;
 
 namespace Veriqa.Core.AuthServer.Configuration.Resolution;
@@ -203,16 +204,55 @@ internal sealed class AuthPageSettingsResolver
     }
 
     /// <summary>
+    /// Tells whether the spare start code of ONE channel is prepared and shown. The key answers on its
+    /// core level when no level states a value, so a deployment that declares nothing keeps the code.
+    /// A read that fails is reported and answered with <c>false</c>: the page is rendered and the channel
+    /// stays on it, only without the spare code.
+    /// </summary>
+    /// <param name="context">Resolution context of the transaction the page belongs to.</param>
+    /// <param name="channelType">Channel type.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns><c>true</c> when the spare start code of the channel is on.</returns>
+    public async Task<bool> ResolveSpareStartCodeEnabledAsync(
+        ResolutionContext context,
+        string channelType,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        try
+        {
+            var enabled = await _resolver.ResolveAsync(
+                ChannelChatConfigKeys.SpareStartCodeEnabled,
+                context,
+                ConfigDimensionValues.Of((ConfigDimensionNames.Channel, channelType)),
+                cancellationToken);
+
+            return enabled.Value;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to read whether the spare start code of channel {ChannelType} is on — the channel is shown without it",
+                channelType);
+
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Resolves the client's own login-initiation address (<c>initiate_login_uri</c>, OIDC Dynamic
-    /// Client Registration 1.0 §2) — the address the sign-in window offers as the way out of an
-    /// expired page. The key stands over a single level, so the chain either finds the value on the
-    /// application's entry or ends with no level speaking, and the caller falls back to repeating the
-    /// authorize request it is already serving.
+    /// Client Registration 1.0 §2) — the address a page offers as the way to start an expired sign-in
+    /// over: the expired sign-in window and the callback's "sign-in session expired" page. The key
+    /// stands over a single level, so the chain either finds the value on the application's entry or
+    /// ends with no level speaking; what a page offers then is that page's own fallback.
     /// <para>
-    /// It is asked outside the page's aggregate deliberately: the aggregate is what the PAGE is made
-    /// of and is resolved for both surfaces that render it, while this address exists only for the
-    /// sign-in path — a confirmation transaction has no authorize request behind it and no client
-    /// entry point to send anyone to.
+    /// It is asked outside the page's aggregate deliberately: the aggregate is what the sign-in PAGE is
+    /// made of and is resolved for both surfaces that render it, while this address is read only where
+    /// a sign-in has run out. A confirmation transaction is not such a place: its context names the
+    /// application too and would resolve to the same value, so the surface that may meet one — the
+    /// callback page — does not ask for it.
     /// </para>
     /// </summary>
     /// <param name="context">Resolution context of the request.</param>

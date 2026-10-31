@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Veriqa.Core.ChannelAdapter.Http.Conformance</RootNamespace>
+    <AssemblyName>Veriqa.Core.ChannelAdapter.Http.Conformance</AssemblyName>
+    <!-- The conformance suite of the HTTP channel wire: an executable an adapter author runs against the
+         base URL of an external adapter. It ships as a container image built from this repository, not
+         as a package. Licensing: Mozilla Public License 2.0, as the wrapper package it drives. -->
+    <IsPackable>false</IsPackable>
+    <!-- The suite builds the contexts of the channel contract the core hands to a channel adapter
+         (the confirmation prompt context), a shape marked [Experimental("VERIQAEXP0001")]. The suite
+         lives in this repository and moves together with that shape, so the diagnostic is accepted
+         for the whole project. -->
+    <NoWarn>$(NoWarn);VERIQAEXP0001</NoWarn>
+    <!-- A running tool never reads XML documentation. -->
+    <PublishDocumentationFiles>false</PublishDocumentationFiles>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The schema of the wire travels inside the assembly: the suite checks every answer and every
+         event against it wherever the tool runs. The image also carries the file itself for authors. -->
+    <Content Remove="Schema\**" />
+    <EmbeddedResource Include="Schema\http-channel-wire-v1.schema.json" LogicalName="http-channel-wire-v1.schema.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- JSON Schema validator with draft 2020-12 support, built on System.Text.Json. BSD-3-Clause. -->
+    <PackageReference Include="LateApexEarlySpeed.Json.Schema" Version="4.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real wrapper: every well-formed call of the suite goes through it. -->
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Http\Veriqa.Core.ChannelAdapter.Http.csproj" />
+    <ProjectReference Include="..\Veriqa.Core.TransactionEngine\Veriqa.Core.TransactionEngine.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -45,16 +45,25 @@ public sealed class OidcClientsOptionsPostConfigure : IPostConfigureOptions<Oidc
     private readonly ILogger<OidcClientsOptionsPostConfigure> _logger;
 
     /// <summary>
+    /// The claims catalog section — the source of the core catalog of scopes and claims an entry is
+    /// judged against on a reload, exactly as the validator judges it at startup.
+    /// </summary>
+    private readonly IOptions<ScopesClaimsOptions> _scopesClaims;
+
+    /// <summary>
     /// Creates the post-configure step.
     /// </summary>
     /// <param name="lifetime">Application lifetime (startup vs reload).</param>
     /// <param name="logger">Logger of rejected client entries.</param>
+    /// <param name="scopesClaims">The claims catalog section holding the core catalog of scopes and claims.</param>
     public OidcClientsOptionsPostConfigure(
         IHostApplicationLifetime lifetime,
-        ILogger<OidcClientsOptionsPostConfigure> logger)
+        ILogger<OidcClientsOptionsPostConfigure> logger,
+        IOptions<ScopesClaimsOptions> scopesClaims)
     {
         _lifetime = lifetime;
         _logger = logger;
+        _scopesClaims = scopesClaims ?? throw new ArgumentNullException(nameof(scopesClaims));
     }
 
     /// <summary>
@@ -132,11 +141,12 @@ public sealed class OidcClientsOptionsPostConfigure : IPostConfigureOptions<Oidc
     {
         var kept = new List<OidcClientOptions>(options.Clients.Count);
         var rejected = new List<(OidcClientOptions Client, IReadOnlyList<string> Failures)>();
+        var scopeCatalog = _scopesClaims.Value.Scopes;
 
         for (var i = 0; i < options.Clients.Count; i++)
         {
             var client = options.Clients[i];
-            var failures = OidcClientValidationRules.Collect(client, i);
+            var failures = OidcClientValidationRules.Collect(client, i, scopeCatalog);
 
             if (failures.Count is 0)
             {

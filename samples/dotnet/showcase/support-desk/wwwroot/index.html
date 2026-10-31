@@ -8,7 +8,7 @@
        Cache-Control: no-cache, but a proxy in front may rewrite that header — a tunnel's edge does
        — and a browser would then run an old app.js against a new page. A new name is the one thing
        no cache in between can serve stale. -->
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <header class="site-header">
@@ -35,6 +35,9 @@
            own origin, so there are no image files and no web fonts anywhere in wwwroot. -->
       <div class="infographic" id="infographic"></div>
 
+      <!-- Shown by app.js when a sign-in came back with an error; says nothing of what the error was. -->
+      <p class="lede" id="signin-failed" role="alert" hidden>Sign-in did not go through. Please try again.</p>
+
       <p><a class="button button-primary" href="/signin">Sign in to see your tickets</a></p>
 
       <div class="faq">
@@ -51,7 +54,12 @@
     <section id="section-account" class="section" hidden>
       <div class="card">
         <div class="avatar avatar-l" id="card-avatar"></div>
-        <div class="card-fields" id="card-fields"></div>
+        <div class="card-body">
+          <div id="card-fields"></div>
+          <!-- The two contacts. The sign-in asks for neither: each has a button of its own, which
+               starts one more authorize request, and shows its value once that request is answered. -->
+          <div class="contacts" id="card-contacts"></div>
+        </div>
       </div>
 
       <h2 class="section-title">Your tickets</h2>
@@ -88,6 +96,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

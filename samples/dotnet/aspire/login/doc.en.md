@@ -6,13 +6,21 @@
 - Channels: `dotnet add package Veriqa.Core.BaseChannels` (Telegram, WhatsApp, Email) and
   `dotnet add package Veriqa.Core.ChannelAdapter.Max`; if you need a single channel, install just
   its package (`Veriqa.Core.ChannelAdapter.Telegram`, …)
-- (optional) a demo bot token for a real messenger sign-in
+- (optional) a demo bot token for a real sign-in through a messaging app
 
 ### Run steps
 
 1. Paste the orchestration fragment into the AppHost `Program.cs`.
 2. `dotnet run --project samples/dotnet/aspire/login`
-3. Open the application from the Aspire dashboard and click "Run sign-in".
+3. In a second terminal run the client application the issuer signs users in to, pointed at
+   this issuer:
+   `dotnet run --project samples/dotnet/inproc/login-client -- --Oidc:Authority=https://localhost:7320`
+4. Open `https://localhost:7020/`. The sign-in starts by itself: the client sends you to the
+   sign-in page of the issuer, and after you confirm in a channel it brings you back and shows
+   `Hello, {name}!`.
+
+The application the dashboard links to (`https://localhost:7320`) is the issuer: its `/` page
+starts no sign-in — it only answers `Hello!`.
 
 ### About this combination
 

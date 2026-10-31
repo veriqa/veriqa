@@ -1,6 +1,9 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Collections.Frozen;
+using System.Collections.Immutable;
+
 namespace Veriqa.Core.Configuration;
 
 /// <summary>
@@ -171,6 +174,22 @@ internal sealed class ConfigBindingRegistry : IConfigBindings, IConfigCoreBindin
         new([.. _keys.Values.OrderBy(key => key.Name, StringComparer.Ordinal).Select(key => key.ToView())]);
 
     /// <summary>
+    /// Builds the read-only slice of the bindings (<see cref="ConfigBindingView"/>): the levels each key
+    /// is bound at, in resolution precedence order. The bindings themselves stay here — what leaves the
+    /// assembly is the fact that a level is bound, not the closure behind it.
+    /// </summary>
+    /// <returns>Slice of the bindings as of this moment.</returns>
+    public ConfigBindingView CreateBindingView() =>
+        new(_bindings.Keys
+            .GroupBy(id => id.KeyName, StringComparer.Ordinal)
+            .ToFrozenDictionary(
+                bound => bound.Key,
+                bound => ConfigLevelPrecedence.Order
+                    .Intersect(bound.Select(id => id.Level))
+                    .ToImmutableArray(),
+                StringComparer.Ordinal));
+
+    /// <summary>
     /// Levels bound for a setting.
     /// </summary>
     /// <param name="keyName">Setting name.</param>
@@ -259,7 +278,37 @@ internal sealed class ConfigBindingRegistry : IConfigBindings, IConfigCoreBindin
     public void RegisterCore<T>(
         ConfigKey<T> key,
         Func<ConfigDimensionValues, LayerValue<T>> extract,
-        Func<bool>? gate = null)
+        Func<bool>? gate = null) =>
+        RegisterCore(key, extract, gate, overSilentRecord: null);
+
+    /// <inheritdoc />
+    public void RegisterCore<T>(
+        ConfigKey<T> key,
+        Func<ConfigDimensionValues, LayerValue<T>> extract,
+        Func<ConfigDimensionValues, LayerValue<T>> overSilentRecord)
+    {
+        ArgumentNullException.ThrowIfNull(overSilentRecord);
+
+        RegisterCore(key, extract, gate: null, overSilentRecord);
+    }
+
+    /// <summary>
+    /// Registers the core-level binding of a key on both paths of reading — the asynchronous one of the
+    /// resolver and the synchronous one of the composition steps.
+    /// </summary>
+    /// <typeparam name="T">Type of the setting value.</typeparam>
+    /// <param name="key">Setting key.</param>
+    /// <param name="extract">Getter of the value at a chain point.</param>
+    /// <param name="gate">Getter of the core-level gate flag; null — the level states no gate.</param>
+    /// <param name="overSilentRecord">
+    /// Getter of what the level states over a record stating nothing; null — the level has no such
+    /// answer, and a rejected step is left unset.
+    /// </param>
+    private void RegisterCore<T>(
+        ConfigKey<T> key,
+        Func<ConfigDimensionValues, LayerValue<T>> extract,
+        Func<bool>? gate,
+        Func<ConfigDimensionValues, LayerValue<T>>? overSilentRecord)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(extract);
@@ -275,11 +324,32 @@ internal sealed class ConfigBindingRegistry : IConfigBindings, IConfigCoreBindin
                 : LayerValue<T>.Set(value.Value!, gate());
         }
 
+        // The verdict of the domain is taken HERE for the core level rather than left to Add alone: a
+        // rejected step of this level carries, beside the fact of the rejection, what the level states
+        // over a record stating nothing — there is no level below the core, and whether that answer or
+        // the one of CFG-246 is given is the resolver's decision, which it cannot make without both.
+        // The answer is read only once a value has been rejected, so an admitted value costs nothing.
+        ConfigLevelOutcome<T> CoreOutcome(ConfigDimensionValues dimensions)
+        {
+            var outcome = ConfigLevelOutcome<T>.Stated(Evaluate(dimensions));
+
+            if (key.Domain is not { } declaredDomain)
+            {
+                return outcome;
+            }
+
+            outcome = WithinDomain(outcome, declaredDomain);
+
+            return outcome.IsRejected && overSilentRecord is not null
+                ? outcome with { OverSilentRecord = overSilentRecord(dimensions) }
+                : outcome;
+        }
+
         // The core level is pure memory, so the completed ValueTask never allocates a state machine.
         Add(
             key,
             ConfigLevel.Core,
-            (_, dimensions, _) => ValueTask.FromResult(ConfigLevelOutcome<T>.Stated(Evaluate(dimensions))));
+            (_, dimensions, _) => ValueTask.FromResult(CoreOutcome(dimensions)));
 
         // The SYNCHRONOUS path gets the domain of the key applied to it here, and it has to be applied
         // here separately: the getter below is the very same closure, but it does not go through the
@@ -289,9 +359,13 @@ internal sealed class ConfigBindingRegistry : IConfigBindings, IConfigCoreBindin
         // The REJECTION itself is dropped here rather than answered with the last valid value of the
         // level (CFG-246): this getter serves the composition steps that run before the container, and
         // at that moment no value has ever been read successfully, so there is nothing to fall back to.
-        Func<ConfigDimensionValues, LayerValue<T>> coreValue = key.Domain is { } domain
-            ? dimensions => WithinDomain(ConfigLevelOutcome<T>.Stated(Evaluate(dimensions)), domain).Value
-            : Evaluate;
+        // What the level states over a silent record is the answer instead, where it has one.
+        Func<ConfigDimensionValues, LayerValue<T>> coreValue = dimensions =>
+        {
+            var outcome = CoreOutcome(dimensions);
+
+            return outcome.IsRejected ? outcome.OverSilentRecord : outcome.Value;
+        };
 
         _coreValues[key.Name] = coreValue;
     }
@@ -559,4 +633,12 @@ internal readonly record struct ConfigLevelOutcome<T>(LayerValue<T> Value, bool 
     /// The level stated a value its setting does not admit.
     /// </summary>
     public static ConfigLevelOutcome<T> Rejected { get; } = new(LayerValue<T>.None, IsRejected: true);
+
+    /// <summary>
+    /// What the level states over a record stating nothing, carried beside a rejection of the CORE
+    /// level: nothing lies below the core, so a rejected step the default of CFG-240 drops is answered
+    /// with this rather than left to the default of the type. None — the level has no such answer, and
+    /// always None above the core, where a dropped step cedes to the level below.
+    /// </summary>
+    public LayerValue<T> OverSilentRecord { get; init; }
 }

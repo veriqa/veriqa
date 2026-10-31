@@ -10,6 +10,7 @@ using Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions;
 using Veriqa.Core.ChannelAdapter.WhatsApp.Configuration;
 using Veriqa.Core.ChannelAdapter.WhatsApp.Constants;
 using Veriqa.Core.ChannelAdapter.WhatsApp.Providers.MetaCloudApi;
+using Veriqa.Core.ChannelAdapter.WhatsApp.Providers.Twilio;
 using Veriqa.Core.Configuration;
 using Veriqa.Core.TransactionEngine.MessageTemplates;
 
@@ -54,10 +55,21 @@ public static class ChannelAdapterBuilderWhatsAppExtensions
             return adapters;
         }
 
-        // Register the shipped Meta Cloud API provider. The configured Provider code no longer selects
-        // a branch here: a provider supplied by the host arrives through UseWhatsAppProvider, which may
-        // be called after AddWhatsApp, so the declared and the actual provider are matched at startup.
-        RegisterMetaCloudApiProvider(adapters.Services);
+        // Register the shipped provider the configured code names — Twilio for its code, Meta Cloud API
+        // otherwise (the default, and the fallback for a code naming a provider supplied by the host).
+        // Either is only a default: a provider supplied by the host arrives through UseWhatsAppProvider,
+        // which may be called after AddWhatsApp, so the declared and the actual provider are matched at
+        // startup. The code is read off the section the same way the enabled flag above is.
+        var configuredProvider = adapters.Configuration
+            .GetSection(WhatsAppOptions.SectionName)[nameof(WhatsAppOptions.Provider)];
+        if (string.Equals(configuredProvider, WhatsAppProviderNames.Twilio, StringComparison.Ordinal))
+        {
+            RegisterTwilioProvider(adapters.Services);
+        }
+        else
+        {
+            RegisterMetaCloudApiProvider(adapters.Services);
+        }
 
         // Startup check "the configured Provider code == the code of the registered provider".
         adapters.Services.AddHostedService<WhatsAppProviderStartupValidator>();
@@ -76,12 +88,12 @@ public static class ChannelAdapterBuilderWhatsAppExtensions
                 // approved template is a chargeable service message, so answering every stale link
                 // would bill the installation for events it did not ask for. An installation that
                 // accepts that cost states the text in its own registration.
-                WebhookVerificationQueryKey = WhatsAppAdapterConstants.HubChallengeQueryKey
+                WebhookVerificationQueryKey = MetaCloudApiConstants.HubChallengeQueryKey
             });
     }
 
     /// <summary>
-    /// Uses a custom WhatsApp delivery provider instead of the shipped Meta Cloud API one.
+    /// Uses a custom WhatsApp delivery provider instead of the shipped one (Meta Cloud API or Twilio).
     /// The result does not depend on when the method is called — before or after <see cref="AddWhatsApp"/> —
     /// because the shipped provider is registered with <c>TryAddSingleton</c>. Calling it more than once is
     /// allowed: the last call wins. The provider's <c>ProviderType</c> must match the configured
@@ -119,5 +131,24 @@ public static class ChannelAdapterBuilderWhatsAppExtensions
         // Register the Meta Cloud API provider. TryAddSingleton, like every shipped default of a
         // one-implementation port here: a host that registered its own provider beforehand keeps it.
         services.TryAddSingleton<IWhatsAppProvider, MetaCloudApiWhatsAppProvider>();
+    }
+
+    /// <summary>
+    /// Registers the Twilio provider.
+    /// </summary>
+    /// <param name="services">Service collection.</param>
+    private static void RegisterTwilioProvider(IServiceCollection services)
+    {
+        // Register the HTTP client for the Twilio REST API.
+        services
+            .AddHttpClient(
+                TwilioConstants.HttpClientName,
+                client =>
+                {
+                    client.Timeout = TimeSpan.FromSeconds(TwilioConstants.ApiTimeoutSeconds);
+                });
+
+        // TryAddSingleton, like the Meta default: a host that registered its own provider beforehand keeps it.
+        services.TryAddSingleton<IWhatsAppProvider, TwilioWhatsAppProvider>();
     }
 }

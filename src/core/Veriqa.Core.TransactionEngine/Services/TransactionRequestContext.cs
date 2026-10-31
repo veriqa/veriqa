@@ -32,6 +32,22 @@ public sealed class TransactionRequestContext
     public string? ApplicationId { get; init; }
 
     /// <summary>
+    /// Display name of the application, taken at creation from the entry of <see cref="ApplicationId"/> (its
+    /// <c>DisplayName</c>, else the identifier itself) — what the application slot of the texts shows.
+    /// Additive field: old serialized transactions deserialize with null, and readers fall back to the
+    /// identifier.
+    /// </summary>
+    [JsonPropertyName("application_name")]
+    public string? ApplicationName { get; init; }
+
+    /// <summary>
+    /// Brand name the levels of the transaction stated at creation (<c>AuthPageDesign.BrandName</c>), as
+    /// configured — a Natural Key, translated where a text shows it. Null — no level states one. Additive field.
+    /// </summary>
+    [JsonPropertyName("brand_name")]
+    public string? BrandName { get; init; }
+
+    /// <summary>
     /// Language of the request (BCP 47 tag). Null — no language was stated.
     /// </summary>
     [JsonPropertyName("ui_locale")]

@@ -93,6 +93,12 @@ public static class ConfigurationResolverServiceCollectionExtensions
         // expectation itself.
         services.TryAddSingleton(provider => provider.GetRequiredService<ConfigBindingRegistry>().CreateSchemaView());
 
+        // The read-only slice of the BINDINGS (SPEC-012 §10.6) — the third fact a deployment can be told:
+        // which levels actually answer a key in this contour. Neither slice above says it — a served level
+        // may hold no binding of a key, and a declared level is only where a key MAY be bound — and a
+        // composition step deciding once at startup what the process exposes needs exactly that.
+        services.TryAddSingleton(provider => provider.GetRequiredService<ConfigBindingRegistry>().CreateBindingView());
+
         // The single precedence resolver in the core (anti-fork, SPEC-012 §10.6) — registered
         // UNCONDITIONALLY. TryAdd would give the opposite guarantee of the one the anti-fork needs: a
         // registration made before this call would win, and the invariant would be lost to an ordering
@@ -104,9 +110,19 @@ public static class ConfigurationResolverServiceCollectionExtensions
         // intentional fork is a matter for review rather than for code.
         services.Replace(ServiceDescriptor.Singleton<IConfigurationResolver, ConfigurationResolver>());
 
-        // The startup report of the contour map and of the levels declared but left unbound.
+        // The startup report of the contour map and of the levels declared but left unbound. It is told
+        // which levels the contour reads through a reader of documents — the same readers the registrar
+        // of the catalogs binds over — so that a level a key addresses by identity is not reported as
+        // forgotten where no path binding of it can exist.
         services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IHostedService, ConfigResolutionStartupDiagnosticsService>());
+            ServiceDescriptor.Singleton<IHostedService, ConfigResolutionStartupDiagnosticsService>(
+                provider => new ConfigResolutionStartupDiagnosticsService(
+                    provider.GetRequiredService<ConfigSourceMap>(),
+                    provider.GetRequiredService<ConfigBindingRegistry>(),
+                    provider.GetRequiredService<ConfigKeySchemaView>(),
+                    provider.GetServices<ConfigKeyCatalog>(),
+                    CollectLevelNodeReaders(provider).Keys.ToHashSet(),
+                    provider.GetRequiredService<ILogger<ConfigResolutionStartupDiagnosticsService>>())));
 
         // The report on what a configuration SNAPSHOT holds that the mechanism cannot use. It is
         // registered unconditionally and walks whatever catalogs the contour registered: a deployment

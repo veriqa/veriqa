@@ -1,4 +1,8 @@
 #nullable enable
+Veriqa.Core.AuthServer.Configuration.AuthPageCancelOverrideOptions
+Veriqa.Core.AuthServer.Configuration.AuthPageCancelOverrideOptions.AuthPageCancelOverrideOptions() -> void
+Veriqa.Core.AuthServer.Configuration.AuthPageCancelOverrideOptions.Enabled.get -> bool?
+Veriqa.Core.AuthServer.Configuration.AuthPageCancelOverrideOptions.Enabled.set -> void
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.AuthPageDesignOptions() -> void
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.BrandName.get -> string?
@@ -13,6 +17,8 @@ Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.CustomJsPath.get -> s
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.CustomJsPath.set -> void
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.FooterHtml.get -> string?
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.FooterHtml.set -> void
+Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.HopInstructionHtml.get -> string?
+Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.HopInstructionHtml.set -> void
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.GetLogoUrl(string! theme) -> string?
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.GetPrimaryColor(string! theme) -> string?
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.JsSriHash.get -> string?
@@ -31,8 +37,12 @@ Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.QrCode.get -> Veriqa.
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.QrCode.set -> void
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.SignalRClientPath.get -> string?
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.SignalRClientPath.set -> void
-Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.Theme.get -> Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme
+Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.Theme.get -> Veriqa.Core.ChannelAdapter.UI.AuthPageTheme
 Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.Theme.set -> void
+Veriqa.Core.AuthServer.Configuration.ChannelButtonOverrideOptions
+Veriqa.Core.AuthServer.Configuration.ChannelButtonOverrideOptions.ChannelButtonOverrideOptions() -> void
+Veriqa.Core.AuthServer.Configuration.ChannelButtonOverrideOptions.ShowChannelButton.get -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility?
+Veriqa.Core.AuthServer.Configuration.ChannelButtonOverrideOptions.ShowChannelButton.set -> void
 Veriqa.Core.AuthServer.Configuration.ChannelDisplayOptions
 Veriqa.Core.AuthServer.Configuration.ChannelDisplayOptions.ChannelDisplayOptions() -> void
 Veriqa.Core.AuthServer.Configuration.ChannelDisplayOptions.ChannelOrder.get -> System.Collections.Generic.IReadOnlyList<string!>!
@@ -41,8 +51,6 @@ Veriqa.Core.AuthServer.Configuration.ChannelDisplayOptions.Hints.get -> System.C
 Veriqa.Core.AuthServer.Configuration.ChannelDisplayOptions.Hints.set -> void
 Veriqa.Core.AuthServer.Configuration.ClaimDefinition
 Veriqa.Core.AuthServer.Configuration.ClaimDefinition.ClaimDefinition() -> void
-Veriqa.Core.AuthServer.Configuration.ClaimDefinition.IsRequired.get -> bool
-Veriqa.Core.AuthServer.Configuration.ClaimDefinition.IsRequired.set -> void
 Veriqa.Core.AuthServer.Configuration.ClaimDefinition.Name.get -> string!
 Veriqa.Core.AuthServer.Configuration.ClaimDefinition.Name.set -> void
 Veriqa.Core.AuthServer.Configuration.ClaimDefinition.Source.get -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimSource
@@ -51,13 +59,58 @@ Veriqa.Core.AuthServer.Configuration.ConfirmationSubjectDisplayOptions
 Veriqa.Core.AuthServer.Configuration.ConfirmationSubjectDisplayOptions.ConfirmationSubjectDisplayOptions() -> void
 Veriqa.Core.AuthServer.Configuration.ConfirmationSubjectDisplayOptions.Surfaces.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.AuthServer.Configuration.Enums.ConfirmationSubjectSurface>!
 Veriqa.Core.AuthServer.Configuration.ConfirmationSubjectDisplayOptions.Surfaces.set -> void
-Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme
-Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme.Auto = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme
-Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme.Dark = 2 -> Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme
-Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme.Light = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme
+Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode
+Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode.PerChannel = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode
+Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode.Unified = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode
+Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode.UnifiedWithChannels = 2 -> Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode
+Veriqa.Core.AuthServer.Configuration.Enums.HopRedirectStyle
+Veriqa.Core.AuthServer.Configuration.Enums.HopRedirectStyle.Direct = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.HopRedirectStyle
+Veriqa.Core.AuthServer.Configuration.Enums.HopRedirectStyle.Interstitial = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.HopRedirectStyle
+Veriqa.Core.AuthServer.Configuration.HopModeOptions
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.AcceptClientSignals.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.AcceptClientSignals.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectFingerprint.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectFingerprint.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectGeoLocation.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectGeoLocation.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectIpAddress.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectIpAddress.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectScannerContext.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectScannerContext.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectUserAgent.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.CollectUserAgent.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.EmitScannedStatus.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.EmitScannedStatus.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.Enabled.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.Enabled.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.HopModeOptions() -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.HopPath.get -> string!
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.HopPath.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.QrMode.get -> Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.QrMode.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.RedirectStyle.get -> Veriqa.Core.AuthServer.Configuration.Enums.HopRedirectStyle
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.RedirectStyle.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.ShowChannelButtonsOnAnyChannelTab.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.ShowChannelButtonsOnAnyChannelTab.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.StoreRawUserAgent.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.StoreRawUserAgent.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.TokenLifetime.get -> System.TimeSpan?
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.TokenLifetime.set -> void
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.WarnOnRepeatScan.get -> bool
+Veriqa.Core.AuthServer.Configuration.HopModeOptions.WarnOnRepeatScan.set -> void
+Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys
+Veriqa.Core.AuthServer.HopMode.HopModeConstants
+Veriqa.Core.AuthServer.HopMode.HopModeResultCodes
+Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility
+Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility.Always = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility
+Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility.MobileOnly = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility
+Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility.Never = 2 -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility
 Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode
 Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode.Multichannel = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode
 Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode.Selective = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode
+Veriqa.Core.AuthServer.Configuration.Enums.ChannelLayout
+Veriqa.Core.AuthServer.Configuration.Enums.ChannelLayout.Grid = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelLayout
+Veriqa.Core.AuthServer.Configuration.Enums.ChannelLayout.Tabs = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelLayout
 Veriqa.Core.AuthServer.Configuration.Enums.ClaimSource
 Veriqa.Core.AuthServer.Configuration.Enums.ClaimSource.Channel = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimSource
 Veriqa.Core.AuthServer.Configuration.Enums.ClaimSource.External = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimSource
@@ -112,6 +165,8 @@ Veriqa.Core.AuthServer.Configuration.OidcClientOptions.InitiatorContextEnabled.g
 Veriqa.Core.AuthServer.Configuration.OidcClientOptions.InitiatorContextEnabled.set -> void
 Veriqa.Core.AuthServer.Configuration.OidcClientOptions.LoginConfirmationMode.get -> Veriqa.Core.TransactionEngine.Domain.LoginConfirmationMode?
 Veriqa.Core.AuthServer.Configuration.OidcClientOptions.LoginConfirmationMode.set -> void
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.LoginConfirmationModeByChannel.get -> System.Collections.Generic.IReadOnlyDictionary<string!, Veriqa.Core.TransactionEngine.Domain.LoginConfirmationMode>?
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.LoginConfirmationModeByChannel.set -> void
 Veriqa.Core.AuthServer.Configuration.OidcClientOptions.OidcClientOptions() -> void
 Veriqa.Core.AuthServer.Configuration.OidcClientOptions.RejectBots.get -> bool?
 Veriqa.Core.AuthServer.Configuration.OidcClientOptions.RejectBots.set -> void
@@ -124,10 +179,8 @@ Veriqa.Core.AuthServer.Configuration.OidcClientsOptions.CompatibilityQuirksAllow
 Veriqa.Core.AuthServer.Configuration.OidcClientsOptions.CompatibilityQuirksAllowApplicationOverride.set -> void
 Veriqa.Core.AuthServer.Configuration.OidcClientsOptions.OidcClientsOptions() -> void
 Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsPostConfigure
-Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsPostConfigure.OidcClientsOptionsPostConfigure(Microsoft.Extensions.Hosting.IHostApplicationLifetime! lifetime, Microsoft.Extensions.Logging.ILogger<Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsPostConfigure!>! logger) -> void
 Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsPostConfigure.PostConfigure(string? name, Veriqa.Core.AuthServer.Configuration.OidcClientsOptions! options) -> void
 Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsValidator
-Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsValidator.OidcClientsOptionsValidator() -> void
 Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsValidator.Validate(string? name, Veriqa.Core.AuthServer.Configuration.OidcClientsOptions! options) -> Microsoft.Extensions.Options.ValidateOptionsResult!
 Veriqa.Core.AuthServer.Configuration.OidcServerOptions
 Veriqa.Core.AuthServer.Configuration.OidcServerOptions.AccessTokenLifetimeSeconds.get -> int
@@ -195,6 +248,14 @@ Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationPagesPermitLim
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationPagesPermitLimit.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationPagesWindowSeconds.get -> int
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationPagesWindowSeconds.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopResolvePermitLimit.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopResolvePermitLimit.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopResolveWindowSeconds.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopResolveWindowSeconds.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopSignalPermitLimit.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopSignalPermitLimit.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopSignalWindowSeconds.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopSignalWindowSeconds.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationResultPermitLimit.get -> int
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationResultPermitLimit.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationResultWindowSeconds.get -> int
@@ -238,8 +299,6 @@ Veriqa.Core.AuthServer.Configuration.Resolution.VeriqaConfigKeyCatalogs
 Veriqa.Core.AuthServer.Configuration.ScopeDefinition
 Veriqa.Core.AuthServer.Configuration.ScopeDefinition.Claims.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.AuthServer.Configuration.ClaimDefinition!>!
 Veriqa.Core.AuthServer.Configuration.ScopeDefinition.Claims.set -> void
-Veriqa.Core.AuthServer.Configuration.ScopeDefinition.IsRequired.get -> bool
-Veriqa.Core.AuthServer.Configuration.ScopeDefinition.IsRequired.set -> void
 Veriqa.Core.AuthServer.Configuration.ScopeDefinition.Name.get -> string!
 Veriqa.Core.AuthServer.Configuration.ScopeDefinition.Name.set -> void
 Veriqa.Core.AuthServer.Configuration.ScopeDefinition.ScopeDefinition() -> void
@@ -302,9 +361,27 @@ Veriqa.Core.AuthServer.Endpoints.TransactionResultEndpoint
 Veriqa.Core.AuthServer.Endpoints.TransactionStatusEndpoint
 Veriqa.Core.AuthServer.Endpoints.UserInfoEndpoint
 Veriqa.Core.AuthServer.Hubs.AuthTransactionHub
-Veriqa.Core.AuthServer.Hubs.AuthTransactionHub.AuthTransactionHub(Veriqa.Core.TransactionEngine.Store.ITransactionStore! transactionStore, Microsoft.Extensions.Logging.ILogger<Veriqa.Core.AuthServer.Hubs.AuthTransactionHub!>! logger, System.TimeProvider! timeProvider) -> void
+Veriqa.Core.AuthServer.Hubs.AuthTransactionHub.AuthTransactionHub(Veriqa.Core.TransactionEngine.Store.ITransactionStore! transactionStore, Microsoft.Extensions.Logging.ILogger<Veriqa.Core.AuthServer.Hubs.AuthTransactionHub!>! logger, System.TimeProvider! timeProvider, System.IServiceProvider! services) -> void
 Veriqa.Core.AuthServer.Hubs.AuthTransactionHub.JoinTransactionAsync(string! sessionId) -> System.Threading.Tasks.Task!
 Veriqa.Core.AuthServer.Hubs.AuthTransactionHub.LeaveTransactionAsync(string! sessionId) -> System.Threading.Tasks.Task!
+Veriqa.Core.AuthServer.Hubs.AuthTransactionHub.ReissueHopQrAsync(string! sessionId, System.Collections.Generic.IReadOnlyList<string!>! entries) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Veriqa.Core.AuthServer.Hubs.HopQrReissueItem!>!>!
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.<Clone>$() -> Veriqa.Core.AuthServer.Hubs.HopQrReissueItem!
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Deconstruct(out string! Entry, out string! Url, out string! QrCodeBase64, out long RemainingMs, out bool ExpiresBeforeTransaction, out bool Failed) -> void
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Entry.get -> string!
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Entry.init -> void
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Equals(Veriqa.Core.AuthServer.Hubs.HopQrReissueItem? other) -> bool
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.ExpiresBeforeTransaction.get -> bool
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.ExpiresBeforeTransaction.init -> void
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Failed.get -> bool
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Failed.init -> void
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.HopQrReissueItem(string! Entry, string! Url, string! QrCodeBase64, long RemainingMs, bool ExpiresBeforeTransaction, bool Failed) -> void
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.QrCodeBase64.get -> string!
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.QrCodeBase64.init -> void
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.RemainingMs.get -> long
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.RemainingMs.init -> void
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Url.get -> string!
+Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Url.init -> void
 Veriqa.Core.AuthServer.Hubs.ChannelStatusMessage
 Veriqa.Core.AuthServer.Hubs.ChannelStatusMessage.ChannelStatus.get -> string!
 Veriqa.Core.AuthServer.Hubs.ChannelStatusMessage.ChannelStatus.init -> void
@@ -314,6 +391,12 @@ Veriqa.Core.AuthServer.Hubs.ChannelStatusMessage.ChannelType.init -> void
 Veriqa.Core.AuthServer.Hubs.ChannelStatusMessage.SessionId.get -> string!
 Veriqa.Core.AuthServer.Hubs.ChannelStatusMessage.SessionId.init -> void
 Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage
+Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.AnswerBrowserBound.get -> bool
+Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.AnswerBrowserBound.init -> void
+Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.CompletionStep.get -> string?
+Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.CompletionStep.init -> void
+Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.CompletionSurface.get -> string?
+Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.CompletionSurface.init -> void
 Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.ErrorCode.get -> string?
 Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.ErrorCode.init -> void
 Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.RedirectUrl.get -> string?
@@ -324,7 +407,7 @@ Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.Status.get -> string!
 Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.Status.init -> void
 Veriqa.Core.AuthServer.Hubs.TransactionStatusMessage.TransactionStatusMessage() -> void
 Veriqa.Core.AuthServer.Infrastructure.ClaimsMapper
-Veriqa.Core.AuthServer.Infrastructure.ClaimsMapper.ClaimsMapper() -> void
+Veriqa.Core.AuthServer.Infrastructure.ClaimsMapper.ClaimsMapper(Veriqa.Core.Configuration.IConfigurationResolver! resolver) -> void
 Veriqa.Core.AuthServer.Infrastructure.ClaimsMapper.MapToClaimsAsync(Veriqa.Core.TransactionEngine.Domain.ResolvedIdentitySnapshot! resolvedIdentity, Veriqa.Core.TransactionEngine.Domain.CompletionSnapshot! completion, Veriqa.Core.AuthServer.Infrastructure.ClaimsMappingContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<System.Collections.Generic.IReadOnlyList<System.Security.Claims.Claim!>!>!>!
 Veriqa.Core.AuthServer.Infrastructure.ClaimsMappingContext
 Veriqa.Core.AuthServer.Infrastructure.ClaimsMappingContext.<Clone>$() -> Veriqa.Core.AuthServer.Infrastructure.ClaimsMappingContext!
@@ -374,10 +457,38 @@ Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.Equals(Veriqa.Core.AuthSer
 Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.OsPlatform.get -> string?
 Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.OsPlatform.init -> void
 Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.UserAgentInfo(string? Browser, string? OsPlatform, string! DeviceType) -> void
+Veriqa.Core.AuthServer.UI.AuthPageCancelForm
+Veriqa.Core.AuthServer.UI.AuthPageCancelForm.ActionUrl.get -> string!
+Veriqa.Core.AuthServer.UI.AuthPageCancelForm.ActionUrl.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageCancelForm.AntiforgeryFieldName.get -> string!
+Veriqa.Core.AuthServer.UI.AuthPageCancelForm.AntiforgeryFieldName.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageCancelForm.AntiforgeryToken.get -> string!
+Veriqa.Core.AuthServer.UI.AuthPageCancelForm.AntiforgeryToken.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageCancelForm.AuthPageCancelForm() -> void
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Answer.get -> string!
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Answer.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.AuthPageChannelLines() -> void
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.HopHint.get -> string!
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.HopHint.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Launched.get -> string!
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Launched.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Scanned.get -> string!
+Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Scanned.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.AnyChannelTabShowsChannelButtons.get -> bool
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.AnyChannelTabShowsChannelButtons.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.AuthPageRenderContext() -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.CallbackUrl.get -> string?
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.CallbackUrl.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.CancelForm.get -> Veriqa.Core.AuthServer.UI.AuthPageCancelForm?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.CancelForm.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ChannelButtonVisibility.get -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ChannelButtonVisibility.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ChannelLines.get -> System.Collections.Generic.IReadOnlyDictionary<string!, Veriqa.Core.AuthServer.UI.AuthPageChannelLines!>!
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ChannelLines.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ChannelLayout.get -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelLayout
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ChannelLayout.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Channels.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo!>!
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Channels.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ConfirmationQuestionUrl.get -> string?
@@ -388,8 +499,22 @@ Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Design.get -> Veriqa.Core.AuthSe
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Design.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ExpiresAt.get -> System.DateTimeOffset
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ExpiresAt.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.FallbackChannelLaunchedLine.get -> string?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.FallbackChannelLaunchedLine.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ChannelButtonColors.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.ChannelButtonColors.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Instruction.get -> string?
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Instruction.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.InstructionWithoutButton.get -> string?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.InstructionWithoutButton.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.InstructionWithoutQr.get -> string?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.InstructionWithoutQr.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.IsScannerPage.get -> bool
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.IsScannerPage.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.OffersOutcomeClose.get -> bool
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.OffersOutcomeClose.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.OutcomeCloseApplicationName.get -> string?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.OutcomeCloseApplicationName.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Language.get -> string!
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Language.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.NavigatesAway.get -> bool
@@ -402,6 +527,12 @@ Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RemainingSeconds.get -> double
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RemainingSeconds.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RestartUrl.get -> string?
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RestartUrl.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.CollectsHopFingerprint.get -> bool
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.CollectsHopFingerprint.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.HopLaunchTarget.get -> string?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.HopLaunchTarget.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.SendsChannelLaunchedSignal.get -> bool
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.SendsChannelLaunchedSignal.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.SessionId.get -> string!
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.SessionId.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.SubjectText.get -> string?
@@ -414,8 +545,18 @@ Veriqa.Core.AuthServer.UI.AuthPageRenderContext.TerminalErrorText.get -> string?
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.TerminalErrorText.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.TerminalExpiredText.get -> string?
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.TerminalExpiredText.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Texts.get -> Veriqa.Core.ChannelAdapter.UI.CorePageTexts!
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Texts.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Title.get -> string?
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.Title.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.TransactionType.get -> string?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.TransactionType.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.UnifiedQrCodeBase64.get -> string?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.UnifiedQrCodeBase64.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.UnifiedQrExpiresAt.get -> System.DateTimeOffset?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.UnifiedQrExpiresAt.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.UnifiedQrWithChannelQrCodes.get -> bool
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.UnifiedQrWithChannelQrCodes.init -> void
 Veriqa.Core.AuthServer.UI.IAuthPageRenderer
 Veriqa.Core.AuthServer.UI.IAuthPageRenderer.RenderAuthPage(Veriqa.Core.AuthServer.UI.AuthPageRenderContext! context) -> string!
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo
@@ -426,12 +567,28 @@ Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.DeepLinkUrl.get -> string!
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.DeepLinkUrl.init -> void
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.DisplayName.get -> string?
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.DisplayName.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.EmailPullAvailable.get -> bool
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.EmailPullAvailable.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.EmailPullMethods.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.Abstractions.EmailPullMethod>!
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.EmailPullMethods.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.BotName.get -> string?
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.BotName.init -> void
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.Hint.get -> string?
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.Hint.init -> void
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.IconSvgPath.get -> string?
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.IconSvgPath.init -> void
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.QrCodeBase64.get -> string!
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.QrCodeBase64.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.QrContent.get -> string!
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.QrContent.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.QrContentExpiresAt.get -> System.DateTimeOffset?
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.QrContentExpiresAt.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.StartMessage.get -> string?
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.StartMessage.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.StartMessageDisplay.get -> string?
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.StartMessageDisplay.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.StartMessageIsFallback.get -> bool
+Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo.StartMessageIsFallback.init -> void
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.<Clone>$() -> Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride!
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.ChannelDisplayOverride(System.Collections.Generic.IReadOnlyList<string!>? Channels, Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode? Mode) -> void
@@ -441,8 +598,12 @@ Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.Deconstruct(out System
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.Equals(Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride? other) -> bool
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.Mode.get -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode?
 Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.Mode.init -> void
+Veriqa.Core.AuthServer.UI.Services.ChannelQrSurface
+Veriqa.Core.AuthServer.UI.Services.ChannelQrSurface.CorePage = 0 -> Veriqa.Core.AuthServer.UI.Services.ChannelQrSurface
+Veriqa.Core.AuthServer.UI.Services.ChannelQrSurface.CreationAnswer = 1 -> Veriqa.Core.AuthServer.UI.Services.ChannelQrSurface
+Veriqa.Core.AuthServer.UI.Services.ChannelQrSurface.NotShown = 2 -> Veriqa.Core.AuthServer.UI.Services.ChannelQrSurface
 Veriqa.Core.AuthServer.UI.Services.IChannelDisplayService
-Veriqa.Core.AuthServer.UI.Services.IChannelDisplayService.GetChannelDisplayDataAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, System.Collections.Generic.IReadOnlySet<string!>! allowedChannelTypes, Veriqa.Core.Configuration.ResolutionContext! resolution, Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride? displayOverride, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<System.Collections.Generic.IReadOnlyList<Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo!>!>!>!
+Veriqa.Core.AuthServer.UI.Services.IChannelDisplayService.GetChannelDisplayDataAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, System.DateTimeOffset transactionExpiresAt, System.Collections.Generic.IReadOnlySet<string!>! allowedChannelTypes, Veriqa.Core.Configuration.ResolutionContext! resolution, Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride? displayOverride, Veriqa.Core.AuthServer.UI.Services.ChannelQrSurface qrSurface, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<System.Collections.Generic.IReadOnlyList<Veriqa.Core.AuthServer.UI.Services.ChannelDisplayInfo!>!>!>!
 Veriqa.Core.AuthServer.UI.Services.IQrCodeService
 Veriqa.Core.AuthServer.UI.Services.IQrCodeService.GenerateBase64PngAsync(string! content, string! channelType, Veriqa.Core.Configuration.ResolutionContext! resolution, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string!>
 Veriqa.Core.AuthServer.UiConfig.IUiConfigStore
@@ -450,11 +611,19 @@ Veriqa.Core.AuthServer.UiConfig.IUiConfigStore.GetAsync(string? selector, string
 Veriqa.Core.AuthServer.UiConfig.IUiConfigStore.IsLive.get -> bool
 Veriqa.Core.AuthServer.UiConfig.TolerantNullableEnumConverter<TEnum>
 Veriqa.Core.AuthServer.UiConfig.TolerantNullableEnumConverter<TEnum>.TolerantNullableEnumConverter() -> void
+Veriqa.Core.AuthServer.UiConfig.TolerantMapConverter<TMap, TValue>
+Veriqa.Core.AuthServer.UiConfig.TolerantMapConverter<TMap, TValue>.TolerantMapConverter() -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.BrandName.get -> string?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.BrandName.init -> void
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Cancel.get -> Veriqa.Core.AuthServer.Configuration.AuthPageCancelOverrideOptions?
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Cancel.init -> void
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.ChannelButton.get -> Veriqa.Core.AuthServer.Configuration.ChannelButtonOverrideOptions?
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.ChannelButton.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.ChannelDisplayMode.get -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.ChannelDisplayMode.init -> void
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.ChannelLayout.get -> Veriqa.Core.AuthServer.Configuration.Enums.ChannelLayout?
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.ChannelLayout.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Channels.get -> System.Collections.Generic.IReadOnlyList<string!>?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Channels.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.CssSriHash.get -> string?
@@ -465,8 +634,14 @@ Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.DefaultTimeZone.get -> string?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.DefaultTimeZone.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Extra.get -> System.Collections.Generic.IDictionary<string!, System.Text.Json.JsonElement>?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Extra.init -> void
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.ChannelButtonColors.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.ChannelButtonColors.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Instruction.get -> string?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Instruction.init -> void
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.InstructionWithoutButton.get -> string?
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.InstructionWithoutButton.init -> void
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.InstructionWithoutQr.get -> string?
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.InstructionWithoutQr.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.IsSchemaVersionValid() -> bool
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.LogoUrl.get -> string?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.LogoUrl.init -> void
@@ -484,7 +659,9 @@ Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.SchemaVersion.get -> int
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.SchemaVersion.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.SignalRClientPath.get -> string?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.SignalRClientPath.init -> void
-Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Theme.get -> Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme?
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Texts.get -> System.Collections.Generic.IReadOnlyDictionary<string!, Veriqa.Core.AuthServer.UiConfig.UiConfigText!>?
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Texts.init -> void
+Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Theme.get -> Veriqa.Core.ChannelAdapter.UI.AuthPageTheme?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Theme.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Title.get -> string?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.Title.init -> void
@@ -492,6 +669,10 @@ Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.TtlSeconds.get -> int?
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.TtlSeconds.init -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigRecord.UiConfigRecord() -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigServiceCollectionExtensions
+Veriqa.Core.AuthServer.UiConfig.UiConfigText
+Veriqa.Core.AuthServer.UiConfig.UiConfigText.ReplacementKey.get -> string?
+Veriqa.Core.AuthServer.UiConfig.UiConfigText.UiConfigText() -> void
+Veriqa.Core.AuthServer.UiConfig.UiConfigText.UiConfigText(string! replacementKey) -> void
 Veriqa.Core.AuthServer.UiConfig.UiConfigurationsOptions
 Veriqa.Core.AuthServer.UiConfig.UiConfigurationsOptions.Records.get -> System.Collections.Generic.IReadOnlyDictionary<string!, Veriqa.Core.AuthServer.UiConfig.UiConfigRecord!>!
 Veriqa.Core.AuthServer.UiConfig.UiConfigurationsOptions.Records.set -> void
@@ -504,6 +685,22 @@ const Veriqa.Core.AuthServer.Configuration.AuthPageDesignOptions.SectionName = "
 const Veriqa.Core.AuthServer.Configuration.ChannelDisplayOptions.SectionName = "Veriqa:ChannelDisplay" -> string!
 const Veriqa.Core.AuthServer.Configuration.ConfirmationSubjectDisplayOptions.RecordMember = "ConfirmationSubjectDisplaySurfaces" -> string!
 const Veriqa.Core.AuthServer.Configuration.ConfirmationSubjectDisplayOptions.SectionName = "Veriqa:ConfirmationSubjectDisplay" -> string!
+const Veriqa.Core.AuthServer.Configuration.HopModeOptions.SectionName = "Veriqa:HopMode" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeConstants.ChannelHopEnabledMember = "HopEnabled" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeConstants.ChannelHopRedirectStyleMember = "HopRedirectStyle" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeConstants.DefaultHopPath = "/r" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeConstants.ReissueFraction = 0.75 -> double
+const Veriqa.Core.AuthServer.HopMode.HopModeConstants.ReissueRetryDelayMs = 5000 -> int
+const Veriqa.Core.AuthServer.HopMode.HopModeConstants.ClientSignalMaxBodyBytes = 1024 -> int
+const Veriqa.Core.AuthServer.HopMode.HopModeConstants.FingerprintLength = 43 -> int
+const Veriqa.Core.AuthServer.HopMode.HopModeConstants.ScannerContextCollectorVersion = "1.1.0" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeResultCodes.ChannelUnavailable = "hop_channel_unavailable" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeResultCodes.ClientSignalRejected = "hop_client_signal_rejected" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeResultCodes.ScannerContextPartial = "hop_scanner_context_partial" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeResultCodes.ScannerContextSkipped = "hop_scanner_context_skipped" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeResultCodes.TokenExpired = "hop_token_expired" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeResultCodes.TokenInvalid = "hop_token_invalid" -> string!
+const Veriqa.Core.AuthServer.HopMode.HopModeResultCodes.TokenSuperseded = "hop_token_superseded" -> string!
 const Veriqa.Core.AuthServer.Configuration.LocalizationOptions.SectionName = "Veriqa:Localization" -> string!
 const Veriqa.Core.AuthServer.Configuration.LoggingOptions.DefaultRetentionDays = 90 -> int
 const Veriqa.Core.AuthServer.Configuration.LoggingOptions.SectionName = "Veriqa:Logging" -> string!
@@ -520,6 +717,8 @@ const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.AuthorizePolicyName 
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.CallbackPolicyName = "callback" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationCreatePolicyName = "confirmation-create" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationPagesPolicyName = "confirmation-pages" -> string!
+const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopResolvePolicyName = "hop-resolve" -> string!
+const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopSignalPolicyName = "hop-signal" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationResultPolicyName = "confirmation-result" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailStartPolicyName = "email-start" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.PollingPolicyName = "polling" -> string!
@@ -571,7 +770,6 @@ const Veriqa.Core.AuthServer.Constants.InitiatorContextResultCodes.IpUntrusted =
 const Veriqa.Core.AuthServer.Constants.OidcConstants.AcrValuesChannelPrefix = "channel:" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcConstants.AuthCookieExpireMinutes = 5 -> int
 const Veriqa.Core.AuthServer.Constants.OidcConstants.AuthCookieName = "veriqa_auth" -> string!
-const Veriqa.Core.AuthServer.Constants.OidcConstants.BrowserNonceCookieMaxAgeMinutes = 10 -> int
 const Veriqa.Core.AuthServer.Constants.OidcConstants.BrowserNonceCookieName = "veriqa_browser_nonce" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcConstants.CookieAuthScheme = "Veriqa.Cookie" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcConstants.InMemoryDatabaseName = "VeriqaOpenIddict" -> string!
@@ -581,12 +779,18 @@ const Veriqa.Core.AuthServer.Constants.OidcConstants.TimeZoneParameterName = "ti
 const Veriqa.Core.AuthServer.Constants.OidcConstants.UiConfigParameterName = "ui_config" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.Authorize = "/connect/authorize" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.AuthorizeCallback = "/connect/authorize/callback" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcEndpoints.AuthorizeCallbackCancel = "/connect/authorize/callback/cancel" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcEndpoints.AuthorizeCallbackClaims = "/connect/authorize/callback/claims" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcEndpoints.AuthorizeCallbackClaimsCancel = "/connect/authorize/callback/claims/cancel" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcEndpoints.AuthorizeCallbackClaimsEmail = "/connect/authorize/callback/claims/email" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.AuthorizeCallbackConfirm = "/connect/authorize/callback/confirm" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.AuthorizeCallbackDecline = "/connect/authorize/callback/decline" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcEndpoints.ClaimCompletionFormPage = "/auth/claims" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.ConfirmationTransaction = "/api/transaction/confirmation" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.Introspect = "/connect/introspect" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.Revoke = "/connect/revoke" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.Token = "/connect/token" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcEndpoints.TransactionCancel = "/auth/transaction/cancel" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.TransactionConfirmAccept = "/auth/transaction/confirm/accept" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.TransactionConfirmDecline = "/auth/transaction/confirm/decline" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcEndpoints.TransactionConfirmPage = "/auth/transaction/confirm" -> string!
@@ -597,6 +801,7 @@ const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.BrowserNonceMismatch = "br
 const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.ChannelDisplayFailed = "channel_display_failed" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.ClaimsMappingFailed = "claims_mapping_failed" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.ClientSeedingFailed = "client_seeding_failed" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.NoChannelForRequiredPhone = "no_channel_for_required_phone" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.OidcRequestInvalid = "oidc_request_invalid" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.PkceRequired = "pkce_required" -> string!
 const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.TransactionCreationFailed = "transaction_creation_failed" -> string!
@@ -618,8 +823,10 @@ const Veriqa.Core.AuthServer.Constants.SignalRConstants.JoinTransactionMethod = 
 const Veriqa.Core.AuthServer.Constants.SignalRConstants.LeaveTransactionMethod = "LeaveTransactionAsync" -> string!
 const Veriqa.Core.AuthServer.Constants.SignalRConstants.OnChannelStatusChangedMethod = "OnChannelStatusChanged" -> string!
 const Veriqa.Core.AuthServer.Constants.SignalRConstants.OnStatusChangedMethod = "OnStatusChanged" -> string!
+const Veriqa.Core.AuthServer.Constants.SignalRConstants.ReissueHopQrMethod = "ReissueHopQrAsync" -> string!
 const Veriqa.Core.AuthServer.Constants.SignalRConstants.SignalRClientPath = "/_content/Veriqa.Core.AuthServer/lib/signalr/signalr.min.js" -> string!
 const Veriqa.Core.AuthServer.Constants.TransactionStatusNames.AwaitingWebConfirmation = "AwaitingWebConfirmation" -> string!
+const Veriqa.Core.AuthServer.Constants.TransactionStatusNames.ClaimCompletion = "ClaimCompletion" -> string!
 const Veriqa.Core.AuthServer.Constants.TransactionStatusNames.Completed = "Completed" -> string!
 const Veriqa.Core.AuthServer.Constants.TransactionStatusNames.Confirmed = "Confirmed" -> string!
 const Veriqa.Core.AuthServer.Constants.TransactionStatusNames.Expired = "Expired" -> string!
@@ -632,6 +839,9 @@ override Veriqa.Core.AuthServer.Infrastructure.ClaimsMappingContext.ToString() -
 override Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation.Equals(object? obj) -> bool
 override Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation.GetHashCode() -> int
 override Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation.ToString() -> string!
+override Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.Equals(object? obj) -> bool
+override Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.GetHashCode() -> int
+override Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.ToString() -> string!
 override Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.Equals(object? obj) -> bool
 override Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.GetHashCode() -> int
 override Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.ToString() -> string!
@@ -640,26 +850,33 @@ override Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.GetHashCode()
 override Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.ToString() -> string!
 override Veriqa.Core.AuthServer.UiConfig.TolerantNullableEnumConverter<TEnum>.Read(ref System.Text.Json.Utf8JsonReader reader, System.Type! typeToConvert, System.Text.Json.JsonSerializerOptions! options) -> TEnum?
 override Veriqa.Core.AuthServer.UiConfig.TolerantNullableEnumConverter<TEnum>.Write(System.Text.Json.Utf8JsonWriter! writer, TEnum? value, System.Text.Json.JsonSerializerOptions! options) -> void
+override Veriqa.Core.AuthServer.UiConfig.TolerantMapConverter<TMap, TValue>.Read(ref System.Text.Json.Utf8JsonReader reader, System.Type! typeToConvert, System.Text.Json.JsonSerializerOptions! options) -> TMap?
+override Veriqa.Core.AuthServer.UiConfig.TolerantMapConverter<TMap, TValue>.Write(System.Text.Json.Utf8JsonWriter! writer, TMap! value, System.Text.Json.JsonSerializerOptions! options) -> void
 static Veriqa.Core.AuthServer.Configuration.QrCodeOverrideOptions.IsPixelsPerModuleInRange(int pixelsPerModule) -> bool
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.AccessTokenLifetimeSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.AuthorizationCodeLifetimeSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.CancelEnabled.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.ChannelButtonShowChannelButton.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.ChannelButtonVisibility>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.ChannelHints.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.ClientCompatibilityQuirks.get -> Veriqa.Core.Configuration.ConfigKey<System.Collections.Generic.IReadOnlyList<string!>!>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.ClientInitiateLoginUri.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.ClaimCompletionFormEnabled.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.DefaultTimeZone.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.EnableRefreshTokenRotation.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.EnableRevocation.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.Issuer.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
-static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageBrandName.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageChannelDisplayMode.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.ChannelDisplayMode>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageChannelLayout.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.ChannelLayout>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageChannels.get -> Veriqa.Core.Configuration.ConfigKey<System.Collections.Generic.IReadOnlyList<string!>!>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageCustomJs.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource?>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageFooterHtml.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageHopInstructionHtml.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageInstruction.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageInstructionWithoutButton.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageInstructionWithoutQr.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageLogoUrl.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageSignalRClientPath.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
-static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageTheme.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.AuthPageTheme>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.PageTitle.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.QrCodePixelsPerModule.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.QrCodeShowQrCode.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.QrCodeVisibility>!
@@ -668,6 +885,25 @@ static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.Tran
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.UiConfigSelectorAssigned.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.ConfirmationSubjectDisplayConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
 static Veriqa.Core.AuthServer.Configuration.Resolution.ConfirmationSubjectDisplayConfigKeys.Surfaces.get -> Veriqa.Core.Configuration.ConfigKey<System.Collections.Generic.IReadOnlyCollection<Veriqa.Core.AuthServer.Configuration.Enums.ConfirmationSubjectSurface>!>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.AcceptClientSignals.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.CollectFingerprint.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.CollectGeoLocation.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.CollectIpAddress.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.CollectScannerContext.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.CollectUserAgent.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.EmitScannedStatus.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.Enabled.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.HopPath.get -> Veriqa.Core.Configuration.ConfigKey<string!>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.QrMode.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.HopQrMode>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.RedirectStyle.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.HopRedirectStyle>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.ShowChannelButtonsOnAnyChannelTab.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.StoreRawUserAgent.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.TokenLifetime.get -> Veriqa.Core.Configuration.ConfigKey<System.TimeSpan?>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.HopModeConfigKeys.WarnOnRepeatScan.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.HopMode.HopModeConstants.FingerprintAttributes.get -> System.Collections.Generic.IReadOnlyList<string!>!
+static readonly Veriqa.Core.AuthServer.HopMode.HopModeConstants.MinimumTokenLifetime -> System.TimeSpan
+static readonly Veriqa.Core.AuthServer.HopMode.HopModeConstants.ExpiryTolerance -> System.TimeSpan
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.AuthorizePermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.AuthorizeWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.CallbackPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
@@ -677,6 +913,10 @@ static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.Confi
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.ConfirmationCreateWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.ConfirmationPagesPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.ConfirmationPagesWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.HopResolvePermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.HopResolveWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.HopSignalPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.HopSignalWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.ConfirmationResultPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.ConfirmationResultWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.EmailStartPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
@@ -718,8 +958,72 @@ static Veriqa.Core.AuthServer.Infrastructure.SessionIdMapper.ToSessionId(Veriqa.
 static Veriqa.Core.AuthServer.Infrastructure.SessionIdMapper.ToTransactionId(string? sessionId) -> Veriqa.Core.TransactionEngine.Domain.TransactionId?
 static Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation.operator !=(Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation? left, Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation? right) -> bool
 static Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation.operator ==(Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation? left, Veriqa.Core.AuthServer.InitiatorContext.GeoIpLocation? right) -> bool
+static Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.operator !=(Veriqa.Core.AuthServer.Hubs.HopQrReissueItem? left, Veriqa.Core.AuthServer.Hubs.HopQrReissueItem? right) -> bool
+static Veriqa.Core.AuthServer.Hubs.HopQrReissueItem.operator ==(Veriqa.Core.AuthServer.Hubs.HopQrReissueItem? left, Veriqa.Core.AuthServer.Hubs.HopQrReissueItem? right) -> bool
 static Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.operator !=(Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo? left, Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo? right) -> bool
 static Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo.operator ==(Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo? left, Veriqa.Core.AuthServer.InitiatorContext.UserAgentInfo? right) -> bool
 static Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.operator !=(Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride? left, Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride? right) -> bool
 static Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride.operator ==(Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride? left, Veriqa.Core.AuthServer.UI.Services.ChannelDisplayOverride? right) -> bool
 static Veriqa.Core.AuthServer.UiConfig.UiConfigServiceCollectionExtensions.AddVeriqaUiConfig(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.Extensions.Configuration.IConfiguration! configuration) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.ClaimCompletionDefinition() -> void
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.Format.get -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFieldFormat
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.Format.set -> void
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.Label.get -> string!
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.Label.set -> void
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.MaxLength.get -> int
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.MaxLength.set -> void
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.Options.get -> System.Collections.Generic.IList<Veriqa.Core.AuthServer.Configuration.ClaimCompletionOption!>!
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.Options.set -> void
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionOption
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionOption.ClaimCompletionOption() -> void
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionOption.Label.get -> string!
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionOption.Label.set -> void
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionOption.Value.get -> string!
+Veriqa.Core.AuthServer.Configuration.ClaimCompletionOption.Value.set -> void
+Veriqa.Core.AuthServer.Configuration.ClaimDefinition.Completion.get -> Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition?
+Veriqa.Core.AuthServer.Configuration.ClaimDefinition.Completion.set -> void
+Veriqa.Core.AuthServer.Configuration.ClaimDefinition.Level.get -> Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel
+Veriqa.Core.AuthServer.Configuration.ClaimDefinition.Level.set -> void
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFieldFormat
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFieldFormat.Choice = 2 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFieldFormat
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFieldFormat.Date = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFieldFormat
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFieldFormat.Text = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFieldFormat
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimSource.Collected = 2 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimSource
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.ClaimLevels.get -> System.Collections.Generic.IReadOnlyDictionary<string!, Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel>?
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.ClaimLevels.set -> void
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.RequireEmail.get -> bool?
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.RequireEmail.set -> void
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.ClaimCompletionFormEnabled.get -> bool?
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.ClaimCompletionFormEnabled.set -> void
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.RequirePhone.get -> bool?
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.RequirePhone.set -> void
+Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsPostConfigure.OidcClientsOptionsPostConfigure(Microsoft.Extensions.Hosting.IHostApplicationLifetime! lifetime, Microsoft.Extensions.Logging.ILogger<Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsPostConfigure!>! logger, Microsoft.Extensions.Options.IOptions<Veriqa.Core.AuthServer.Configuration.ScopesClaimsOptions!>! scopesClaims) -> void
+Veriqa.Core.AuthServer.Configuration.OidcClientsOptionsValidator.OidcClientsOptionsValidator(Microsoft.Extensions.Options.IOptions<Veriqa.Core.AuthServer.Configuration.ScopesClaimsOptions!>! scopesClaims) -> void
+Veriqa.Core.AuthServer.Configuration.Resolution.ScopesClaimsConfigKeys
+const Veriqa.Core.AuthServer.Configuration.ClaimCompletionDefinition.DefaultMaxLength = 256 -> int
+const Veriqa.Core.AuthServer.Configuration.Resolution.ScopesClaimsConfigKeys.ClaimDimensionName = "claim" -> string!
+static Veriqa.Core.AuthServer.Configuration.Resolution.ScopesClaimsConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.AuthServer.Configuration.Resolution.ScopesClaimsConfigKeys.ClaimLevel.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.TransactionEngine.Domain.ClaimRequirementLevel>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.ScopesClaimsConfigKeys.RequireEmail.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.ScopesClaimsConfigKeys.RequirePhone.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.ScopesClaimsConfigKeys.ScopeCatalog.get -> Veriqa.Core.Configuration.ConfigKey<System.Collections.Generic.IReadOnlyList<Veriqa.Core.AuthServer.Configuration.ScopeDefinition!>!>!
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface.Auto = 0 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface.CrossDevicePage = 2 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface.CrossDevicePageOnly = 3 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface
+Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface.InitiatingPage = 1 -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.ClaimCompletionFormSurface.get -> Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface?
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.ClaimCompletionFormSurface.set -> void
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.ClaimCompletionFormSurface.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.ClaimFormSurface>!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.CollectedClaimsStoreEnabledKey = "Veriqa:CollectedClaims:Store:Enabled" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcEndpoints.CollectedClaims = "/api/collected-claims" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcErrorCodes.CollectedClaimsStoreUnavailable = "collected_claims_store_unavailable" -> string!
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.AllowCollectedClaimsDeletion.get -> bool
+Veriqa.Core.AuthServer.Configuration.OidcClientOptions.AllowCollectedClaimsDeletion.set -> void
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.PathBaseKey = "Veriqa:PathBase" -> string!
+const Veriqa.Core.AuthServer.Constants.OidcEndpoints.LinkHandleRedeem = "/api/link-handle/redeem" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.RabbitMqSectionName = "Veriqa:Events:RabbitMq" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.TransactionStoreSectionName = "Veriqa:TransactionEngine:Store" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.ChannelStoresRedisConnectionStringKey = "Veriqa:ChannelStores:Redis:ConnectionString" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.ChannelStoresRedisSectionName = "Veriqa:ChannelStores:Redis" -> string!

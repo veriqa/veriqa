@@ -28,7 +28,7 @@ namespace Veriqa.Core.Configuration;
 /// <para>
 /// This enumeration is the ONE seam of the walk where the declared answers of a key are applied, and
 /// its counterpart on the resolution path is the single seam there
-/// (<c>PathConfigKeyRegistrar.ReadOnce</c>). The reading of one ADDRESS is the same call in both
+/// (<see cref="DeclaredConfigKey{T}.StatedAtStep"/>). The reading of one ADDRESS is the same call in both
 /// (<see cref="DeclaredConfigKey{T}.StatedAt"/>); what each seam adds is what belongs to its own unit
 /// of walking — the answer of a level whose record said nothing
 /// (<see cref="DeclaredConfigKey{T}.Default"/>) and the answer carried by the presence of a record
@@ -52,10 +52,22 @@ internal sealed class DeclaredConfigValueCatalog<T> : ConfigValueCatalog<T>, IDi
     /// Path of the step of the chain that narrows NOTHING — the step whose address every level has,
     /// while the narrowed ones exist only where the deployment stated them. Null when the address
     /// carries a substitution OUTSIDE its groups: that address exists for no step but the one that
-    /// knows the dimension's value, so there is no address to walk the records of the level at (see
+    /// knows the dimension's value. The core level is then walked by the points of that dimension
+    /// (<see cref="_corePoints"/>); a level above it has no address to walk its records at (see
     /// <see cref="CanWalk"/>).
     /// </summary>
     private readonly string? _unnarrowedPath;
+
+    /// <summary>
+    /// The dimension the core level is walked BY where its address has no step that narrows nothing:
+    /// the section of the host configuration whose child keys are the values of that dimension the
+    /// deployment states, and the dimension itself. The record of the core level is the configuration
+    /// of the host, whose sections can be enumerated, so such an address is read at every point it
+    /// exists at. Null above the core level, where the records of the level are another store's to
+    /// enumerate, and for an address the points cannot be read off one section of
+    /// (<see cref="ConfigAddressTemplate.EnumerableDimension"/>).
+    /// </summary>
+    private readonly (string Section, string Dimension)? _corePoints;
 
     /// <summary>
     /// Walker of the level's records; null at the core level, which has no records to enumerate.
@@ -103,6 +115,7 @@ internal sealed class DeclaredConfigValueCatalog<T> : ConfigValueCatalog<T>, IDi
         // The address is resolved once, at construction: it is parsed at declaration time and the step
         // that narrows nothing is the same one for every walk.
         _unnarrowedPath = template.Resolve(ConfigDimensionValues.None);
+        _corePoints = _unnarrowedPath is null && _isCore ? template.EnumerableDimension : null;
     }
 
     /// <inheritdoc />
@@ -112,15 +125,18 @@ internal sealed class DeclaredConfigValueCatalog<T> : ConfigValueCatalog<T>, IDi
     /// does not hold, or whose source a contour replaced after the walker was registered, is NAMED as
     /// standing outside the report rather than counted as walked and found clean.
     /// <para>
-    /// An address that requires a dimension value answers the same way, and for the same reason: the
-    /// walk reads the records of a level at the address of the step that narrows nothing, and an
-    /// address carrying a substitution outside its groups has no such step. There is nothing to read,
-    /// so the pair is NAMED as standing outside the report — the alternative, walking no record and
+    /// An address that requires a dimension value answers the same way ABOVE the core level, and for
+    /// the same reason: the walk reads the records of a level at the address of the step that narrows
+    /// nothing, and an address carrying a substitution outside its groups has no such step. At the
+    /// core level the record is the configuration of the host, whose sections name the values of the
+    /// dimension, so the level is walked point by point instead. Where neither holds there is nothing
+    /// to read, so the pair is NAMED as standing outside the report — the alternative, walking no record and
     /// letting the base state <see cref="ConfigSnapshotFact.SettingNotStated"/>, would tell an operator
     /// the level states no value where no value was ever looked for.
     /// </para>
     /// </remarks>
-    public override bool CanWalk => (_isCore || _walker is { CanWalk: true }) && _unnarrowedPath is not null;
+    public override bool CanWalk =>
+        (_isCore || _walker is { CanWalk: true }) && (_unnarrowedPath is not null || _corePoints is not null);
 
     /// <inheritdoc />
     /// <remarks>
@@ -128,7 +144,8 @@ internal sealed class DeclaredConfigValueCatalog<T> : ConfigValueCatalog<T>, IDi
     /// keeps the walk out on its own — there is no address to read the records at — while "the source
     /// does not enumerate its records" would be the report's answer for a source that enumerates them.
     /// </remarks>
-    public string? AddressRequiringDimensionValue => _unnarrowedPath is null ? _template.Text : null;
+    public string? AddressRequiringDimensionValue =>
+        _unnarrowedPath is null && _corePoints is null ? _template.Text : null;
 
     /// <summary>
     /// Builds the catalog of one declared pair, taking the walker of the level out of the container.
@@ -182,6 +199,16 @@ internal sealed class DeclaredConfigValueCatalog<T> : ConfigValueCatalog<T>, IDi
         // that the level holds no value for the setting — an assertion about a level not one record of
         // which was read. The report guards every walk it makes and names the level unread instead of
         // failing the host over it.
+        if (_corePoints is { } points)
+        {
+            foreach (var walked in EnumerateCorePoints(points.Section, points.Dimension))
+            {
+                yield return walked;
+            }
+
+            yield break;
+        }
+
         if (_unnarrowedPath is not { } path)
         {
             throw new InvalidOperationException(
@@ -195,7 +222,7 @@ internal sealed class DeclaredConfigValueCatalog<T> : ConfigValueCatalog<T>, IDi
         foreach (var (node, relativePath) in Records(path))
         {
             // The presence of the record is the whole answer where the owner declared it so — the same
-            // reading the resolution path performs (PathConfigKeyRegistrar.ReadOnce), asked here of
+            // reading the resolution path performs (DeclaredConfigKey.StatedAtStep), asked here of
             // every record the level holds instead of of one step of the chain.
             if (_declared.PresenceMeans is { HasValue: true } presence)
             {
@@ -230,6 +257,71 @@ internal sealed class DeclaredConfigValueCatalog<T> : ConfigValueCatalog<T>, IDi
         if (!answered && _isCore && _declared.Default is { HasValue: true } declared)
         {
             yield return ConfigWalkedValue<T>.Stated(path, recordLabel: null, declared.Value!);
+        }
+    }
+
+    /// <summary>
+    /// Walks the core level of an address that exists only at the points of one dimension: every child
+    /// of the section in front of the substitution is a value of that dimension the deployment states,
+    /// and the step standing at it is read the way the resolution reads it
+    /// (<see cref="DeclaredConfigKey{T}.StatedAtStep"/>) — a parse hook of the key included, which is
+    /// why nothing here has to know how the key is read.
+    /// </summary>
+    /// <param name="section">Section whose child keys are the values of the dimension.</param>
+    /// <param name="dimension">Dimension the address substitutes outside its groups.</param>
+    /// <returns>What the core level states at each of its points.</returns>
+    private IEnumerable<ConfigWalkedValue<T>> EnumerateCorePoints(string section, string dimension)
+    {
+        var answered = false;
+
+        foreach (var child in _configuration.GetSection(section).GetChildren())
+        {
+            var point = ConfigDimensionValues.Of((dimension, child.Key));
+
+            if (_template.Resolve(point) is not { } path)
+            {
+                continue;
+            }
+
+            var (node, relativePath) = Records(path).Single();
+
+            if (ReadStep(node, relativePath, point) is not { } walked)
+            {
+                continue;
+            }
+
+            answered = true;
+
+            yield return walked;
+        }
+
+        // No point of the level exists: the level answers with what its owner declared for it, exactly
+        // as the unnarrowed address does over a record stating nothing.
+        if (!answered && _declared.Default is { HasValue: true } declared)
+        {
+            yield return ConfigWalkedValue<T>.Stated(_template.Text, recordLabel: null, declared.Value!);
+        }
+    }
+
+    /// <summary>
+    /// Reads one step of the chain for the report: the value it states, the fact that it states one no
+    /// read could take, or nothing.
+    /// </summary>
+    /// <param name="node">Record the step is read from.</param>
+    /// <param name="address">Address of the step inside the record.</param>
+    /// <param name="point">Point of the chain the step stands at.</param>
+    /// <returns>What the step states; null when it states nothing.</returns>
+    private ConfigWalkedValue<T>? ReadStep(ConfigNode node, string address, ConfigDimensionValues point)
+    {
+        try
+        {
+            return _declared.StatedAtStep(node, address, point) is { HasValue: true } stated
+                ? ConfigWalkedValue<T>.Stated(KeyOf(node, address), node.RecordLabel, stated.Value!)
+                : null;
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            return ConfigWalkedValue<T>.Unreadable(KeyOf(node, address), node.RecordLabel, ReasonOf(failure));
         }
     }
 

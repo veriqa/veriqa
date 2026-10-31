@@ -78,29 +78,6 @@ public interface IEmailPushCorrelationStore
     Task<bool> TryConsumeAsync(string token, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Atomically marks the first opening of the compose page for a correlation token
-    /// (to publish the "compose_opened" status only once, SPEC-016 §10.1).
-    /// </summary>
-    /// <remarks>
-    /// CONTRACT for production implementations (Redis/EF, etc.): the operation MUST be
-    /// atomic (compare-and-swap / SET NX / transaction) — exactly one concurrent call
-    /// gets true; for an expired/consumed correlation — false.
-    /// The default implementation returns true ON EVERY call (no deduplication) and is kept
-    /// only for backward compatibility with custom stores: without an override, the
-    /// "compose_opened" status will be duplicated on every refresh of the compose page.
-    /// </remarks>
-    /// <param name="token">String correlation token.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>
-    /// true — the opening was recorded for the first time (the status should be published);
-    /// false — the page was opened earlier, or the token was not found.
-    /// </returns>
-    Task<bool> TryMarkComposeOpenedAsync(string token, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(true);
-    }
-
-    /// <summary>
     /// Idempotently registers a correlation token for its transaction: when the transaction already has
     /// a live (neither consumed nor expired) token, that token is returned and nothing is stored.
     /// </summary>
@@ -111,10 +88,10 @@ public interface IEmailPushCorrelationStore
     /// gets that same token back. The TTL of a reused token MUST NOT be extended: otherwise a token
     /// would stay alive for as long as the page keeps being re-rendered.
     /// The default implementation stores the supplied token unconditionally and returns it, preserving
-    /// today's behavior and backward compatibility with custom stores: without an override, the direct
-    /// <c>mailto:</c> Push mode issues a new correlation token on every render of the sign-in page.
+    /// today's behavior and backward compatibility with custom stores: without an override, the
+    /// Push mode issues a new correlation token on every render of the sign-in page.
     /// </remarks>
-    /// <param name="token">Freshly minted correlation token (lower-case Base32, the recipient local part) — a candidate for registration.</param>
+    /// <param name="token">Freshly minted correlation token — a candidate for registration. Its form follows the address mode: lower-case Base32 when it is the recipient local part, URL-safe Base64 otherwise; the store keeps and compares it as given, case included.</param>
     /// <param name="correlation">
     /// Correlation data; <see cref="EmailPushCorrelation.TransactionId"/> is the key of the index.
     /// </param>
@@ -147,6 +124,17 @@ public interface IEmailPushCorrelationStore
     /// the transaction has completed successfully — otherwise a transient failure would "lose" the email,
     /// marking it processed before it actually completed (review feedback).
     /// </summary>
+    /// <remarks>
+    /// The channel keeps one more kind of entry through this registration, read back through
+    /// <see cref="IsMessageProcessedAsync"/>: the marks by which a letter — the link of a Pull letter, the
+    /// mail of a Push one — costs its sender one attempt of the budget for its transaction. Those entries
+    /// come under keys of a reserved prefix, and the channel does not handle an inbound mail whose
+    /// message-id begins with it, so a message-id that reaches the store never equals one of them; they are
+    /// registered before the transaction completes, the rule "only after a successful completion" being the
+    /// one of the dedup. An implementation keeps either kind for its retention window, which therefore must
+    /// not be shorter than the lifetime of a transaction, and registers it atomically: out of concurrent
+    /// calls for one key exactly one gets true.
+    /// </remarks>
     /// <param name="messageId">Email identifier (Message-ID or provider event id).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>

@@ -15,7 +15,9 @@ namespace Veriqa.Core.ChannelAdapter.Email.Templates;
 
 /// <summary>
 /// Default <see cref="IEmailMessageComposer"/>: assembles the mail out of the sign-in mail MESSAGE —
-/// the two settings a message is made of, resolved for this send (SPEC-016 §4.3).
+/// the two settings a message is made of, resolved for this send (SPEC-016 §4.3). The kind follows what the
+/// mail carries: the magic link alone is <c>sign-in-mail</c>, a code alone <c>sign-in-code-mail</c>, both
+/// <c>sign-in-code-link-mail</c>.
 /// </summary>
 /// <remarks>
 /// It builds no markup of its own. The document of the mail is the text of a template variant, one
@@ -28,19 +30,6 @@ namespace Veriqa.Core.ChannelAdapter.Email.Templates;
 /// </remarks>
 internal sealed class EmailMessageComposer : IEmailMessageComposer
 {
-    /// <summary>
-    /// Fallback language tag of the HTML <c>lang</c> attribute when no recipient locale was detected
-    /// (the base language of the Natural Keys, TASK-057).
-    /// </summary>
-    private const string BaseLanguageTag = ChannelLocalizationOptions.DefaultBaseLocale;
-
-    /// <summary>
-    /// Pseudo-locale tag (frontend/localization.md §6): a layout test artifact, not a valid BCP 47
-    /// production language. It can appear in <see cref="IConfirmationPromptLocalizer.AvailableLocales"/>,
-    /// but must never be declared as the document language (mirrors AuthPageLanguageRegistry.PseudoLocale).
-    /// </summary>
-    private const string PseudoLanguageTag = "pseudo";
-
     /// <summary>
     /// Localizer of the mail Natural Keys into the recipient's language (SPEC-017 ICC-050).
     /// </summary>
@@ -85,12 +74,16 @@ internal sealed class EmailMessageComposer : IEmailMessageComposer
         // wording does not narrow by where it is shown. The ownership comes from the send, so a wording
         // declared by an application or a ui_config record answers instead of the shipped one
         // (SPEC-036 TPL-116).
-        var mail = await _messageTemplates.RequireAsync(
-            MessageKinds.SignInMail,
-            surface: null,
-            channel: null,
-            message.Ownership,
-            cancellationToken);
+        // The type of the transaction narrows the address, as it does for every message of the mechanism:
+        // the product words the mail of a confirmation at ByType:confirmation, and a sign-in falls back to
+        // the kind itself — the same mail, with the words of its action.
+        var kind = KindOf(message);
+        var point = string.IsNullOrEmpty(message.TransactionType)
+            ? ConfigDimensionValues.Of((MessageTemplateConfigKeys.KindDimensionName, kind))
+            : ConfigDimensionValues.Of(
+                (MessageTemplateConfigKeys.KindDimensionName, kind),
+                (MessageTemplateConfigKeys.TransactionTypeDimensionName, message.TransactionType));
+        var mail = await _messageTemplates.RequireAsync(point, message.Ownership, cancellationToken);
 
         var locale = message.Locale;
         var timeZone = message.TimeZone;
@@ -125,8 +118,24 @@ internal sealed class EmailMessageComposer : IEmailMessageComposer
     }
 
     /// <summary>
+    /// The message kind of a send: each kind guarantees what its mail carries, so the minimal step of its
+    /// ladder leans only on that.
+    /// </summary>
+    /// <param name="message">The sign-in mail data.</param>
+    /// <returns>The message kind.</returns>
+    private static string KindOf(EmailLoginMessage message) =>
+        message switch
+        {
+            { Code: not null, CarriesLink: true } => MessageKinds.SignInCodeLinkMail,
+            { Code: not null } => MessageKinds.SignInCodeMail,
+            { CarriesLink: true } => MessageKinds.SignInMail,
+            _ => throw new ArgumentException("A sign-in mail carries the magic link, a code or both.", nameof(message))
+        };
+
+    /// <summary>
     /// Builds the slot values of the mail: the system fields this send knows and the initiator context
-    /// of the transaction, mapped by the one place that maps it (SPEC-017 §7.2).
+    /// of the transaction, mapped by the one place that maps it (SPEC-017 §7.2). The link and its QR code
+    /// are values only of a mail that shows the link, and the code only of a mail that carries one.
     /// </summary>
     /// <param name="message">The sign-in mail data.</param>
     /// <returns>Slot name → typed value.</returns>
@@ -141,8 +150,24 @@ internal sealed class EmailMessageComposer : IEmailMessageComposer
         // variant of the ladder rest on it.
         values[SlotNames.App] = message.ClientName;
         values[SlotNames.ValidUntil] = message.ExpiresAt;
+        values[SlotNames.Lang] = MailDocumentLanguage.Resolve(message.Locale, _promptLocalizer);
+
+        // The brand comes with every variant of the context, the one without the initiator details too.
+        TransactionSlotValues.AddBrandName(values, message.InitiatorContext?.BrandName);
+
+        if (message.Code is { } code)
+        {
+            values[SlotNames.Code] = code;
+        }
+
+        // A mail of the code alone does not show the link: its token only identifies the letter, so no value
+        // of it — the link or the QR code that encodes it — is handed to the template.
+        if (!message.CarriesLink)
+        {
+            return values;
+        }
+
         values[SlotNames.Link] = EmailMagicLink.Build(message);
-        values[SlotNames.Lang] = ResolveRenderedLanguageTag(message.Locale);
 
         // Content-Id of the attachment holding the magic link QR code, without the "cid:" prefix (the
         // markup reference is src="cid:{qr_cid}"). Whether an attachment is issued follows from the
@@ -150,80 +175,5 @@ internal sealed class EmailMessageComposer : IEmailMessageComposer
         values[SlotNames.QrCid] = EmailAdapterConstants.PullQrContentId;
 
         return values;
-    }
-
-    /// <summary>
-    /// Resolves the language tag to declare on the HTML document — the language the body is
-    /// <b>actually</b> rendered in, which is not necessarily the requested one.
-    /// </summary>
-    /// <remarks>
-    /// The requested locale comes from Accept-Language and can be any tag; when no locale file
-    /// covers it (say "de"), every Natural Key degrades to the base language and the body is
-    /// English. Declaring <c>lang="de"</c> over English text makes screen readers and mail clients
-    /// mispronounce and mistranslate it (WCAG 3.1.1), so the declared tag is the one whose locale
-    /// file actually supplied the body: the requested locale is normalized and matched against the
-    /// set of loaded locales (<see cref="IConfirmationPromptLocalizer.AvailableLocales"/>) unioned
-    /// with the base locale, minus the pseudo-locale, following the same resolution order as
-    /// <c>LocaleFileConfirmationPromptLocalizer.Resolve</c>. A region tag such as "zh-TW" served by
-    /// "zh.json" is declared as "zh"; anything with no loaded file degrades to the base language and
-    /// is declared as such.
-    /// </remarks>
-    /// <param name="locale">Requested recipient locale (null — base language).</param>
-    /// <returns>The language tag of the rendered text.</returns>
-    private string ResolveRenderedLanguageTag(string? locale)
-    {
-        var normalizedLocale = ChannelLocaleTag.Normalize(locale);
-        if (normalizedLocale is null)
-        {
-            return BaseLanguageTag;
-        }
-
-        var declarableTags = BuildDeclarableLanguageTags();
-
-        // Repeat the resolution order of LocaleFileConfirmationPromptLocalizer.Resolve so the
-        // declared lang tracks the file that actually rendered the body: full normalized tag first,
-        // then the primary subtag ("zh-tw" → "zh"). Declare the first tag whose file is loaded.
-        // fallback order MUST match LocaleFileConfirmationPromptLocalizer.Resolve; keep in sync.
-        if (declarableTags.Contains(normalizedLocale))
-        {
-            return normalizedLocale;
-        }
-
-        var separatorIndex = normalizedLocale.IndexOf('-');
-        if (separatorIndex > 0)
-        {
-            var primarySubtag = normalizedLocale[..separatorIndex];
-            if (declarableTags.Contains(primarySubtag))
-            {
-                return primarySubtag;
-            }
-        }
-
-        return BaseLanguageTag;
-    }
-
-    /// <summary>
-    /// Builds the set of tags that may be declared as the document language:
-    /// <c>(AvailableLocales ∪ { base }) \ { pseudo }</c>. By the interface contract the base locale
-    /// may be absent from <see cref="IConfirmationPromptLocalizer.AvailableLocales"/>, so it is unioned
-    /// in defensively; this stays harmless when a base-locale file (en.json) is loaded and the tag is
-    /// already present, because the union deduplicates. The pseudo-locale is a layout test artifact and
-    /// must never be declared. Mirrors AuthPageLanguageRegistry (a different assembly — the logic is
-    /// reused, not the type).
-    /// </summary>
-    /// <returns>Normalized language tags allowed as the declared document language.</returns>
-    private IReadOnlySet<string> BuildDeclarableLanguageTags()
-    {
-        // AvailableLocales is already normalized. By the interface contract the base locale may be
-        // absent from it, so it is unioned in defensively; the union + dedup stay harmless even when a
-        // base-locale file (en.json) is loaded and "en" is already present.
-        var tags = new HashSet<string>(_promptLocalizer.AvailableLocales, StringComparer.Ordinal)
-        {
-            BaseLanguageTag,
-        };
-
-        tags.Remove(PseudoLanguageTag);
-
-        return tags;
     }
 }

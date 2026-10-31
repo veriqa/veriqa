@@ -20,7 +20,7 @@
     <PackageReference Include="AspNetCore.HealthChecks.Rabbitmq" Version="9.0.0" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="10.0.7" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.13" />
     <!-- Service-manager lifetimes: the host is installed as a systemd unit on Linux and as a Windows
          service on Windows (TASK-210). Both packages are context aware — outside their manager the
          registration does nothing — so the same build serves Docker, a local run and a service. -->
@@ -50,20 +50,40 @@
   <ItemGroup>
     <ProjectReference Include="..\..\hosts\Veriqa.ServiceDefaults\Veriqa.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Veriqa.Core.AuthServer\Veriqa.Core.AuthServer.csproj" />
+    <!-- Offline GeoIP provider, switched on by Veriqa:InitiatorContext:GeoIp:DatabasePath. The .mmdb
+         database is not part of the image (MaxMind EULA): the deployment mounts it. -->
+    <ProjectReference Include="..\Veriqa.Core.AuthServer.MaxMind\Veriqa.Core.AuthServer.MaxMind.csproj" />
     <ProjectReference Include="..\Veriqa.Core.ChannelAdapter\Veriqa.Core.ChannelAdapter.csproj" />
     <!-- Channel satellites: the channels this host registers. The base package carries the
          contour, each channel arrives in its own package (and brings its own SDK). -->
     <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Email\Veriqa.Core.ChannelAdapter.Email.csproj" />
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Http\Veriqa.Core.ChannelAdapter.Http.csproj" />
+    <!-- Sign-in with an account of a web provider: channels enabled by a WebProvider subsection of a
+         channel section; without one nothing of the OpenIddict client is registered. -->
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.WebProviders\Veriqa.Core.ChannelAdapter.WebProviders.csproj" />
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Instagram\Veriqa.Core.ChannelAdapter.Instagram.csproj" />
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Messenger\Veriqa.Core.ChannelAdapter.Messenger.csproj" />
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.WeChat\Veriqa.Core.ChannelAdapter.WeChat.csproj" />
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Viber\Veriqa.Core.ChannelAdapter.Viber.csproj" />
     <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Max\Veriqa.Core.ChannelAdapter.Max.csproj" />
     <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Telegram\Veriqa.Core.ChannelAdapter.Telegram.csproj" />
     <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.WhatsApp\Veriqa.Core.ChannelAdapter.WhatsApp.csproj" />
+    <!-- Redis channel stores for several replicas, switched on by Veriqa:ChannelStores:Redis:ConnectionString;
+         without it the in-process stores stay. -->
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Redis\Veriqa.Core.ChannelAdapter.Redis.csproj" />
     <ProjectReference Include="..\Veriqa.Core.TransactionEngine\Veriqa.Core.TransactionEngine.csproj" />
     <ProjectReference Include="..\Veriqa.Core.AuditTrail\Veriqa.Core.AuditTrail.csproj" />
     <!-- EF Core store satellites: this host persists both the transactions and the audit journal in
-         a relational database when a connection string is configured, so it takes the ORM
-         explicitly. A host on the in-memory store or on Redis references neither. -->
+         a relational database when a connection string is configured on a relational provider, so it
+         takes the ORM explicitly. A host on the in-memory store or on Redis references neither. -->
     <ProjectReference Include="..\Veriqa.Core.TransactionEngine.EntityFrameworkCore\Veriqa.Core.TransactionEngine.EntityFrameworkCore.csproj" />
     <ProjectReference Include="..\Veriqa.Core.AuditTrail.EntityFrameworkCore\Veriqa.Core.AuditTrail.EntityFrameworkCore.csproj" />
+    <!-- Transaction engine satellites shipped in the image and switched on by configuration: the Redis
+         transaction store (Veriqa:TransactionEngine:Store:Provider = Redis) and the RabbitMQ event
+         publisher (Veriqa:Events:RabbitMq:ConnectionString). Without their keys nothing of them is
+         registered. -->
+    <ProjectReference Include="..\Veriqa.Core.TransactionEngine.Redis\Veriqa.Core.TransactionEngine.Redis.csproj" />
+    <ProjectReference Include="..\Veriqa.Core.TransactionEngine.RabbitMq\Veriqa.Core.TransactionEngine.RabbitMq.csproj" />
     <!-- Per-provider migration assemblies: a build-time fixed set of supported databases.
          The concrete provider is chosen by configuration at runtime (SPEC-020, SPEC-012);
          extending the set = rebuilding the image, without changing the core. -->

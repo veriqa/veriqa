@@ -63,12 +63,36 @@ internal interface IMessageTemplateAccessor
     /// <param name="context">Ownership context of the resolution; see <see cref="FindAsync(string, string?, string?, ResolutionContext, CancellationToken)"/>.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The message, or null when no level declares one.</returns>
-    /// <exception cref="ArgumentException">The point names no kind, or names a channel without a
-    /// surface.</exception>
+    /// <exception cref="ArgumentException">The point names no kind, names a channel without a surface,
+    /// or names a link purpose without a channel.</exception>
     ValueTask<ResolvedMessage?> FindAsync(
         ConfigDimensionValues point,
         ResolutionContext context,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves a message a render point shows only where some level words it — a kind whose base states
+    /// no ladder, so that an address no level states a ladder for is an ordinary answer rather than a
+    /// defect of the deployment (the hint of a channel, <see cref="MessageKinds.HopChannelHint"/>). That
+    /// one answer is null without a report; every other refusal — no contract, no ladder its contract
+    /// admits, a failure — is the one of
+    /// <see cref="FindAsync(ConfigDimensionValues, ResolutionContext, CancellationToken)"/>.
+    /// <para>
+    /// The default asks <see cref="FindAsync(ConfigDimensionValues, ResolutionContext, CancellationToken)"/>,
+    /// which reports the missing ladder: an implementation that knows the levels tells the two apart.
+    /// </para>
+    /// </summary>
+    /// <param name="point">Dimension values of the address, the <c>kind</c> included.</param>
+    /// <param name="context">Ownership context of the resolution; see <see cref="FindAsync(string, string?, string?, ResolutionContext, CancellationToken)"/>.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The message, or null when no level declares one.</returns>
+    /// <exception cref="ArgumentException">The point is one
+    /// <see cref="FindAsync(ConfigDimensionValues, ResolutionContext, CancellationToken)"/> refuses.</exception>
+    ValueTask<ResolvedMessage?> FindOptionalAsync(
+        ConfigDimensionValues point,
+        ResolutionContext context,
+        CancellationToken cancellationToken = default) =>
+        FindAsync(point, context, cancellationToken);
 
     /// <summary>
     /// Resolves a message a render point cannot go on without. Nothing resolved means one of two
@@ -90,11 +114,38 @@ internal interface IMessageTemplateAccessor
         ResolutionContext context,
         CancellationToken cancellationToken = default) =>
         await FindAsync(kind, surface, channel, context, cancellationToken)
-            ?? throw new InvalidOperationException(
-                $"No message could be resolved for kind '{kind}': either the product declares no such "
-                + $"kind, or the '{MessageTemplatesOptions.SectionName}' configuration of this "
-                + "deployment leaves it without a contract, or without a template variant its contract "
-                + "admits. Which of the three it is has just been logged.");
+            ?? throw NotResolved(kind);
+
+    /// <summary>
+    /// Resolves, at a point of dimension values, a message a render point cannot go on without; see
+    /// <see cref="RequireAsync(string, string?, string?, ResolutionContext, CancellationToken)"/> for what
+    /// nothing resolved means.
+    /// </summary>
+    /// <param name="point">Dimension values of the address, the <c>kind</c> included.</param>
+    /// <param name="context">Ownership context of the resolution.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The message.</returns>
+    /// <exception cref="InvalidOperationException">No level yields a renderable message.</exception>
+    async ValueTask<ResolvedMessage> RequireAsync(
+        ConfigDimensionValues point,
+        ResolutionContext context,
+        CancellationToken cancellationToken = default) =>
+        await FindAsync(point, context, cancellationToken)
+            ?? throw NotResolved(
+                point.Values is { } values && values.TryGetValue(MessageTemplateConfigKeys.KindDimensionName, out var kind)
+                    ? kind
+                    : string.Empty);
+
+    /// <summary>
+    /// The failure of a message nothing resolved: the two causes it can have, named in one place.
+    /// </summary>
+    /// <param name="kind">Message kind identifier.</param>
+    /// <returns>The exception to throw.</returns>
+    private static InvalidOperationException NotResolved(string kind) => new(
+        $"No message could be resolved for kind '{kind}': either the product declares no such "
+        + $"kind, or the '{MessageTemplatesOptions.SectionName}' configuration of this "
+        + "deployment leaves it without a contract, or without a template variant its contract "
+        + "admits. Which of the three it is has just been logged.");
 }
 
 /// <summary>
@@ -174,10 +225,34 @@ internal sealed class MessageTemplateAccessor : IMessageTemplateAccessor
     }
 
     /// <inheritdoc />
-    public async ValueTask<ResolvedMessage?> FindAsync(
+    public ValueTask<ResolvedMessage?> FindAsync(
         ConfigDimensionValues point,
         ResolutionContext context,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ResolveAsync(point, context, ladderOptional: false, cancellationToken);
+
+    /// <inheritdoc />
+    public ValueTask<ResolvedMessage?> FindOptionalAsync(
+        ConfigDimensionValues point,
+        ResolutionContext context,
+        CancellationToken cancellationToken = default) =>
+        ResolveAsync(point, context, ladderOptional: true, cancellationToken);
+
+    /// <summary>
+    /// Resolves a message at a point of dimension values: the contract, then the ladder its contract admits.
+    /// </summary>
+    /// <param name="point">Dimension values of the address, the <c>kind</c> included.</param>
+    /// <param name="context">Ownership context of the resolution.</param>
+    /// <param name="ladderOptional">
+    /// Whether no level stating a ladder for the address is an ordinary answer, given without a report.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The message, or null when no level declares one.</returns>
+    private async ValueTask<ResolvedMessage?> ResolveAsync(
+        ConfigDimensionValues point,
+        ResolutionContext context,
+        bool ladderOptional,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -201,6 +276,17 @@ internal sealed class MessageTemplateAccessor : IMessageTemplateAccessor
             throw new ArgumentException(
                 "A channel refines a surface and no step of the template ladder addresses it without one: "
                 + "name the surface the message is shown on beside the channel.",
+                nameof(point));
+        }
+
+        // The same holds one axis further: the link purpose refines the channel, and a point naming it
+        // without one would be answered by a step that ignores the purpose without saying so.
+        if (Names(stated, MessageTemplateConfigKeys.LinkPurposeDimensionName)
+            && !Names(stated, MessageTemplateConfigKeys.ChannelDimensionName))
+        {
+            throw new ArgumentException(
+                "A link purpose refines a channel and no step of the template ladder addresses it without "
+                + "one: name the channel the message goes through beside the link purpose.",
                 nameof(point));
         }
 
@@ -231,7 +317,8 @@ internal sealed class MessageTemplateAccessor : IMessageTemplateAccessor
             return null;
         }
 
-        var templates = await ResolveConformingLadderAsync(kind, contract, context, templatePoint, cancellationToken);
+        var templates = await ResolveConformingLadderAsync(
+            kind, contract, context, templatePoint, ladderOptional, cancellationToken);
 
         return templates is null
             ? null
@@ -287,6 +374,10 @@ internal sealed class MessageTemplateAccessor : IMessageTemplateAccessor
     /// <param name="contract">Contract of the message — the allowlist of slots.</param>
     /// <param name="context">Ownership context of the resolution.</param>
     /// <param name="point">Dimension values the ladder is asked with.</param>
+    /// <param name="ladderOptional">
+    /// Whether no level stating a ladder for the address at all is an ordinary answer, given without a
+    /// report. A level that stated one its contract refused is still reported.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The variants that may be rendered, or null when no level states any.</returns>
     private async ValueTask<IReadOnlyList<MessageTemplateVariant>?> ResolveConformingLadderAsync(
@@ -294,6 +385,7 @@ internal sealed class MessageTemplateAccessor : IMessageTemplateAccessor
         MessageContract contract,
         ResolutionContext context,
         ConfigDimensionValues point,
+        bool ladderOptional,
         CancellationToken cancellationToken)
     {
         var current = context;
@@ -306,6 +398,17 @@ internal sealed class MessageTemplateAccessor : IMessageTemplateAccessor
                 current,
                 point,
                 cancellationToken);
+
+            if (resolved.Value is null && ladderOptional && answered is null)
+            {
+                // No level words the message for this address — the kind is shown only where one does.
+                _logger.LogDebug(
+                    "No level declares a template ladder for message kind {MessageKind} at this address; the "
+                    + "message is not shown.",
+                    kind);
+
+                return null;
+            }
 
             if (resolved.Value is not { } ladder)
             {

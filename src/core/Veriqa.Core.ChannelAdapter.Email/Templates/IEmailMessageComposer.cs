@@ -12,7 +12,8 @@ namespace Veriqa.Core.ChannelAdapter.Email.Templates;
 /// </summary>
 /// <remarks>
 /// This is the ONE code seam of the mail body. The wording of a mail is configuration — the message
-/// <c>sign-in-mail</c> with its slot contract and its ladder of template variants (SPEC-036) — and a
+/// <c>sign-in-mail</c> (worded for a confirmation at <c>ByType:confirmation</c>) with its slot contract and its
+/// ladder of template variants (SPEC-036) — and a
 /// host changes it there, without C#. Replacing this port is for what configuration cannot express:
 /// slot values of the host's own, a foreign render engine, or a subject the host decides itself.
 /// </remarks>

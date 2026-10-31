@@ -137,6 +137,14 @@ internal sealed class ChannelEntry
     public string? ChannelType { get; init; }
 
     /// <summary>
+    /// Name of the channel to label the entry with — the name the tab of the sign-in page shows: the
+    /// label a third-party adapter declared, the brand name of a built-in channel, otherwise the raw
+    /// channel type. Not localized. Null exactly when <see cref="ChannelType"/> is null.
+    /// </summary>
+    [JsonPropertyName("display_name")]
+    public string? DisplayName { get; init; }
+
+    /// <summary>
     /// The address to show: the deep link of the channel, or the absolute URL of the entry page.
     /// </summary>
     [JsonPropertyName("url")]
@@ -146,7 +154,7 @@ internal sealed class ChannelEntry
     /// The same address as a PNG data URI, for showing it to a second device. The image carries the
     /// attribution mark in a strip under the code (SPEC-015 §4.18), so it is not square. The contract
     /// admits null — nothing rendered for this entry; the shipped builder renders an image for both kinds
-    /// of entry.
+    /// of entry and leaves null only where the address does not fit into a QR code.
     /// </summary>
     [JsonPropertyName("qr")]
     public string? Qr { get; init; }

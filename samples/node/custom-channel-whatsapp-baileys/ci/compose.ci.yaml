@@ -1,0 +1,28 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# CI overlay of compose.yaml for the check compose.up of run.sh: the adapter runs in the stub mode against
+# the platform stub of the stand — WhatsApp Web cannot be played in CI — and no port is published on the
+# machine that runs the check. The values of .env come from the env file run.sh generates; the number is
+# fictional.
+#
+#   docker compose -f compose.yaml -f ci/compose.ci.yaml --env-file <generated> up -d
+
+services:
+
+  veriqa:
+    ports: !reset []
+
+  adapter:
+    depends_on: [stub]
+    environment:
+      WHATSAPP_PLATFORM: stub
+      WHATSAPP_STUB_URL: http://stub:9000
+
+  stub:
+    image: veriqa-sample-whatsapp-baileys-stand:latest
+    command: ["node", "stub.mjs"]
+    environment:
+      STUB_PORT: "9000"
+      # The one record of compose.yaml: the default label and the number of .env.
+      STUB_RECORDS: "default:${WHATSAPP_NUMBER}"

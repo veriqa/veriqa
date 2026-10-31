@@ -82,5 +82,5 @@ executed, and the agent tells the customer a colleague will contact them.
 
 ## Further reading
 
-- Approving AI-agent actions — <https://veriqa.app/docs/research/agent-approvals>
+- Approving AI-agent actions — <https://veriqa.app/docs/scenarios/agent-approvals>
 - Server-to-server confirmation API — <https://veriqa.app/docs/reference/confirmation-api>

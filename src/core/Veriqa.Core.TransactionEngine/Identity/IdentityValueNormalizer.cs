@@ -3,8 +3,8 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Text;
 
+using Veriqa.Core.Contracts;
 using Veriqa.Core.TransactionEngine.Configuration;
 
 namespace Veriqa.Core.TransactionEngine.Identity;
@@ -17,17 +17,6 @@ namespace Veriqa.Core.TransactionEngine.Identity;
 /// </summary>
 internal static class IdentityValueNormalizer
 {
-    /// <summary>
-    /// Maximum number of digits an E.164 number carries (ITU-T E.164).
-    /// </summary>
-    private const int MaxE164Digits = 15;
-
-    /// <summary>
-    /// Characters a relying party writes a phone number with for readability. They carry no value
-    /// and are dropped before the number is judged.
-    /// </summary>
-    private const string PhoneSeparators = " -().";
-
     /// <summary>
     /// Brings a value to the canonical form of its declared rule.
     /// </summary>
@@ -51,7 +40,7 @@ internal static class IdentityValueNormalizer
         return rule switch
         {
             IdentityNormalizationRule.Exact => Exact(trimmed, out normalized),
-            IdentityNormalizationRule.E164Phone => E164Phone(trimmed, out normalized),
+            IdentityNormalizationRule.E164Phone => E164PhoneNumber.TryNormalize(trimmed, out normalized),
             IdentityNormalizationRule.EmailDomainCaseFold => EmailDomainCaseFold(trimmed, out normalized),
 
             // A rule outside the enumeration cannot be compared by, and refusing here rather than
@@ -70,48 +59,6 @@ internal static class IdentityValueNormalizer
     private static bool Exact(string trimmed, [NotNullWhen(true)] out string? normalized)
     {
         normalized = trimmed;
-
-        return true;
-    }
-
-    /// <summary>
-    /// Reduction to E.164: readability separators are dropped, and what remains has to be an optional
-    /// leading plus and 1 to 15 digits whose first one is not zero.
-    /// </summary>
-    /// <param name="trimmed">Trimmed value.</param>
-    /// <param name="normalized">The canonical form, always with the leading plus.</param>
-    /// <returns><see langword="false"/> when the value is not a number in any spelling.</returns>
-    private static bool E164Phone(string trimmed, [NotNullWhen(true)] out string? normalized)
-    {
-        normalized = null;
-
-        var body = trimmed.StartsWith('+') ? trimmed.AsSpan(1) : trimmed.AsSpan();
-        var digits = new StringBuilder(MaxE164Digits + 1);
-        digits.Append('+');
-
-        foreach (var character in body)
-        {
-            if (PhoneSeparators.Contains(character, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (!char.IsAsciiDigit(character) || digits.Length > MaxE164Digits)
-            {
-                return false;
-            }
-
-            digits.Append(character);
-        }
-
-        // A country code never starts with zero, so a leading zero means a national spelling — a
-        // different number space, which this rule is not entitled to guess the country of.
-        if (digits.Length is 1 || digits[1] is '0')
-        {
-            return false;
-        }
-
-        normalized = digits.ToString();
 
         return true;
     }

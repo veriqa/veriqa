@@ -27,4 +27,24 @@ public static class ChannelTypes
     /// Email channel.
     /// </summary>
     public const string Email = "email";
+
+    /// <summary>
+    /// Instagram channel.
+    /// </summary>
+    public const string Instagram = "instagram";
+
+    /// <summary>
+    /// Messenger channel.
+    /// </summary>
+    public const string Messenger = "messenger";
+
+    /// <summary>
+    /// WeChat channel.
+    /// </summary>
+    public const string WeChat = "wechat";
+
+    /// <summary>
+    /// Viber channel.
+    /// </summary>
+    public const string Viber = "viber";
 }

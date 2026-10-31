@@ -8,8 +8,8 @@
   "rules": [
     {
       "id": "git-push",
-      "event": "PreToolUse",
-      "tool": "^Bash$",
+      "event": "tool.call",
+      "tool": "^(Bash|PowerShell)$",
       "input": {
         "command": "\\bgit\\s+push\\b"
       },
@@ -23,10 +23,10 @@
     },
     {
       "id": "recursive-delete",
-      "event": "PreToolUse",
-      "tool": "^Bash$",
+      "event": "tool.call",
+      "tool": "^(Bash|PowerShell)$",
       "input": {
-        "command": "\\brm\\s+-[a-zA-Z]*[rR]"
+        "command": "\\brm\\s+-[a-zA-Z]*[rR]|\\b([Rr]emove-[Ii]tem|ri|rd|rmdir|del|erase)\\b[^;|&\\n]*\\s-[Rr]"
       },
       "action_type": "agent-tool-call",
       "slots": {
@@ -38,19 +38,19 @@
     },
     {
       "id": "cycle-typed",
-      "event": "UserPromptSubmit",
-      "prompt": "^\\s*/(cycle|cycle-chain)(?:\\s+([\\s\\S]*))?$",
+      "event": "command.run",
+      "command": "^(cycle|cycle-chain)$",
       "action_type": "agent-command-start",
       "slots": {
-        "command": "{match.1}",
-        "arguments": "{match.2}",
+        "command": "{command}",
+        "arguments": "{args}",
         "project": "{project}",
         "started_by": "person"
       }
     },
     {
       "id": "cycle-by-agent",
-      "event": "PreToolUse",
+      "event": "tool.call",
       "tool": "^Skill$",
       "input": {
         "skill": "^(cycle|cycle-chain)$"

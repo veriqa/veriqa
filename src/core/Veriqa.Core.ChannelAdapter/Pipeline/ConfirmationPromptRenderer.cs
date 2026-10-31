@@ -69,10 +69,11 @@ public static class ConfirmationPromptRenderer
 
         // Take the initiator-context slot values from the one place that maps a context onto slots and
         // delegate substitution/variant selection to the message renderer (single source of the matcher,
-        // TPL-110/TPL-093). The degradation full → without region → application only is reproduced by
-        // variant selection (TPL-031): {app} is always present, while browser/os/region are supplied
-        // only when present — the "application + region" case is impossible because the without-region
-        // variant requires browser and os, so a missing browser/os drops region with them.
+        // TPL-110/TPL-093). The degradation full → without region → time of the request only →
+        // application only is reproduced by variant selection (TPL-031): {app} is always present, while
+        // requested_at/browser/os/region are supplied only when present — the "application + region"
+        // case is impossible because the without-region variant requires browser and os, so a missing
+        // browser/os drops region with them, and a missing time drops every step that names it.
         var values = TransactionSlotValues.Of(details);
 
         var text = MessageTextRenderer.Render(

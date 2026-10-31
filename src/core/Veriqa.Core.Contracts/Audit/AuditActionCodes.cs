@@ -49,4 +49,11 @@ public static class AuditActionCodes
     /// Transaction expired by TTL.
     /// </summary>
     public const string TransactionExpired = "TransactionExpired";
+
+    /// <summary>
+    /// The collected claims of a subject deleted (SPEC-041 L85): by the server endpoint, by a call of the
+    /// host, or by the automatic removal of the keys unused for the retention period. Not a bus event: the
+    /// deletion writes the record itself, with the basis in <see cref="AuditMetadata.DeletionBasis"/>.
+    /// </summary>
+    public const string CollectedClaimsDeleted = "CollectedClaimsDeleted";
 }

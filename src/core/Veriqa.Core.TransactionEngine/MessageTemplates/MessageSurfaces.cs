@@ -19,4 +19,14 @@ public static class MessageSurfaces
     /// to a page the product serves.
     /// </summary>
     public const string InChannel = "in-channel";
+
+    /// <summary>
+    /// A page of the core the product serves to the user, as opposed to the channel itself. In today's
+    /// delivery the "Yes"/"No" question page asks the confirmation prompt at it, and the sign-in window and
+    /// the launch page of a hop show the lines of the channels of the page at it (the answer of the bot,
+    /// the started transition, the scanned QR code). Spelled as the receipt of an
+    /// outcome spells the same place: one place of showing is written the same way in every group
+    /// (SPEC-036 §4.3).
+    /// </summary>
+    public const string CorePage = "core-page";
 }

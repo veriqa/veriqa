@@ -1,6 +1,8 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -25,6 +27,12 @@ internal sealed class RedisTransactionStore : ITransactionStore, ISupportsNative
     /// Key segment for the idempotency index.
     /// </summary>
     private const string IdempotencyIndexSegment = "idx:idmp:";
+
+    /// <summary>
+    /// Key segment for the sign-in subject index: a set of transaction ids per fingerprint of the
+    /// sign-in subject scope (to support GetPendingSignInsAsync).
+    /// </summary>
+    private const string SignInSubjectIndexSegment = "idx:signin:";
 
     /// <summary>
     /// Key segment for the expiry sorted set index (to support GetExpiredAsync).
@@ -69,10 +77,17 @@ return 1";
 
     /// <summary>
     /// Lua script for an atomic compare-and-swap on ConcurrencyToken.
+    /// The conditionally written fields of the new document — the hop observations, the surface, the
+    /// outcomes and the form token fingerprint of the claims completion — are taken from the stored one,
+    /// not from the passed one (a field absent from the stored document stays absent): an update neither writes nor erases
+    /// them, and a value written between the caller's read and this write survives it. Re-encoding the document with cjson is lossless because every top-level
+    /// value of the document is a string (snapshots are nested JSON strings, moments are ISO 8601
+    /// strings) — cjson would round a large number, and there is none.
     /// KEYS[1] — transaction key.
     /// ARGV[1] — expected ConcurrencyToken.
     /// ARGV[2] — new transaction JSON.
     /// ARGV[3] — expiry Unix timestamp (seconds, >0). Must always be >0 for live transactions.
+    /// ARGV[4..] — document fields written only by conditional writes, carried over from the stored document.
     /// Returns: 1 — success, 0 — conflict or not found.
     /// </summary>
     private const string UpdateTransactionLuaScript = @"
@@ -87,9 +102,141 @@ end
 if obj['ConcurrencyToken'] ~= ARGV[1] then
     return 0
 end
-redis.call('SET', KEYS[1], ARGV[2])
+local newObj = cjson.decode(ARGV[2])
+for i = 4, #ARGV do
+    newObj[ARGV[i]] = obj[ARGV[i]]
+end
+redis.call('SET', KEYS[1], cjson.encode(newObj))
 redis.call('EXPIREAT', KEYS[1], tonumber(ARGV[3]))
 return 1";
+
+    /// <summary>
+    /// Lua script that puts a transaction id into the set of its sign-in subject and makes the set
+    /// live at least as long as the transaction key. The set is shared by every sign-in of the subject,
+    /// so its deadline only ever moves forward: a transaction with a shorter life must not cut the set
+    /// from under one with a longer life. A set without a deadline (just created) reports a negative
+    /// TTL and gets one.
+    /// KEYS[1] — sign-in subject index key.
+    /// ARGV[1] — string transaction ID.
+    /// ARGV[2] — seconds the transaction key has left to live (always >0, validated in C# before the call).
+    /// Returns: 1.
+    /// </summary>
+    private const string IndexSignInSubjectLuaScript = @"
+redis.call('SADD', KEYS[1], ARGV[1])
+local wanted = tonumber(ARGV[2])
+if redis.call('TTL', KEYS[1]) < wanted then
+    redis.call('EXPIRE', KEYS[1], wanted)
+end
+return 1";
+
+    /// <summary>
+    /// Lua script for a one-time write of a hop observation field inside the transaction document
+    /// (SPEC-025 HOP-071a, HOP-080): the emptiness check and the write run as one step, so of two
+    /// concurrent calls for one field exactly one writes. Only the target field changes — the
+    /// ConcurrencyToken and UpdatedAt of the document stay as they are, so a concurrent update with a
+    /// valid token is not turned into a conflict. KEEPTTL keeps the deadline of the key; a missing key
+    /// is not created. A field absent from the document (written before the field existed) counts as
+    /// empty. Re-encoding with cjson is lossless for the reason given on the update script.
+    /// KEYS[1] — transaction key.
+    /// ARGV[1] — document field to write.
+    /// ARGV[2] — value to write (stored as a JSON string).
+    /// ARGV[3] — optional: document field that must already be filled for the write to go through.
+    /// Returns: 1 — written by this call; 0 — the field is already filled, the required field is
+    /// empty, or the transaction is not stored.
+    /// </summary>
+    private const string WriteObservationOnceLuaScript = @"
+local data = redis.call('GET', KEYS[1])
+if data == false then
+    return 0
+end
+local ok, obj = pcall(cjson.decode, data)
+if not ok or type(obj) ~= 'table' then
+    return 0
+end
+local current = obj[ARGV[1]]
+if current ~= nil and current ~= cjson.null then
+    return 0
+end
+if #ARGV >= 3 then
+    local required = obj[ARGV[3]]
+    if required == nil or required == cjson.null then
+        return 0
+    end
+end
+obj[ARGV[1]] = ARGV[2]
+redis.call('SET', KEYS[1], cjson.encode(obj), 'KEEPTTL')
+return 1";
+
+    /// <summary>
+    /// Lua script for a conditional write of one claims completion field inside the transaction
+    /// document (SPEC-041 C90): the state, the completion mark and the current value of the field are
+    /// checked, and the field written, in one step. Only the target field changes — the
+    /// ConcurrencyToken and UpdatedAt of the document stay as they are, so a concurrent update with a
+    /// valid token is not turned into a conflict. KEEPTTL keeps the deadline of the key; a missing key
+    /// is not created. A field absent from the document counts as empty. Re-encoding with cjson is
+    /// lossless for the reason given on the update script.
+    /// KEYS[1] — transaction key.
+    /// ARGV[1] — document field to write.
+    /// ARGV[2] — value to write (stored as a JSON string).
+    /// ARGV[3] — value the field must hold now; the empty string — the field must be empty.
+    /// ARGV[4] — state the document must be in.
+    /// ARGV[5] — document field of the completion mark, which must be filled.
+    /// ARGV[6] — optional: exact value the completion mark must hold.
+    /// Returns: 1 — written by this call; 0 — a condition does not hold, or the transaction is not stored.
+    /// </summary>
+    private const string WriteClaimCompletionFieldLuaScript = @"
+local data = redis.call('GET', KEYS[1])
+if data == false then
+    return 0
+end
+local ok, obj = pcall(cjson.decode, data)
+if not ok or type(obj) ~= 'table' then
+    return 0
+end
+if obj['State'] ~= ARGV[4] then
+    return 0
+end
+local mark = obj[ARGV[5]]
+if mark == nil or mark == cjson.null then
+    return 0
+end
+if #ARGV >= 6 and mark ~= ARGV[6] then
+    return 0
+end
+local current = obj[ARGV[1]]
+if current == nil or current == cjson.null then
+    current = ''
+end
+if current ~= ARGV[3] then
+    return 0
+end
+obj[ARGV[1]] = ARGV[2]
+redis.call('SET', KEYS[1], cjson.encode(obj), 'KEEPTTL')
+return 1";
+
+    /// <summary>
+    /// Document fields written only by conditional writes — the hop observations, the surface, the
+    /// outcomes and the form token fingerprint of the claims completion — carried over from the stored
+    /// document by every update. The document keys are the entity property names: the store's serializer options set no naming
+    /// policy.
+    /// </summary>
+    private static readonly RedisValue[] ConditionalDocumentFields =
+    [
+        nameof(TransactionEntity.ScannerContextSnapshotJson),
+        nameof(TransactionEntity.ScannerFingerprint),
+        nameof(TransactionEntity.HopFirstResolvedAt),
+        nameof(TransactionEntity.HopInterstitialOpenedAt),
+        nameof(TransactionEntity.HopChannelLaunchedAt),
+        nameof(TransactionEntity.HopRepeatResolvedAt),
+        nameof(TransactionEntity.ClaimCompletionSurface),
+        nameof(TransactionEntity.ClaimCompletionResultsJson),
+        nameof(TransactionEntity.ClaimCompletionFormTokenHash)
+    ];
+
+    /// <summary>
+    /// Stored name of the Pending state — the one state the claims completion writes go through in.
+    /// </summary>
+    private const string PendingStateName = nameof(TransactionState.Pending);
 
     /// <summary>
     /// Store options.
@@ -215,6 +362,8 @@ return 1";
             GetExpiryIndexKey(),
             transaction.Id.ToString(),
             entity.ExpiresAt.ToUnixTimeSeconds());
+
+        await IndexSignInSubjectAsync(transaction, mainKeyTtlSecs);
     }
 
     /// <inheritdoc />
@@ -273,10 +422,13 @@ return 1";
 
         var expiryTimestamp = ComputeEffectiveExpiryTimestamp(entity);
 
+        // The conditionally written fields of newJson are replaced inside the script by the stored ones.
+        RedisValue[] arguments = [expectedConcurrencyToken, newJson, expiryTimestamp, .. ConditionalDocumentFields];
+
         var result = await _db.ScriptEvaluateAsync(
             UpdateTransactionLuaScript,
             new RedisKey[] { mainKey },
-            new RedisValue[] { expectedConcurrencyToken, newJson, expiryTimestamp });
+            arguments);
 
         var updated = (long)result == 1L;
 
@@ -284,7 +436,26 @@ return 1";
         // TransactionExpiredEvent is no longer needed, and TTL will delete the key by the new deadline.
         if (updated && IsTerminalState(entity.State))
         {
-            await _db.SortedSetRemoveAsync(GetExpiryIndexKey(), transaction.Id.ToString());
+            try
+            {
+                await _db.SortedSetRemoveAsync(GetExpiryIndexKey(), transaction.Id.ToString());
+            }
+            catch (Exception failure) when (failure is not OperationCanceledException)
+            {
+                // The transition is already stored: a throw here would report it to the caller as
+                // failed. The expiry pass drops the id of a terminal record from the index itself.
+                _logger.LogWarning(
+                    failure,
+                    "Removing a terminal transaction from the expiry index failed; the expiry pass drops it later. TransactionId: {TransactionId}",
+                    transaction.Id.ToString());
+            }
+        }
+
+        if (updated)
+        {
+            await IndexSignInSubjectAsync(
+                transaction,
+                expiryTimestamp - _timeProvider.GetUtcNow().ToUnixTimeSeconds());
         }
 
         return updated;
@@ -314,6 +485,66 @@ return 1";
         _logger.LogDebug(
             "Transaction deleted from Redis. TransactionId: {TransactionId}, KeyExisted: {KeyExisted}",
             id, deleted);
+
+        // The sign-in subject index is not touched here: an id whose key is gone leaves the set on the
+        // next GetPendingSignInsAsync of its subject, the same way as after a deletion by TTL.
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Reads the set of the scope's fingerprint, loads the documents via MGET (batch) and keeps the
+    /// Pending ones whose scope equals the requested one — the fingerprint narrows the read, the
+    /// equality decides. The set is cleaned lazily, here: an id whose key is gone (deleted by TTL, which
+    /// does not touch the set) leaves it in a single SREM. An id of a transaction that is stored but no
+    /// longer Pending stays — its key dies by TTL and the id follows on a later read. A record this
+    /// build cannot read is reported and skipped, and its id stays for a build that reads it.
+    /// </remarks>
+    public async Task<IReadOnlyList<Transaction>> GetPendingSignInsAsync(
+        SignInSubjectScope scope,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var indexKey = GetSignInSubjectIndexKey(scope);
+        var indexedIds = await _db.SetMembersAsync(indexKey);
+
+        if (indexedIds.Length == 0)
+        {
+            return Array.Empty<Transaction>();
+        }
+
+        var mainKeys = indexedIds
+            .Select(id => (RedisKey)GetTransactionKey(id.ToString()))
+            .ToArray();
+        var rawValues = await _db.StringGetAsync(mainKeys);
+
+        var result = new List<Transaction>(indexedIds.Length);
+        var toRemoveFromIndex = new List<RedisValue>();
+
+        for (var i = 0; i < indexedIds.Length; i++)
+        {
+            // Only a missing key says the record is gone — same rule as in the expiry pass.
+            if (rawValues[i].IsNull)
+            {
+                toRemoveFromIndex.Add(indexedIds[i]);
+                continue;
+            }
+
+            var transaction = ReadIndexedSignIn(indexedIds[i], rawValues[i]);
+
+            if (transaction is { State: TransactionState.Pending }
+                && SignInSubjectScope.Of(transaction) == scope)
+            {
+                result.Add(transaction);
+            }
+        }
+
+        if (toRemoveFromIndex.Count > 0)
+        {
+            await _db.SetRemoveAsync(indexKey, toRemoveFromIndex.ToArray());
+        }
+
+        return result.AsReadOnly();
     }
 
     /// <inheritdoc />
@@ -417,6 +648,270 @@ return 1";
         }
 
         return Task.FromResult<IReadOnlyList<Transaction>>(Array.Empty<Transaction>());
+    }
+
+    /// <inheritdoc />
+    public Task<bool> TryMarkHopObservationAsync(TransactionId id, HopObservationMark mark, DateTimeOffset markedAt, CancellationToken cancellationToken = default)
+    {
+        HopObservationArguments.ThrowIfUndefined(mark);
+
+        var field = mark switch
+        {
+            HopObservationMark.FirstResolve => nameof(TransactionEntity.HopFirstResolvedAt),
+            HopObservationMark.InterstitialOpened => nameof(TransactionEntity.HopInterstitialOpenedAt),
+            HopObservationMark.ChannelLaunched => nameof(TransactionEntity.HopChannelLaunchedAt),
+            HopObservationMark.RepeatResolve => nameof(TransactionEntity.HopRepeatResolvedAt),
+            _ => throw new UnreachableException()
+        };
+
+        // The round-trip form is what the entity deserializer reads back as a DateTimeOffset.
+        return WriteObservationOnceAsync(id, field, markedAt.ToString("O", CultureInfo.InvariantCulture));
+    }
+
+    /// <inheritdoc />
+    public Task<bool> TryAttachScannerContextAsync(TransactionId id, ScannerContextSnapshot snapshot, CancellationToken cancellationToken = default)
+    {
+        HopObservationArguments.ThrowIfInvalid(snapshot);
+
+        return WriteObservationOnceAsync(
+            id,
+            nameof(TransactionEntity.ScannerContextSnapshotJson),
+            TransactionEntityMapper.SerializeScannerContext(snapshot));
+    }
+
+    /// <inheritdoc />
+    public Task<bool> TryFillScannerFingerprintAsync(TransactionId id, string fingerprint, CancellationToken cancellationToken = default)
+    {
+        HopObservationArguments.ThrowIfInvalidFingerprint(fingerprint);
+
+        return WriteObservationOnceAsync(
+            id,
+            nameof(TransactionEntity.ScannerFingerprint),
+            fingerprint,
+            requiredField: nameof(TransactionEntity.ScannerContextSnapshotJson));
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TrySetWebStepSurfaceAsync(
+        TransactionId id,
+        WebStepSurface? expected,
+        WebStepSurface surface,
+        CancellationToken cancellationToken = default)
+    {
+        ClaimCompletionWrites.ThrowIfUndefined(expected, surface);
+
+        if (!ClaimCompletionWrites.IsSurfaceMove(expected, surface))
+        {
+            return false;
+        }
+
+        var result = await _db.ScriptEvaluateAsync(
+            WriteClaimCompletionFieldLuaScript,
+            new RedisKey[] { GetTransactionKey(id.ToString()) },
+            new RedisValue[]
+            {
+                nameof(TransactionEntity.ClaimCompletionSurface),
+                surface.ToString(),
+                expected?.ToString() ?? string.Empty,
+                PendingStateName,
+                nameof(TransactionEntity.ClaimCompletionJson)
+            });
+
+        return (long)result == 1L;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One run of <see cref="WriteClaimCompletionFieldLuaScript"/> on the fingerprint field while it is
+    /// empty: the state, the completion mark and the emptiness are checked, and the field written, in one
+    /// step.
+    /// </remarks>
+    public async Task<bool> TrySetClaimFormTokenHashAsync(
+        TransactionId id,
+        string tokenHash,
+        CancellationToken cancellationToken = default)
+    {
+        ClaimCompletionWrites.ThrowIfInvalidFormTokenHash(tokenHash);
+
+        var result = await _db.ScriptEvaluateAsync(
+            WriteClaimCompletionFieldLuaScript,
+            new RedisKey[] { GetTransactionKey(id.ToString()) },
+            new RedisValue[]
+            {
+                nameof(TransactionEntity.ClaimCompletionFormTokenHash),
+                tokenHash,
+                string.Empty,
+                PendingStateName,
+                nameof(TransactionEntity.ClaimCompletionJson)
+            });
+
+        return (long)result == 1L;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The outcomes are one field of the document, so the write is a compare-and-swap over it: the
+    /// document is read, the condition is checked on what was read, and the script writes the new list
+    /// only while the state is still Pending and both the mark and the list are exactly the ones read.
+    /// Losing the swap means another write changed the document in between; the loop reads again and
+    /// decides anew. It ends: every lost swap is a write that did go through, and the writes that can
+    /// change these fields are bounded — an outcome per missing claim, the state leaving Pending.
+    /// </remarks>
+    public async Task<bool> TryRecordClaimResultAsync(
+        TransactionId id,
+        ClaimCompletionResult result,
+        CancellationToken cancellationToken = default)
+    {
+        ClaimCompletionWrites.ThrowIfInvalid(result);
+
+        var mainKey = GetTransactionKey(id.ToString());
+
+        while (true)
+        {
+            var entity = await GetEntityAsync(mainKey);
+            if (entity is null)
+            {
+                return false;
+            }
+
+            var results = TransactionEntityMapper.DeserializeClaimCompletionResults(entity.ClaimCompletionResultsJson);
+
+            if (!Enum.TryParse<TransactionState>(entity.State, out var state)
+                || !ClaimCompletionWrites.CanRecord(
+                    state,
+                    TransactionEntityMapper.DeserializeClaimCompletionItems(entity.ClaimCompletionJson),
+                    results,
+                    result.Claim))
+            {
+                return false;
+            }
+
+            var newResultsJson = TransactionEntityMapper.SerializeClaimCompletionResults(
+                ClaimCompletionWrites.Append(results, result));
+
+            var written = await _db.ScriptEvaluateAsync(
+                WriteClaimCompletionFieldLuaScript,
+                new RedisKey[] { mainKey },
+                new RedisValue[]
+                {
+                    nameof(TransactionEntity.ClaimCompletionResultsJson),
+                    newResultsJson,
+                    entity.ClaimCompletionResultsJson ?? string.Empty,
+                    PendingStateName,
+                    nameof(TransactionEntity.ClaimCompletionJson),
+                    entity.ClaimCompletionJson
+                });
+
+            if ((long)written == 1L)
+            {
+                return true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Writes one hop observation field of the transaction document once, through
+    /// <see cref="WriteObservationOnceLuaScript"/>.
+    /// </summary>
+    /// <param name="id">Transaction identifier.</param>
+    /// <param name="field">Document field to write.</param>
+    /// <param name="value">Value to write.</param>
+    /// <param name="requiredField">Document field that must already be filled, if any.</param>
+    /// <returns>true — written by this call; false — already filled, required field empty, or no transaction.</returns>
+    private async Task<bool> WriteObservationOnceAsync(
+        TransactionId id,
+        string field,
+        string value,
+        string? requiredField = null)
+    {
+        var arguments = requiredField is null
+            ? new RedisValue[] { field, value }
+            : new RedisValue[] { field, value, requiredField };
+
+        var result = await _db.ScriptEvaluateAsync(
+            WriteObservationOnceLuaScript,
+            new RedisKey[] { GetTransactionKey(id.ToString()) },
+            arguments);
+
+        return (long)result == 1L;
+    }
+
+    /// <summary>
+    /// Puts the transaction into the set of its sign-in subject, if it is a pending sign-in with a
+    /// scope. Runs after the transaction itself is written and is not atomic with that write: if it
+    /// does not run, the sign-in is simply not found by <see cref="GetPendingSignInsAsync"/> and lives
+    /// to its deadline. Only Pending is indexed — it is the one state the read returns, so an id added
+    /// in any other state would only wait in the set for its key to die.
+    /// <para>
+    /// A failure of the index write is logged and swallowed: the transaction is already stored, and a
+    /// throw here would report that write to the caller as failed. The next write that leaves the
+    /// transaction Pending adds the id again.
+    /// </para>
+    /// </summary>
+    /// <param name="transaction">Transaction that has just been written.</param>
+    /// <param name="keyTtlSeconds">Seconds the transaction key has left to live.</param>
+    private async Task IndexSignInSubjectAsync(Transaction transaction, long keyTtlSeconds)
+    {
+        if (transaction.State is not TransactionState.Pending
+            || keyTtlSeconds <= 0
+            || SignInSubjectScope.Of(transaction) is not { } scope)
+        {
+            return;
+        }
+
+        try
+        {
+            await _db.ScriptEvaluateAsync(
+                IndexSignInSubjectLuaScript,
+                new RedisKey[] { GetSignInSubjectIndexKey(scope) },
+                new RedisValue[] { transaction.Id.ToString(), keyTtlSeconds });
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            // The index key is not logged: it is derived from the user's identifier in the channel.
+            _logger.LogWarning(
+                failure,
+                "Adding a pending sign-in to the sign-in subject index failed; the sign-in is not superseded by a newer one and lives to its deadline. TransactionId: {TransactionId}",
+                transaction.Id.ToString());
+        }
+    }
+
+    /// <summary>
+    /// Rehydrates one record found through the sign-in subject index. Nothing here throws: one
+    /// unreadable record must not hide the other sign-ins of the subject from the caller.
+    /// The raw value is never logged — a stored record holds identity snapshots and client context.
+    /// </summary>
+    /// <param name="transactionId">Identifier as it stands in the index.</param>
+    /// <param name="rawValue">Raw value of the transaction key from the batch read (the key exists).</param>
+    /// <returns>The transaction, or null when this build cannot read the record.</returns>
+    private Transaction? ReadIndexedSignIn(RedisValue transactionId, RedisValue rawValue)
+    {
+        try
+        {
+            var entity = rawValue.Length() == 0
+                ? null
+                : JsonSerializer.Deserialize<TransactionEntity>(
+                    rawValue.ToString(),
+                    TransactionEntityMapper.SerializerOptions);
+
+            if (entity is not null)
+            {
+                return TransactionEntityMapper.ToDomain(entity);
+            }
+
+            _logger.LogWarning(
+                "A record of the sign-in subject index holds no transaction document and is skipped. TransactionId: {TransactionId}",
+                transactionId.ToString());
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                failure,
+                "A record of the sign-in subject index does not rehydrate on this build and is skipped. TransactionId: {TransactionId}",
+                transactionId.ToString());
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -549,6 +1044,18 @@ return 1";
             scope,
             KeySegmentSeparator,
             key);
+    }
+
+    /// <summary>
+    /// Builds the key for the sign-in subject index: the store prefix, the index segment and the
+    /// fingerprint of the scope. The fingerprint, not the scope fields, goes into the key — the
+    /// channel user identifier does not appear in key names.
+    /// </summary>
+    /// <param name="scope">Sign-in subject scope.</param>
+    /// <returns>Redis set key.</returns>
+    private string GetSignInSubjectIndexKey(SignInSubjectScope scope)
+    {
+        return string.Concat(_options.KeyPrefix, SignInSubjectIndexSegment, scope.ToFingerprint());
     }
 
     /// <summary>

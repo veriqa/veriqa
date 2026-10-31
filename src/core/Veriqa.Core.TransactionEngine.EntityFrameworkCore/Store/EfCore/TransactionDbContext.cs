@@ -23,6 +23,18 @@ public sealed class TransactionDbContext : DbContext
     private const int IdempotencyColumnMaxLength = 256;
 
     /// <summary>
+    /// Length of the sign-in subject fingerprint column: a SHA-256 digest written as hex.
+    /// </summary>
+    private const int SignInSubjectFingerprintLength = 64;
+
+    /// <summary>
+    /// Maximum length of the state column: the name of a <c>TransactionState</c> value (the longest
+    /// is nine characters) with room to spare. Bounded because the column leads the indexes of the
+    /// cleanup pass, and an unbounded string is not an index key on every provider.
+    /// </summary>
+    private const int StateColumnMaxLength = 32;
+
+    /// <summary>
     /// Set of transactions in the database.
     /// </summary>
     internal DbSet<TransactionEntity> Transactions { get; init; } = null!;
@@ -62,6 +74,20 @@ public sealed class TransactionDbContext : DbContext
             // columns by itself.
             entity.HasIndex(e => new { e.IdempotencyScope, e.IdempotencyKey })
                 .IsUnique();
+
+            // Lookup of the pending sign-ins of one subject: a non-unique index on the fingerprint of
+            // the sign-in subject scope. Rows without a scope carry null and are never selected by it.
+            entity.Property(e => e.SignInSubjectFingerprint).HasMaxLength(SignInSubjectFingerprintLength);
+            entity.HasIndex(e => e.SignInSubjectFingerprint);
+
+            // The selections of the cleanup pass, which runs every CleanupIntervalSeconds: expiry
+            // (expirable state, ExpiresAt passed) reads the first index; retention (terminal state,
+            // UpdatedAt behind the threshold) and the finalization timeout (Confirmed, UpdatedAt behind
+            // the threshold) share the second. State leads both, so it needs a bounded length to be an
+            // index key on every provider.
+            entity.Property(e => e.State).HasMaxLength(StateColumnMaxLength);
+            entity.HasIndex(e => new { e.State, e.ExpiresAt });
+            entity.HasIndex(e => new { e.State, e.UpdatedAt });
         });
     }
 }

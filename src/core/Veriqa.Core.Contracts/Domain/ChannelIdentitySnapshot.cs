@@ -116,7 +116,8 @@ public sealed class ChannelIdentitySnapshot
     /// Whether the channel verified that the user controls <see cref="Email"/>.
     /// A typed field rather than a free-form claim: relying parties make security decisions on
     /// <c>email_verified</c>, so the fact is stated by the contract and visible on review.
-    /// Null — the channel makes no statement, and the core issues no claim (CA-021).
+    /// Null — the channel makes no statement, and the core issues no claim (CA-021). Stated without a
+    /// non-empty <see cref="Email"/>, it verifies no address, and the core issues no claim either.
     /// </summary>
     [JsonPropertyName(VeriqaClaimTypes.EmailVerified)]
     public bool? EmailVerified { get; init; }
@@ -126,6 +127,16 @@ public sealed class ChannelIdentitySnapshot
     /// </summary>
     [JsonPropertyName(VeriqaClaimTypes.PhoneNumber)]
     public string? PhoneNumber { get; init; }
+
+    /// <summary>
+    /// Whether the channel proved that <see cref="PhoneNumber"/> belongs to the user (OIDC Core 1.0
+    /// section 5.1, <c>phone_number_verified</c>). A typed field for the reason
+    /// <see cref="EmailVerified"/> is one: relying parties make security decisions on it.
+    /// Null — the channel makes no statement, and the core states <c>false</c> next to a non-empty
+    /// <see cref="PhoneNumber"/> (SPEC-041 R10). Stated without a non-empty number, it verifies nothing.
+    /// </summary>
+    [JsonPropertyName(VeriqaClaimTypes.PhoneNumberVerified)]
+    public bool? PhoneNumberVerified { get; init; }
 
     /// <summary>
     /// User's avatar (if available from the channel): either the image itself as a <c>data:</c> URI

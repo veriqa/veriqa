@@ -1,8 +1,17 @@
 # Veriqa.Core.Contracts
 
-MIT-licensed contracts package of Veriqa — the **free SPI** a channel adapter is written against.
-An adapter that references this package and nothing else from Veriqa is a complete adapter: the
-MPL-2.0 server core is a dependency of the *host*, never of the adapter.
+**Write a Veriqa channel for any messaging app, under the MIT license.** The contracts a
+channel adapter is written against, with no dependency on the server core.
+
+Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
+authentication through popular messaging apps and email, over standard OpenID Connect.
+Documentation: [Custom channel adapter](https://veriqa.app/docs/guides/custom-channel-adapter).
+
+## About this package
+
+MIT-licensed contracts package of Veriqa — the **free SPI** a channel adapter is written
+against. An adapter that references this package and nothing else from Veriqa is a complete
+adapter: the MPL-2.0 server core is a dependency of the *host*, never of the adapter.
 
 ## Where the boundary is declared
 
@@ -17,7 +26,7 @@ build breaks.
 Namespaces do **not** carry the license. This assembly intentionally hosts namespaces
 (`Veriqa.Core.ChannelAdapter.*`, `Veriqa.Core.TransactionEngine.*`, `Veriqa.Core.Configuration`)
 that also exist in the MPL-2.0 core assemblies. The boundary is the assembly plus the declared
-inventory — see "Not in this package" below for the neighbours that share a namespace but not the
+inventory — see "Not in this package" below for the neighbors that share a namespace but not the
 license.
 
 The package is also a **leaf**: it references no other Veriqa assembly. The edge between it and
@@ -30,16 +39,30 @@ for the ownership-context types below — so referencing the free SPI never drag
 
 - `IChannelAdapter` — the channel adapter contract itself.
 - `IChannelDisplayMetadata` — optional display metadata (name, glyph) of a channel.
+- `IMenuItemPressHandler` — the host's handler of a press on a callback item of the post-sign-in
+  menu. The host implements and registers it; it receives a `MenuItemPress` (channel type, user,
+  tenant, the item's value and `PressId`) and returns nothing. Without it callback items are not drawn.
+  The press comes from a built-in adapter or from the external adapter of an HTTP channel, and a
+  repeated delivery of the same press reaches the handler again.
 - `ChannelCapabilities` — what the channel declares it can do: surfaces, message update, supported
-  message kinds, recipient locale, outcome notice.
+  message kinds, recipient locale, outcome notice, and the start of a sign-in by a short code
+  (`ChannelCodeStart`) for a platform whose link cannot carry the transaction or does not always
+  deliver it.
 
 ### Domain records
 
 - Inbound: `ChannelInboundRequest`, `ChannelInboundResult` and its intent-specific shapes
-  (`ChannelAuthStartResult`, `ChannelAuthConfirmResult`, `ChannelAuthDeclineResult`,
-  `ChannelPhoneSharedResult`, `ChannelUnrelatedResult`), `ChannelInboundToken`.
+  (`ChannelAuthStartResult`, `ChannelAuthStartByCodeResult`, `ChannelAuthConfirmResult`,
+  `ChannelAuthDeclineResult`, `ChannelPhoneSharedResult`, `ChannelMenuItemPressedResult`,
+  `ChannelUnrelatedResult`), `ChannelInboundToken`.
 - Outbound: `ChannelMessage`, `ChannelMessageRef`, `ChannelMessageKind`,
-  `TransactionOutcomeNotice`, `TransactionOutcome`.
+  `TransactionOutcomeNotice`, `TransactionOutcome`; `ActionButtonsContent` with `ChannelActionButton`
+  — the buttons of an `action_buttons` message, each a link or a callback.
+- Post-sign-in menu: `MenuItemPress` — the event handed to `IMenuItemPressHandler`. Its `PressId` is
+  the identifier of the press as the channel named it — the callback identifier of the platform, or
+  the `webhook-id` of the event on an HTTP channel — and the key by which the host discards a repeated
+  delivery; `null` when the channel named none. It is unique within the channel (`ChannelType`) alone:
+  a host serving several channels keys by both. `ChannelMenuItemPressedResult` carries the same member.
 - Confirmation prompt: `ConfirmationPromptContext` with `DetailedConfirmationPromptContext`,
   `SubjectConfirmationPromptContext` and `SuppressedConfirmationPromptContext`,
   `ContextSuppressionReason`, `ConfirmationSurface`, `LoginConfirmationMode`. Every variant carries
@@ -73,7 +96,7 @@ for the ownership-context types below — so referencing the free SPI never drag
 ### Name registries
 
 - `VeriqaErrorCodes` — the error codes that cross this package boundary: the ones an adapter
-  returns through `IChannelAdapter`, and the ones the core branches on in behaviour observable
+  returns through `IChannelAdapter`, and the ones the core branches on in behavior observable
   from outside. Return these instead of inventing your own strings — a code outside the registry
   reaches neither the core's branches nor its telemetry tags and stays a line in a log.
 - `VeriqaClaimTypes` — OIDC claim names issued by the core and by channel adapters, plus the three
@@ -110,6 +133,13 @@ for the ownership-context types below — so referencing the free SPI never drag
 - `ChannelTypes`, `ChannelInboundIntents`, `ChannelMessageKinds`, `ChannelNoticeKinds`,
   `TransactionOutcomeCodes`, `ContextSuppressionReasons`, `ChannelTelemetry`,
   `CustomChannelContract` — the remaining wire-level constant registries.
+
+### Phone number format
+
+- `E164PhoneNumber` — `TryNormalize(value, out normalized)` brings a phone number to E.164 with the
+  leading plus, the form an adapter hands a number over in (`SPEC-003 CA-009`); `IsCanonical(value)`
+  says whether a value already is that form. The core takes the number of a
+  `ChannelPhoneSharedResult` only in that form and does not repair another spelling.
 
 ### Log masking
 
@@ -175,12 +205,12 @@ The XML comments of these types carry short identifiers — `SPEC-003 §6.2`, `C
 section inside it, and the lettered codes are individual requirements of those specifications
 (`CA-` — channel adapters, `ICC-` — confirmation context and prompts, `CFG-` — settings
 resolution, `EM-` — the Email channel, `UI-` — the pages of the core). A comment that names one
-is saying "this behaviour is a stated rule, not an accident of the implementation" — worth
+is saying "this behavior is a stated rule, not an accident of the implementation" — worth
 reading as a warning that the shape around it is deliberate.
 
 The specifications themselves are internal documents and do not ship with the package. The
 identifier is still useful to a consumer: it is stable, and quoting it in a question or a bug
-report points at the exact rule a behaviour comes from.
+report points at the exact rule a behavior comes from.
 
 ## Not in this package (MPL-2.0 core)
 
@@ -188,9 +218,10 @@ These types share the `Veriqa.Core.ChannelAdapter.Abstractions` namespace with `
 but live in the MPL-2.0 core assembly. They are core-internal bookkeeping, not SPI, and an adapter
 neither needs nor can reference them:
 
-- `IChannelPromptMessageStore` — the core stores the reference to a sent prompt itself; an adapter
+- `IChannelPromptMessageStore` — the core keeps the chat of a transaction and the references to the
+  messages sent into it (the prompt, the phone number request) itself; an adapter
   only returns a `ChannelMessageRef` from `SendMessageAsync`.
-- `ChannelPromptMessageRef` — the stored form of that reference, the core's own bookkeeping record.
+- `ChannelPromptMessageRef` — the stored form of that record, the core's own bookkeeping.
 - `IUserAuthRateLimiter` — per-user authentication rate limiting, enforced by the core.
 - `IInitiatorAnomalyDetector` — initiator anomaly detection, enforced by the core.
 

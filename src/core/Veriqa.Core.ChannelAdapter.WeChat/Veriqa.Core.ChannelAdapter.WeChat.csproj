@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Veriqa.Core.ChannelAdapter.WeChat</RootNamespace>
+    <!-- Satellite package — the WeChat channel. A deployment that does not use WeChat never
+         receives it: the channel is installed on its own, outside the base channel set. -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Veriqa.Core.ChannelAdapter.WeChat</PackageId>
+    <Authors>Veriqa</Authors>
+    <Title>WeChat login and authentication for ASP.NET Core</Title>
+    <Description>WeChat login and authentication for ASP.NET Core and OpenIddict. Add passwordless login with WeChat to your website or app over standard OpenID Connect (OIDC): users scan a QR code with WeChat and confirm in the chat with your Official Account — no password, no SMS code. Veriqa channel adapter (satellite package).</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;wechat;weixin;wechat-login;wechat-auth;wechat-authentication;sign-in-with-wechat;login-with-wechat;wechat-official-account</PackageTags>
+    <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
+         MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
+         file has to travel inside the package. -->
+    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <!-- Shared package metadata: XML docs, repository metadata, embedded symbols, readme, validation. -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\..\build\Packaging.props" />
+
+  <!-- Declared inventory of the public surface (PublicAPI.*.txt + RS0016/RS0017 as errors). -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\..\build\PublicApi.props" />
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The channel service tests drive this channel's own internals directly (its adapter, its
+         settings validator, its platform client) — surfaces that are internal by design. -->
+    <!-- Test friends stay out of the packed assemblies: build/pack-core passes VeriqaPackaging=true. -->
+    <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter.Tests" Condition="'$(VeriqaPackaging)' != 'true'" />
+  </ItemGroup>
+
+  <!-- No platform SDK: the channel talks to the Official Account API over plain HTTP through
+       IHttpClientFactory. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter\Veriqa.Core.ChannelAdapter.csproj" />
+  </ItemGroup>
+
+</Project>

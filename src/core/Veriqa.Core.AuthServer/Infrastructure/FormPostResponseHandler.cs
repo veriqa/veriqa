@@ -81,8 +81,8 @@ internal sealed class FormPostResponseHandler
         var services = httpContext.RequestServices;
 
         // The page speaks the language of its transaction: on the code-issuing path the authorization
-        // endpoint states the transaction's locale tag on this very HTTP context before deleting the
-        // transaction, and the endpoint and this handler are two frames of ONE request (SPEC-007 UI-102).
+        // endpoint states the transaction's locale tag on this very HTTP context before it hands the
+        // principal over, and the endpoint and this handler are two frames of ONE request (SPEC-007 UI-102).
         // Nothing stated — the browser's Accept-Language with the deployment default, which is the only
         // ladder there is on responses that never had a transaction: errors applied to the redirect_uri.
         var veriqaOptions = services.GetRequiredService<IOptions<VeriqaOptions>>();
@@ -104,17 +104,21 @@ internal sealed class FormPostResponseHandler
             languageRegistry.SupportedLanguages);
 
         // Branding by the tenant and application levels of the validated client_id, without a ui_config
-        // record: the record selector lived on the transaction, which is gone by now (SPEC-007 UI-102).
-        // The tenant went with it, and no ambient tenant scope is open on this path, so it is resolved
-        // from the client again — the mapping is deterministic, the answer is the one the sign-in stored.
+        // record: the record selector lives on the transaction, and this handler is given the HTTP
+        // context and does not read the transaction (SPEC-007 UI-102). The tenant lives there as well,
+        // and no ambient tenant scope is open on this path, so it is resolved from the client again —
+        // the mapping is deterministic, the answer is the one the sign-in stored.
         var tenantId = await ClientTenantLookup.ResolveAsync(
             httpContext,
             context.Request.ClientId,
             services.GetRequiredService<ILoggerFactory>().CreateLogger<FormPostResponseHandler>());
+        var resolution = TransactionResolutionContext.ForClient(tenantId, context.Request.ClientId, uiConfigSelector: null);
         var brandingResolver = services.GetRequiredService<CorePageBrandingResolver>();
-        var branding = await brandingResolver.ResolveAsync(
-            TransactionResolutionContext.ForClient(tenantId, context.Request.ClientId, uiConfigSelector: null),
-            httpContext.RequestAborted);
+        var branding = await brandingResolver.ResolveAsync(resolution, httpContext.RequestAborted);
+
+        // The text overrides come from the same levels as the branding, for the same reason.
+        var texts = await services.GetRequiredService<CorePageTextResolver>()
+            .ResolveAsync(resolution, httpContext.RequestAborted);
 
         // State the CSP source of this response BEFORE the body starts: the policy header is written
         // from a Response.OnStarting callback, which runs when the first byte is about to go out.
@@ -130,6 +134,7 @@ internal sealed class FormPostResponseHandler
             cspNonce: httpContext.Items[SecurityHeaderConstants.CspNonceItemKey] as string,
             localizer: services.GetRequiredService<IConfirmationPromptLocalizer>(),
             language: language,
+            texts: texts,
             branding: branding);
 
         httpContext.Response.StatusCode = StatusCodes.Status200OK;

@@ -61,4 +61,10 @@ public static class ChannelAdapterErrorCodes
     /// <c>ChannelCapabilities.SupportedMessageKinds</c>, so the adapter was not called at all.
     /// </summary>
     public const string UnsupportedMessageKind = "unsupported_message_kind";
+
+    /// <summary>
+    /// The core could not give a transaction its start code: the transaction is past its deadline, or
+    /// no free code was found. The caller treats it as a channel that failed to build its link.
+    /// </summary>
+    public const string StartCodeIssueFailed = "start_code_issue_failed";
 }

@@ -1,6 +1,7 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Collections;
 using System.Collections.Frozen;
 
 using Microsoft.Extensions.Logging;
@@ -179,22 +180,26 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// <b>Core participates</b> (default) — core takes part in the intersection as a limiting allowlist ceiling:
-    /// lower levels only narrow what core has allowed (SPEC-017 ICC-081 contract for
-    /// <c>InitiatorContext.DisplayFields</c> — the application narrows the tenant/core set).
+    /// <b>Core participates</b> (default) — core takes part in the intersection as a limiting allowlist ceiling
+    /// over EVERY level, the tenant included: lower levels only narrow what core has allowed (SPEC-017 ICC-081
+    /// contract for <c>InitiatorContext.DisplayFields</c> — the application narrows the tenant/core set).
     /// </description></item>
     /// <item><description>
-    /// <b>Core does not participate</b> — core is treated as a degenerate N=1 default (self-hosted ≡ core,
-    /// CFG-202 / SPEC-003 CA-170): core defines the set only when no owning level above it has defined one.
-    /// Otherwise an empty global core set (the normal case for a multi-tenant deployment: channels are enabled
-    /// per tenant rather than globally) would zero out the tenant set through intersection — that was exactly
-    /// the CFG-211 defect for <c>channels_enabled</c>.
+    /// <b>Core does not participate</b> — core is no ceiling over the TENANT: a set the tenant states replaces
+    /// the core one, which is what keeps an empty global core set (the normal case for a multi-tenant
+    /// deployment: channels are enabled per tenant rather than globally) from zeroing out the tenant set — the
+    /// CFG-211 defect for <c>channels_enabled</c>. While the tenant is silent, a core set that allows something
+    /// is the BASE of the narrowing: the levels below the tenant narrow it exactly as they narrow a tenant set,
+    /// so an application never states more than the core allows (SPEC-012 CFG-162, CFG-248). An empty core
+    /// set, an unstated one and one whose read failed with no last valid value (CFG-240) are no base: the
+    /// levels below then intersect among themselves, and when no level states a set at all the core one is
+    /// the value as it is — the degenerate N=1 default (self-hosted ≡ core, CFG-202 / SPEC-003 CA-170).
     /// </description></item>
     /// </list>
     /// <para>
     /// The reported source level is the MOST SPECIFIC level that took part in the intersection: every
     /// level that declared a set influenced the outcome, and the most specific one is what an operator
-    /// looks for first (CFG-232).
+    /// looks for first (CFG-232). A core base that no level below narrowed is reported as the core level.
     /// </para>
     /// </summary>
     private async ValueTask<ResolvedValue<T>> ResolveSetAsync<T>(
@@ -207,8 +212,8 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
         var coreParticipates = key.CoreParticipatesInSetIntersection;
 
         // Intersect levels top to bottom by ownership (the reverse of precedence: core → … → user).
-        // The core level participates in the intersection only if the key declared it (allowlist ceiling);
-        // otherwise core is skipped here and used below as the degenerate N=1 default.
+        // The core level of a key it does not cap is not intersected in its own step: it enters at the
+        // tenant step instead, as the base of the narrowing when the tenant is silent.
         T? accumulated = default;
         var hasAccumulated = false;
         ConfigLevel? source = null;
@@ -218,17 +223,35 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
         // longer the one being reported.
         IReadOnlySet<string> addressed = FrozenSet<string>.Empty;
 
+        // The core level of a key it does not cap, read at most once: at the tenant step, and only when
+        // the tenant is silent — a stated tenant set replaces it without the core being asked.
+        var coreLayer = LayerValue<T>.None;
+
         for (var i = ConfigLevelPrecedence.Order.Length - 1; i >= 0; i--)
         {
             var level = ConfigLevelPrecedence.Order[i];
 
-            // Core is not part of the intersection for keys where it is a degenerate default rather than a ceiling.
             if (level == ConfigLevel.Core && !coreParticipates)
             {
                 continue;
             }
 
             var layer = await GetLayerValueAsync(key, level, scope, dimensions, cancellationToken);
+            var contributor = level;
+
+            if (level == ConfigLevel.Tenant && !coreParticipates && !layer.HasValue)
+            {
+                coreLayer = await GetLayerValueAsync(key, ConfigLevel.Core, scope, dimensions, cancellationToken);
+
+                // An empty core set is no base: as the upper side of the intersection it would zero out
+                // every set stated below it.
+                if (coreLayer.HasValue && AllowsSomething(coreLayer.Value))
+                {
+                    layer = coreLayer;
+                    contributor = ConfigLevel.Core;
+                }
+            }
+
             if (!layer.HasValue)
             {
                 continue;
@@ -247,7 +270,7 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
 
             // The loop walks from the least specific level to the most specific one, so the last
             // contributor seen is the most specific one.
-            source = level;
+            source = contributor;
             addressed = layer.AddressedDimensions;
         }
 
@@ -256,23 +279,35 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
             return new ResolvedValue<T>(accumulated!, source) { AddressedDimensions = addressed };
         }
 
-        // We reach here only if core did NOT participate in the intersection and no owning level above
-        // defined the set — take the core-level set as the default (self-hosted N=1).
-        // When coreParticipates, core is already accounted for in the loop above, so we do not query it again.
-        if (!coreParticipates)
+        // We reach here only if no level stated a set that took part. For a key whose core does not cap
+        // the set, the tenant step has already read the core level (the tenant was silent, or something
+        // would have accumulated) — its set, an empty one included, is the degenerate default (self-hosted
+        // N=1). When coreParticipates, core is already accounted for in the loop above.
+        if (!coreParticipates && coreLayer.HasValue)
         {
-            var coreLayer = await GetLayerValueAsync(key, ConfigLevel.Core, scope, dimensions, cancellationToken);
-
-            return coreLayer.HasValue
-                ? new ResolvedValue<T>(coreLayer.Value!, ConfigLevel.Core)
-                {
-                    AddressedDimensions = coreLayer.AddressedDimensions
-                }
-                : new ResolvedValue<T>(default!, null);
+            return new ResolvedValue<T>(coreLayer.Value!, ConfigLevel.Core)
+            {
+                AddressedDimensions = coreLayer.AddressedDimensions
+            };
         }
 
         return new ResolvedValue<T>(default!, null);
     }
+
+    /// <summary>
+    /// Whether a core set may be the base of the narrowing of a key whose core does not cap the set: it
+    /// allows at least one member. A value that is not enumerable carries no notion of emptiness and is
+    /// a base whenever it is stated; an absent (null) value allows nothing.
+    /// </summary>
+    /// <typeparam name="T">Type of the setting value.</typeparam>
+    /// <param name="value">Set stated by the core level.</param>
+    /// <returns><c>true</c> when the set may be the base of the narrowing.</returns>
+    private static bool AllowsSomething<T>(T value) => value switch
+    {
+        null => false,
+        IEnumerable members => members.Cast<object?>().Any(),
+        _ => true
+    };
 
     /// <summary>
     /// Protective setting (CFG-212): the top owning level defines the ceiling;
@@ -464,6 +499,7 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
         // a value the setting ADMITS is ever cached, so a hit is by construction not a rejection, and a
         // miss runs the read below before this call returns.
         var rejected = false;
+        var overSilentRecord = LayerValue<T>.None;
 
         async ValueTask<LayerValue<T>> ReadLevelAsync(CancellationToken token)
         {
@@ -475,6 +511,7 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
                 refusesSubstitution,
                 token);
             rejected = outcome.IsRejected;
+            overSilentRecord = outcome.OverSilentRecord;
 
             return outcome.Value;
         }
@@ -503,9 +540,25 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
             // with. At start there is none — the host does not start on such a value at all, which is
             // the snapshot report's decision, not this one — so this branch is the RELOAD that brought
             // an inadmissible value where a valid one used to stand. A reload that brought one where
-            // the level stated nothing before finds no last value either and drops the step, exactly as
-            // the default of CFG-240 does.
-            return await _cache.GetLastGoodOrNoneAsync<T>(entryKey, key.IsSecret, cancellationToken);
+            // the level stated nothing before — or where nothing ever READ the level, so no last value
+            // was kept — finds none and drops the step by the default of CFG-240, which is the branch
+            // below.
+            var lastGood = await _cache.GetLastGoodOrNoneAsync<T>(entryKey, key.IsSecret, cancellationToken);
+
+            if (lastGood.HasValue)
+            {
+                return lastGood;
+            }
+        }
+
+        if (rejected && !layer.HasValue && overSilentRecord.HasValue)
+        {
+            // The default of CFG-240 at the CORE level: the rejected step is dropped, and with no level
+            // below the core the level answers as over a record stating nothing — the value its owner
+            // declared — instead of leaving the consumer with the default of the type. Only the core
+            // level carries such an answer, and it is not the last value the level was READ with, so it
+            // is not stored as one.
+            return overSilentRecord;
         }
 
         if (layer.HasValue)
@@ -637,6 +690,7 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
         }
 
         var rejected = false;
+        var overSilentRecord = LayerValue<T>.None;
 
         foreach (var step in declared.Fallback)
         {
@@ -662,9 +716,17 @@ internal sealed class ConfigurationResolver : IConfigurationResolver
             }
 
             rejected = true;
+
+            // The answer of the FIRST rejected step that has one stands for the level: it is the most
+            // specific point the level was asked at, and the coarser steps are still tried before it
+            // is given — an admitted value of the chain wins over it.
+            if (!overSilentRecord.HasValue)
+            {
+                overSilentRecord = outcome.OverSilentRecord;
+            }
         }
 
-        return new ConfigLevelOutcome<T>(LayerValue<T>.None, rejected);
+        return new ConfigLevelOutcome<T>(LayerValue<T>.None, rejected) { OverSilentRecord = overSilentRecord };
     }
 
     /// <summary>

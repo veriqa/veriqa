@@ -47,6 +47,12 @@ public static class MessageTextRenderer
     private const string UnknownLocaleMomentFormat = "yyyy-MM-dd HH:mm";
 
     /// <summary>
+    /// Length cap handed to the sanitizer for a value that is not truncated at all — the value of a
+    /// slot the core computes itself (see <see cref="RenderParts"/>).
+    /// </summary>
+    private const int UncappedValueLength = int.MaxValue;
+
+    /// <summary>
     /// Renders <paramref name="message"/> using <paramref name="values"/>.
     /// </summary>
     /// <param name="message">The resolved message: its contract and its ordered template variants.</param>
@@ -136,7 +142,21 @@ public static class MessageTextRenderer
                 continue;
             }
 
-            rendered[slot.Name] = MessageValueSanitizer.Sanitize(RenderTypedValue(slot, raw, culture, zone)) ?? string.Empty;
+            // A configured text is translated as the page that shows it translates it — the brand name
+            // reads the same in the brand row of the sign-in page and in the text.
+            var typed = raw is NaturalKeySlotValue configured
+                ? localizer?.ResolveOrBaseText(configured.NaturalKey, recipientLocale)
+                    ?? NaturalKeyContext.BaseTextOf(configured.NaturalKey)
+                : RenderTypedValue(slot, raw, culture, zone);
+
+            // The length ceiling protects a message from a value somebody ELSE wrote — the calling party,
+            // the user agent of the initiator, the claims of an identity, a translation file. A
+            // ServerSystem value is one the core computes itself, and cutting it breaks what it is: a
+            // sign-in link shortened to the ceiling opens nothing. Control characters are neutralized
+            // and the value is trimmed for every source alike.
+            rendered[slot.Name] = (slot.Source is SlotSource.ServerSystem
+                ? MessageValueSanitizer.Sanitize(typed, UncappedValueLength)
+                : MessageValueSanitizer.Sanitize(typed)) ?? string.Empty;
         }
 
         var edition = EditionOf(mode);
@@ -461,10 +481,11 @@ public static class MessageTextRenderer
 
         // Dropping a part of a value is allowed only where the product itself owns what the value means.
         // A ServerSystem moment is one the core states for a text the core ships — today the expiry of a
-        // sign-in link, a moment inside the TTL of the very request the reader is answering: its calendar
-        // date says nothing, and the time of day is the shape that value has always had (D9). A moment of
-        // any other source is worded by someone whose meaning the product does not know — an RP subject
-        // saying "the meeting", "the payment", "the deadline"; shortening it to the time of day makes
+        // sign-in link and the time of the request a question asks about, both moments inside the TTL of
+        // the very request the reader is answering: their calendar date says nothing, and the time of day
+        // is the shape such a value has always had (D9). A moment of any other source is worded by someone
+        // whose meaning the product does not know — an RP subject saying "the meeting", "the payment",
+        // "the deadline"; shortening it to the time of day makes
         // "today" and "in four days" read exactly alike, so it is shown whole (TPL-016).
         if (slot.Source is SlotSource.ServerSystem)
         {

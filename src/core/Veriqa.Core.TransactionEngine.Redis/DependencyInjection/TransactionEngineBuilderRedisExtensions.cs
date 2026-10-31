@@ -18,10 +18,12 @@ public static class TransactionEngineBuilderRedisExtensions
     /// Redis manages transaction expiration natively via TTL.
     /// </summary>
     /// <remarks>
-    /// Supported extension point (B14.2): the implementation is complete, but no host in this repository
-    /// wires it (hosts use <see cref="TransactionEngineBuilder.UseInMemoryStore"/> or <c>UseEfCoreStore</c> of the
-    /// EF Core satellite).
-    /// Its degradation is therefore not tracked by CI — validate it in the consuming host when you enable it.
+    /// Supported extension point: the shipped standalone host wires it by configuration — the
+    /// value <c>Redis</c> in <c>Veriqa:TransactionEngine:Store:Provider</c> together with a connection
+    /// string; without them it stays on <see cref="TransactionEngineBuilder.UseInMemoryStore"/> or
+    /// <c>UseEfCoreStore</c> of the EF Core satellite.
+    /// CI does not run that host against a live Redis — validate the connection in the consuming host when
+    /// you enable it.
     /// </remarks>
     /// <param name="builder">Transaction Engine builder.</param>
     /// <param name="configure">Action configuring the store parameters.</param>

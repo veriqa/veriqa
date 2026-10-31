@@ -1,9 +1,13 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
-using Max.BotClient;
-using Max.BotClient.Types;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
 
+using Max.BotClient;
+
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using Veriqa.Core.ChannelAdapter.Abstractions;
@@ -12,10 +16,6 @@ using Veriqa.Core.ChannelAdapter.DependencyInjection;
 using Veriqa.Core.ChannelAdapter.Max.Constants;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
 using Veriqa.Core.ChannelAdapter.Pipeline;
-using Veriqa.Core.TransactionEngine.Events;
-using Veriqa.Core.TransactionEngine.Identity;
-using Veriqa.Core.TransactionEngine.Services;
-using Veriqa.Core.TransactionEngine.Store;
 
 namespace Veriqa.Core.ChannelAdapter.Max.Services;
 
@@ -23,7 +23,9 @@ namespace Veriqa.Core.ChannelAdapter.Max.Services;
 /// Per-tenant supervisor of MAX update long polling (SPEC-003 §11, TASK-051).
 /// The supervisor takes the set of active polling tenants from <see cref="IPollingTenantSource"/> and
 /// starts an independent long-poll loop for each one with its own bot client (from
-/// <see cref="IChannelClientFactory"/> by <c>(Max, tenantId)</c>) and its own <c>marker</c>.
+/// <see cref="IChannelClientFactory"/> by <c>(Max, tenantId)</c>) and its own <c>marker</c>. Updates are
+/// requested as a raw <c>GET /updates</c> and every one of them is handed to the adapter as its raw body —
+/// the same reception point the webhook uses, so both modes read an update the same way.
 /// N=1 (self-hosted) is the degenerate case: the set <c>[null]</c> ⇒ one loop, the default client.
 /// Reaction to set changes without a restart — in the base class.
 /// A simplified implementation for local development; the Webhook mode is recommended in production.
@@ -41,65 +43,11 @@ internal sealed class MaxPollingService : PerTenantPollingSupervisor
     private readonly MaxChannelAdapter _channelAdapter;
 
     /// <summary>
-    /// Transaction service for pipeline processing.
+    /// Scope factory: every update is processed in a scope of its own, and the processing with its
+    /// collaborators comes from that scope — this loop is a singleton, and a collaborator the host
+    /// registered as scoped must not be captured by it.
     /// </summary>
-    private readonly ITransactionService _transactionService;
-
-    /// <summary>
-    /// Transaction store: the pipeline reads a reported decision through it, past the TTL gate of the
-    /// service, so a press that arrives after the deadline is answered by what happened to the
-    /// transaction (SPEC-003 CA-192).
-    /// </summary>
-    private readonly ITransactionStore _transactionStore;
-
-    /// <summary>
-    /// Clock the pipeline reads the deadline of a transaction against. There is no HttpContext on a
-    /// polling loop, so it comes from the container and travels onwards as a parameter.
-    /// </summary>
-    private readonly TimeProvider _timeProvider;
-
-    /// <summary>
-    /// Channel identity resolution service (TASK-002).
-    /// </summary>
-    private readonly IIdentityResolutionService _identityResolutionService;
-
-    /// <summary>
-    /// Per-user rate limiter (optional — may be absent in dev/test).
-    /// </summary>
-    private readonly IUserAuthRateLimiter? _userAuthRateLimiter;
-
-    /// <summary>
-    /// Component metrics: this loop drives the same pipeline as the webhook route, and a failed user
-    /// notification on it is counted into the same instrument. There is no HttpContext on a polling
-    /// loop, so the instrument comes from the container and travels as a parameter.
-    /// </summary>
-    private readonly ChannelAdapterMetrics _metrics;
-
-    /// <summary>
-    /// Confirmation prompt orchestrator. Registered by the same call that registers this hosted
-    /// service, hence mandatory: a loop running without it would answer every confirmation
-    /// transaction by dropping the decision, and it would do so silently (SPEC-039 E41).
-    /// </summary>
-    private readonly IConfirmationPromptOrchestrator _confirmationPromptOrchestrator;
-
-    /// <summary>
-    /// Channel message localizer. Registered by the same call as this hosted service, hence mandatory:
-    /// absent, it would leave every status text of this loop in the base language unannounced.
-    /// </summary>
-    private readonly IConfirmationPromptLocalizer _promptLocalizer;
-
-    /// <summary>
-    /// Terminal text of the transaction: this loop states the address of the receipt and the core
-    /// answers with the wording, exactly as the webhook route does (SPEC-036 TPL-123).
-    /// </summary>
-    private readonly IOutcomeReceiptText _receiptText;
-
-    /// <summary>
-    /// Store of sent-prompt coordinates: the outcome of a press whose event carried no message id is
-    /// shown by editing the stored prompt, exactly as on the webhook route.
-    /// Registered by the same call that registers this hosted service, hence not optional.
-    /// </summary>
-    private readonly IChannelPromptMessageStore _promptMessageStore;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     /// <summary>
     /// Texts this channel declared at its registration. The loop drives the very same pipeline as the
@@ -109,77 +57,37 @@ internal sealed class MaxPollingService : PerTenantPollingSupervisor
     private readonly ChannelReplyTexts _replyTexts;
 
     /// <summary>
-    /// Bus the refusals of the interaction surface are written to (SPEC-039 E48). There is no
-    /// HttpContext on a polling loop, so it comes from the container and travels as a parameter.
-    /// </summary>
-    private readonly ITransactionEventPublisher _eventPublisher;
-
-    /// <summary>
-    /// How the deployment wants the receipt of a terminal outcome to appear in the conversation. This
-    /// loop drives the very same pipeline as the webhook route, so it states the very same intent;
-    /// there is no HttpContext here, so it comes from the container and travels as a parameter.
-    /// </summary>
-    private readonly IOutcomeNoticeDisplayIntentSource _displayIntentSource;
-
-    /// <summary>
     /// Creates a <see cref="MaxPollingService"/> instance.
     /// </summary>
+    /// <remarks>
+    /// The constructor resolves the processing of an update once, in a probe scope: a composition
+    /// without the collaborators of the in-chat question, or without the journal of the refusals, is
+    /// refused while the hosted services are resolved, with the name of the missing type — not
+    /// discovered as a loop that starts and never asks its question (SPEC-039 E41).
+    /// </remarks>
     /// <param name="clientFactory">Channel client factory (per-tenant bot client).</param>
     /// <param name="tenantSource">Source of active polling tenants.</param>
     /// <param name="channelAdapters">Registered channel adapters.</param>
-    /// <param name="transactionService">Transaction service.</param>
-    /// <param name="transactionStore">Transaction store a reported decision is read through.</param>
-    /// <param name="timeProvider">Clock the deadline of a transaction is read against.</param>
-    /// <param name="identityResolutionService">Channel identity resolution service.</param>
     /// <param name="logger">Logger.</param>
-    /// <param name="promptMessageStore">Store of sent-prompt coordinates.</param>
-    /// <param name="metrics">Component metrics of the channel contour.</param>
-    /// <param name="receiptText">Terminal text of the transaction.</param>
-    /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator.</param>
-    /// <param name="promptLocalizer">Channel message localizer.</param>
     /// <param name="channels">Registry the channel's own declared reply texts are read from.</param>
-    /// <param name="eventPublisher">Bus the refusals of the interaction surface are written to.</param>
-    /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
-    /// <param name="userAuthRateLimiter">Per-user rate limiter (null — no limiting).</param>
+    /// <param name="scopeFactory">Scope factory the scope of each update is created by.</param>
     public MaxPollingService(
         IChannelClientFactory clientFactory,
         IPollingTenantSource tenantSource,
         IEnumerable<IChannelAdapter> channelAdapters,
-        ITransactionService transactionService,
-        ITransactionStore transactionStore,
-        TimeProvider timeProvider,
-        IIdentityResolutionService identityResolutionService,
         ILogger<MaxPollingService> logger,
-        IChannelPromptMessageStore promptMessageStore,
-        ChannelAdapterMetrics metrics,
-        IOutcomeReceiptText receiptText,
-        IConfirmationPromptOrchestrator confirmationPromptOrchestrator,
-        IConfirmationPromptLocalizer promptLocalizer,
         CustomChannelRegistry channels,
-        ITransactionEventPublisher eventPublisher,
-        IOutcomeNoticeDisplayIntentSource displayIntentSource,
-        IUserAuthRateLimiter? userAuthRateLimiter = null)
+        IServiceScopeFactory scopeFactory)
         : base(tenantSource, logger)
     {
         // Initialize the dependencies and explicitly pick the MAX adapter
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _channelAdapter = ResolveMaxAdapter(channelAdapters);
-        _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
-        _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
-        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-        _identityResolutionService = identityResolutionService ?? throw new ArgumentNullException(nameof(identityResolutionService));
-        _promptMessageStore = promptMessageStore ?? throw new ArgumentNullException(nameof(promptMessageStore));
-        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
-        _receiptText = receiptText ?? throw new ArgumentNullException(nameof(receiptText));
-        ArgumentNullException.ThrowIfNull(confirmationPromptOrchestrator);
-        ArgumentNullException.ThrowIfNull(promptLocalizer);
-        _confirmationPromptOrchestrator = confirmationPromptOrchestrator;
-        _promptLocalizer = promptLocalizer;
         ArgumentNullException.ThrowIfNull(channels);
         _replyTexts = channels.ReplyTextsOf(ChannelTypes.Max);
-        _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
-        _displayIntentSource = displayIntentSource ?? throw new ArgumentNullException(nameof(displayIntentSource));
-        _userAuthRateLimiter = userAuthRateLimiter;
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+
+        PollingInboundProcessing.EnsureComposed(_scopeFactory, logger);
     }
 
     /// <inheritdoc />
@@ -227,7 +135,7 @@ internal sealed class MaxPollingService : PerTenantPollingSupervisor
             // No token in the logs (core-rules §10): only the resolution error code/message.
             Logger.LogWarning(
                 "Failed to create the tenant {TenantId} MAX client: {ErrorCode} — {ErrorMessage}. Loop not started",
-                tenantId ?? "<default>",
+                tenantId ?? ChannelTenantContext.DefaultTenantDisplayName,
                 clientResult.Error.Code,
                 clientResult.Error.Message);
             return;
@@ -242,22 +150,24 @@ internal sealed class MaxPollingService : PerTenantPollingSupervisor
         {
             try
             {
-                // Request updates via MAX Bot API long polling
-                var (updates, nextMarker) = await botClient.GetUpdates(
-                    limit: MaxAdapterConstants.LongPollUpdatesLimit,
-                    timeout: MaxAdapterConstants.LongPollTimeoutSeconds,
-                    marker: marker,
-                    types: null,
-                    cancellationToken: cancellationToken);
+                // Request updates via MAX Bot API long polling: a raw call through the tenant's client,
+                // so the answer keeps every field of every update — the typed method of the client
+                // library parses them into a model that drops the signature of a shared contact.
+                var page = await botClient.SendRequest<JsonElement>(
+                    HttpMethod.Get,
+                    UpdatesRequestPath(marker),
+                    body: null,
+                    cancellationToken);
 
                 // Process every update in the tenant scope (requirement 3).
-                foreach (var update in updates)
+                foreach (var rawUpdate in ReadUpdates(page))
                 {
-                    await ProcessUpdateSafelyAsync(update, tenantId, cancellationToken);
+                    await ProcessUpdateSafelyAsync(rawUpdate, tenantId, cancellationToken);
                 }
 
-                // Update the marker for the next request
-                marker = nextMarker;
+                // Move to the position the platform named; an answer that names none keeps the current
+                // one — a request without a marker would get only the latest update.
+                marker = ReadMarker(page) ?? marker;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -269,7 +179,7 @@ internal sealed class MaxPollingService : PerTenantPollingSupervisor
                 Logger.LogError(
                     ex,
                     "Error in the MAX polling loop of tenant {TenantId}. Retrying in {DelayMs} ms",
-                    tenantId ?? "<default>",
+                    tenantId ?? ChannelTenantContext.DefaultTenantDisplayName,
                     MaxAdapterConstants.RetryBaseDelayMs);
 
                 // Local delay before retrying (one tenant's failure does not bring down the others)
@@ -279,24 +189,81 @@ internal sealed class MaxPollingService : PerTenantPollingSupervisor
     }
 
     /// <summary>
+    /// Path and query of one long-poll request (MAX Bot API, <c>GET /updates</c>): the page size, the
+    /// long-poll timeout and — once the platform has named one — the position of the next expected update.
+    /// </summary>
+    /// <param name="marker">Position of the next expected update; null — none named yet.</param>
+    /// <returns>Path of the request, relative to the address of the client.</returns>
+    private static string UpdatesRequestPath(long? marker)
+    {
+        var limit = MaxAdapterConstants.LongPollUpdatesLimit.ToString(CultureInfo.InvariantCulture);
+        var timeout = MaxAdapterConstants.LongPollTimeoutSeconds.ToString(CultureInfo.InvariantCulture);
+        var path = $"{MaxAdapterConstants.UpdatesPath}"
+            + $"?{MaxAdapterConstants.UpdatesLimitQueryParam}={limit}"
+            + $"&{MaxAdapterConstants.UpdatesTimeoutQueryParam}={timeout}";
+
+        return marker is { } position
+            ? $"{path}&{MaxAdapterConstants.UpdatesMarkerQueryParam}={position.ToString(CultureInfo.InvariantCulture)}"
+            : path;
+    }
+
+    /// <summary>
+    /// The raw bodies of the updates of one long-poll answer (its <c>updates</c> array), each exactly as
+    /// the platform wrote it. An answer of another shape carries none.
+    /// </summary>
+    /// <param name="page">Answer of <c>GET /updates</c>.</param>
+    /// <returns>Raw update bodies, in the order of the answer.</returns>
+    private static List<ReadOnlyMemory<byte>> ReadUpdates(JsonElement page)
+    {
+        if (page.ValueKind is not JsonValueKind.Object
+            || !page.TryGetProperty(MaxAdapterConstants.UpdatesResponseUpdatesField, out var updates)
+            || updates.ValueKind is not JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var bodies = new List<ReadOnlyMemory<byte>>(updates.GetArrayLength());
+        foreach (var update in updates.EnumerateArray())
+        {
+            bodies.Add(Encoding.UTF8.GetBytes(update.GetRawText()));
+        }
+
+        return bodies;
+    }
+
+    /// <summary>
+    /// The position of the next expected update a long-poll answer names (its <c>marker</c>).
+    /// </summary>
+    /// <param name="page">Answer of <c>GET /updates</c>.</param>
+    /// <returns>The position; null — the answer names none.</returns>
+    private static long? ReadMarker(JsonElement page) =>
+        page.ValueKind is JsonValueKind.Object
+        && page.TryGetProperty(MaxAdapterConstants.UpdatesResponseMarkerField, out var marker)
+        && marker.ValueKind is JsonValueKind.Number
+        && marker.TryGetInt64(out var position)
+            ? position
+            : null;
+
+    /// <summary>
     /// Safely processes one update via the pipeline (similar to webhook processing),
     /// setting the tenant scope around the processing (<see cref="ChannelTenantContext.BeginScope"/>).
     /// </summary>
-    /// <param name="update">MAX update.</param>
+    /// <param name="rawUpdate">Raw body of one MAX update.</param>
     /// <param name="tenantId">Tenant identifier (<c>null</c> — default).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    private async Task ProcessUpdateSafelyAsync(Update update, string? tenantId, CancellationToken cancellationToken)
+    private async Task ProcessUpdateSafelyAsync(
+        ReadOnlyMemory<byte> rawUpdate,
+        string? tenantId,
+        CancellationToken cancellationToken)
     {
         try
         {
             // Tenant context around the processing: the adapter/factory/pipeline take this tenant's credentials.
             using var tenantScope = ChannelTenantContext.BeginScope(tenantId);
 
-            // Pass the update to the channel adapter for processing
-            // Polling receives an already deserialized update from the platform library; serializing
-            // it back just to pass through the neutral envelope would be wasteful and fragile, so the
-            // loop enters the adapter's internal reception point. Both paths meet inside the adapter.
-            var result = await _channelAdapter.ProcessUpdateAsync(update, cancellationToken);
+            // The update enters the adapter at the reception point of the webhook, as its raw body: the
+            // signature of a shared contact lives only there.
+            var result = await _channelAdapter.ProcessRawUpdateAsync(rawUpdate, cancellationToken);
 
             if (result.IsFailure)
             {
@@ -309,24 +276,8 @@ internal sealed class MaxPollingService : PerTenantPollingSupervisor
 
             // Routing via the pipeline. The texts the channel states for itself come from its
             // registration, the same source the webhook route reads them from.
-            await ChannelWebhookPipeline.ProcessInboundResultAsync(
-                result.Value,
-                _channelAdapter,
-                _transactionService,
-                _transactionStore,
-                _timeProvider,
-                _identityResolutionService,
-                Logger,
-                _metrics,
-                _userAuthRateLimiter,
-                _confirmationPromptOrchestrator,
-                _promptLocalizer,
-                _promptMessageStore,
-                _receiptText,
-                _displayIntentSource,
-                _eventPublisher,
-                _replyTexts,
-                cancellationToken);
+            await PollingInboundProcessing.ProcessAsync(
+                _scopeFactory, result.Value, _channelAdapter, _replyTexts, cancellationToken);
         }
         catch (Exception ex)
         {

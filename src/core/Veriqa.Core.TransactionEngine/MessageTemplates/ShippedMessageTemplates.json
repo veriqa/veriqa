@@ -7,13 +7,21 @@
             { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
             { "Name": "browser", "Type": "string", "Source": "ServerInitiatorContext" },
             { "Name": "os", "Type": "string", "Source": "ServerInitiatorContext" },
-            { "Name": "region", "Type": "string", "Source": "ServerInitiatorContext" }
+            { "Name": "region", "Type": "string", "Source": "ServerInitiatorContext" },
+            { "Name": "requested_at", "Type": "datetime", "Source": "ServerSystem" },
+            { "Name": "email_masked", "Type": "string", "Source": "ServerSystem" },
+            { "Name": "phone_masked", "Type": "string", "Source": "ServerSystem" },
+            { "Name": "username_masked", "Type": "string", "Source": "ServerSystem" },
+            { "Name": "display_name_masked", "Type": "string", "Source": "ServerSystem" },
+            { "Name": "channel_name", "Type": "string", "Source": "ServerSystem" },
+            { "Name": "bot_name", "Type": "string", "Source": "ServerSystem" }
           ]
         },
         "Templates": [
-          "Confirm sign-in to \"{app}\" — request from {browser} on {os}, {region}",
-          "Confirm sign-in to \"{app}\" — request from {browser} on {os}",
-          "Confirm sign-in to \"{app}\""
+          "Confirm sign-in to \"{app}\" — request at {requested_at} from {browser} on {os}, {region}\n\nIf it was not you, decline the request.",
+          "Confirm sign-in to \"{app}\" — request at {requested_at} from {browser} on {os}\n\nIf it was not you, decline the request.",
+          "Confirm sign-in to \"{app}\" — request at {requested_at}\n\nIf it was not you, decline the request.",
+          "Confirm sign-in to \"{app}\"\n\nIf it was not you, decline the request."
         ]
       },
       "sign-in-mail": {
@@ -35,32 +43,296 @@
             { "Name": "open_link_hint", "Type": "string", "Source": "LocalizedText", "NaturalKey": "To confirm, open the following link:" },
             { "Name": "forward_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not forward this mail: the link grants sign-in access to your account." },
             { "Name": "ignore_notice", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not request sign-in, simply ignore this mail." },
+            { "Name": "direct_link_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Direct link:" },
+            { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirm sign-in" },
+            { "Name": "request_from_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The request came from:" },
+            { "Name": "button_hint", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Press the button below to confirm sign-in." },
+            { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The link is valid until:" }
+          ]
+        },
+        "Templates": [
+          {
+            "Subject": "Sign in to {app}",
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;color:#777;\">{request_from_label} {browser}, {os}, {region}</p>\n              <p style=\"margin:0 0 16px;\">{button_hint}</p>\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 12px;\">{qr_instruction}</p>\n              <img src=\"cid:{qr_cid}\" alt=\"{qr_alt}\" width=\"220\" height=\"220\" style=\"display:block;margin:0 auto;\" />\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{text_intro}\n{request_from_label} {browser}, {os}, {region}\n\n{open_link_hint}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{forward_warning}\n{ignore_notice}"
+          },
+          {
+            "Subject": "Sign in to {app}",
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;\">{button_hint}</p>\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 12px;\">{qr_instruction}</p>\n              <img src=\"cid:{qr_cid}\" alt=\"{qr_alt}\" width=\"220\" height=\"220\" style=\"display:block;margin:0 auto;\" />\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>"
+          },
+          {
+            "Subject": "Sign in to {app}",
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;\">{button_hint}</p>\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{text_intro}\n{open_link_hint}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{forward_warning}\n{ignore_notice}"
+          }
+        ],
+        "ByType": {
+          "confirmation": {
+            "Contract": {
+              "Slots": [
+                { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
+                { "Name": "valid_until", "Type": "datetime", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "link", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "lang", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "browser", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "os", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "region", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "qr_url", "Type": "string", "Source": "ServerSystem" },
+                { "Name": "qr_cid", "Type": "string", "Source": "ServerSystem" },
+                { "Name": "button", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Continue to confirmation" },
+                { "Name": "qr_instruction", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Or scan the QR code to continue the confirmation on another device:" },
+                { "Name": "qr_alt", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirmation QR code" },
+                { "Name": "text_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "A confirmation was requested." },
+                { "Name": "open_link_hint", "Type": "string", "Source": "LocalizedText", "NaturalKey": "To confirm, open the following link:" },
+                { "Name": "forward_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not forward this mail: the link lets anyone continue the confirmation on your behalf." },
+                { "Name": "ignore_notice", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not request this confirmation, simply ignore this mail." },
+                { "Name": "direct_link_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Direct link:" },
+                { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirmation required" },
+                { "Name": "request_from_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The request came from:" },
+                { "Name": "button_hint", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Press the button below to continue the confirmation." },
+                { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The link is valid until:" }
+              ]
+            },
+            "Templates": [
+              {
+                "Subject": "Confirmation for {app}",
+                "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;color:#777;\">{request_from_label} {browser}, {os}, {region}</p>\n              <p style=\"margin:0 0 16px;\">{button_hint}</p>\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 12px;\">{qr_instruction}</p>\n              <img src=\"cid:{qr_cid}\" alt=\"{qr_alt}\" width=\"220\" height=\"220\" style=\"display:block;margin:0 auto;\" />\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+                "Plain": "{heading}\n{app}\n\n{text_intro}\n{request_from_label} {browser}, {os}, {region}\n\n{open_link_hint}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{forward_warning}\n{ignore_notice}"
+              },
+              {
+                "Subject": "Confirmation for {app}",
+                "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;\">{button_hint}</p>\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 12px;\">{qr_instruction}</p>\n              <img src=\"cid:{qr_cid}\" alt=\"{qr_alt}\" width=\"220\" height=\"220\" style=\"display:block;margin:0 auto;\" />\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>"
+              },
+              {
+                "Subject": "Confirmation for {app}",
+                "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;\">{button_hint}</p>\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+                "Plain": "{heading}\n{app}\n\n{text_intro}\n{open_link_hint}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{forward_warning}\n{ignore_notice}"
+              }
+            ]
+          }
+        }
+      },
+      "sign-in-code-mail": {
+        "Contract": {
+          "Slots": [
+            { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
+            { "Name": "valid_until", "Type": "datetime", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "code", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "lang", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "browser", "Type": "string", "Source": "ServerInitiatorContext" },
+            { "Name": "os", "Type": "string", "Source": "ServerInitiatorContext" },
+            { "Name": "region", "Type": "string", "Source": "ServerInitiatorContext" },
+            { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirm sign-in" },
+            { "Name": "text_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "You requested sign-in via Veriqa." },
+            { "Name": "request_from_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The request came from:" },
+            { "Name": "code_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "To sign in, enter this code on the sign-in page:" },
+            { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The code is valid until:" },
+            { "Name": "share_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not share this code: anyone who has it can sign in to your account." },
+            { "Name": "ignore_notice", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not request sign-in, simply ignore this mail." }
+          ]
+        },
+        "Templates": [
+          {
+            "Subject": "Sign in to {app}",
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;color:#777;\">{request_from_label} {browser}, {os}, {region}</p>\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0;\">{ignore_notice}</p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{text_intro}\n{request_from_label} {browser}, {os}, {region}\n\n{code_intro}\n\n{code}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{ignore_notice}"
+          },
+          {
+            "Subject": "Sign in to {app}",
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0;\">{ignore_notice}</p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{text_intro}\n\n{code_intro}\n\n{code}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{ignore_notice}"
+          }
+        ],
+        "ByType": {
+          "confirmation": {
+            "Contract": {
+              "Slots": [
+                { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
+                { "Name": "valid_until", "Type": "datetime", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "code", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "lang", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "browser", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "os", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "region", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirmation required" },
+                { "Name": "text_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "A confirmation was requested." },
+                { "Name": "request_from_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The request came from:" },
+                { "Name": "code_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "To continue, enter this code on the confirmation page:" },
+                { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The code is valid until:" },
+                { "Name": "share_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not share this code: anyone who has it can continue the confirmation on your behalf." },
+                { "Name": "ignore_notice", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not request this confirmation, simply ignore this mail." }
+              ]
+            },
+            "Templates": [
+              {
+                "Subject": "Confirmation for {app}",
+                "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;color:#777;\">{request_from_label} {browser}, {os}, {region}</p>\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0;\">{ignore_notice}</p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+                "Plain": "{heading}\n{app}\n\n{text_intro}\n{request_from_label} {browser}, {os}, {region}\n\n{code_intro}\n\n{code}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{ignore_notice}"
+              },
+              {
+                "Subject": "Confirmation for {app}",
+                "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0;\">{ignore_notice}</p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+                "Plain": "{heading}\n{app}\n\n{text_intro}\n\n{code_intro}\n\n{code}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{ignore_notice}"
+              }
+            ]
+          }
+        }
+      },
+      "sign-in-code-link-mail": {
+        "Contract": {
+          "Slots": [
+            { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
+            { "Name": "valid_until", "Type": "datetime", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "code", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "link", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "lang", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "browser", "Type": "string", "Source": "ServerInitiatorContext" },
+            { "Name": "os", "Type": "string", "Source": "ServerInitiatorContext" },
+            { "Name": "region", "Type": "string", "Source": "ServerInitiatorContext" },
+            { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirm sign-in" },
+            { "Name": "text_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "You requested sign-in via Veriqa." },
+            { "Name": "request_from_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The request came from:" },
+            { "Name": "code_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "To sign in, enter this code on the sign-in page:" },
+            { "Name": "link_alternative_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Or open the link instead of entering the code:" },
+            { "Name": "button", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Approve sign-in" },
+            { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The code and the link are valid until:" },
+            { "Name": "share_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not share this code: anyone who has it can sign in to your account." },
+            { "Name": "forward_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not forward this mail: the link grants sign-in access to your account." },
+            { "Name": "ignore_notice", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not request sign-in, simply ignore this mail." },
             { "Name": "direct_link_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Direct link:" }
           ]
         },
         "Templates": [
           {
             "Subject": "Sign in to {app}",
-            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>Sign in to {app}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">Sign in to {app}</h1>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">You requested sign-in to {app} via Veriqa.</p>\n              <p style=\"margin:0 0 16px;color:#777;\">Confirm sign-in to &quot;{app}&quot; — request from {browser} on {os}, {region}</p>\n              <p style=\"margin:0;\">Press the button below to confirm sign-in. The link is valid until {valid_until}.</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 12px;\">{qr_instruction}</p>\n              <img src=\"cid:{qr_cid}\" alt=\"{qr_alt}\" width=\"220\" height=\"220\" style=\"display:block;margin:0 auto;\" />\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
-            "Plain": "Sign in to {app}\n\n{text_intro}\nConfirm sign-in to \"{app}\" — request from {browser} on {os}, {region}\n\n{open_link_hint}\n\n{link}\n\nThe link is valid until {valid_until}.\n\n{forward_warning}\n{ignore_notice}"
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;color:#777;\">{request_from_label} {browser}, {os}, {region}</p>\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0;\">{link_alternative_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{forward_warning}</p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{text_intro}\n{request_from_label} {browser}, {os}, {region}\n\n{code_intro}\n\n{code}\n\n{link_alternative_intro}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{forward_warning}\n{ignore_notice}"
           },
           {
             "Subject": "Sign in to {app}",
-            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>Sign in to {app}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">Sign in to {app}</h1>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">You requested sign-in to {app} via Veriqa.</p>\n              <p style=\"margin:0;\">Press the button below to confirm sign-in. The link is valid until {valid_until}.</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 12px;\">{qr_instruction}</p>\n              <img src=\"cid:{qr_cid}\" alt=\"{qr_alt}\" width=\"220\" height=\"220\" style=\"display:block;margin:0 auto;\" />\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>"
-          },
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0;\">{link_alternative_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{forward_warning}</p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{text_intro}\n\n{code_intro}\n\n{code}\n\n{link_alternative_intro}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{forward_warning}\n{ignore_notice}"
+          }
+        ],
+        "ByType": {
+          "confirmation": {
+            "Contract": {
+              "Slots": [
+                { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
+                { "Name": "valid_until", "Type": "datetime", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "code", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "link", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "lang", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+                { "Name": "browser", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "os", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "region", "Type": "string", "Source": "ServerInitiatorContext" },
+                { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirmation required" },
+                { "Name": "text_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "A confirmation was requested." },
+                { "Name": "request_from_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The request came from:" },
+                { "Name": "code_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "To continue, enter this code on the confirmation page:" },
+                { "Name": "link_alternative_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Or open the link instead of entering the code:" },
+                { "Name": "button", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Continue to confirmation" },
+                { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The code and the link are valid until:" },
+                { "Name": "share_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not share this code: anyone who has it can continue the confirmation on your behalf." },
+                { "Name": "forward_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not forward this mail: the link lets anyone continue the confirmation on your behalf." },
+                { "Name": "ignore_notice", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not request this confirmation, simply ignore this mail." },
+                { "Name": "direct_link_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Direct link:" }
+              ]
+            },
+            "Templates": [
+              {
+                "Subject": "Confirmation for {app}",
+                "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0 0 16px;color:#777;\">{request_from_label} {browser}, {os}, {region}</p>\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0;\">{link_alternative_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{forward_warning}</p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+                "Plain": "{heading}\n{app}\n\n{text_intro}\n{request_from_label} {browser}, {os}, {region}\n\n{code_intro}\n\n{code}\n\n{link_alternative_intro}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{forward_warning}\n{ignore_notice}"
+              },
+              {
+                "Subject": "Confirmation for {app}",
+                "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0 0 16px;\">{text_intro}</p>\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0;\">{link_alternative_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{forward_warning}</p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+                "Plain": "{heading}\n{app}\n\n{text_intro}\n\n{code_intro}\n\n{code}\n\n{link_alternative_intro}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{forward_warning}\n{ignore_notice}"
+              }
+            ]
+          }
+        }
+      },
+      "claim-code-mail": {
+        "Contract": {
+          "Slots": [
+            { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
+            { "Name": "valid_until", "Type": "datetime", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "code", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "lang", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirm your email address" },
+            { "Name": "code_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Enter this code on the sign-in page to confirm the address:" },
+            { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The code is valid until:" },
+            { "Name": "share_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not share this code with anyone." },
+            { "Name": "ignore_notice", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not request sign-in, simply ignore this mail." }
+          ]
+        },
+        "Templates": [
           {
-            "Subject": "Sign in to {app}",
-            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>Sign in to {app}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">Sign in to {app}</h1>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">You requested sign-in to {app} via Veriqa.</p>\n              <p style=\"margin:0;\">Press the button below to confirm sign-in. The link is valid until {valid_until}.</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{forward_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{ignore_notice}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
-            "Plain": "Sign in to {app}\n\n{text_intro}\n{open_link_hint}\n\n{link}\n\nThe link is valid until {valid_until}.\n\n{forward_warning}\n{ignore_notice}"
+            "Subject": "Your code for {app}",
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0;\">{ignore_notice}</p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{code_intro}\n\n{code}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{ignore_notice}"
+          }
+        ]
+      },
+      "claim-link-mail": {
+        "Contract": {
+          "Slots": [
+            { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
+            { "Name": "valid_until", "Type": "datetime", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "link", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "lang", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirm your email address" },
+            { "Name": "link_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Open the link to confirm the address for signing in:" },
+            { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The link is valid until:" },
+            { "Name": "button", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirm the address" },
+            { "Name": "not_requested_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not sign in to the application named above, do not confirm the address." },
+            { "Name": "forward_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not forward this mail: the link confirms the address for your sign-in." },
+            { "Name": "direct_link_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Direct link:" }
+          ]
+        },
+        "Templates": [
+          {
+            "Subject": "Confirm your email address for {app}",
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0 0 16px;\">{link_intro}</p>\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{not_requested_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{forward_warning}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{link_intro}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{not_requested_warning}\n{forward_warning}"
+          }
+        ]
+      },
+      "claim-code-link-mail": {
+        "Contract": {
+          "Slots": [
+            { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext", "Guaranteed": true },
+            { "Name": "valid_until", "Type": "datetime", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "code", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "link", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "lang", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "heading", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirm your email address" },
+            { "Name": "code_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Enter this code on the sign-in page to confirm the address:" },
+            { "Name": "link_alternative_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Or open the link instead of entering the code:" },
+            { "Name": "valid_until_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "The code and the link are valid until:" },
+            { "Name": "button", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Confirm the address" },
+            { "Name": "share_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not share this code with anyone." },
+            { "Name": "not_requested_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "If you did not sign in to the application named above, do not confirm the address." },
+            { "Name": "forward_warning", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Do not forward this mail: the link confirms the address for your sign-in." },
+            { "Name": "direct_link_label", "Type": "string", "Source": "LocalizedText", "NaturalKey": "Direct link:" }
+          ]
+        },
+        "Templates": [
+          {
+            "Subject": "Confirm your email address for {app}",
+            "Html": "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>{heading}</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:40px 0;\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"520\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,0.08);\">\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <h1 style=\"margin:0;font-size:24px;color:#333;\">{heading}</h1>\n              <p style=\"margin:8px 0 0;font-size:16px;color:#777;\">{app}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0;\">{code_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:24px;\">\n              <p style=\"margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:ui-monospace,Menlo,Consolas,monospace;\">{code}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:16px;line-height:1.6;padding-bottom:24px;\">\n              <p style=\"margin:0;\">{link_alternative_intro}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding-bottom:32px;\">\n              <a href=\"{link}\"\n                 style=\"display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;\">\n                {button}\n              </a>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#555;font-size:14px;line-height:1.6;padding-bottom:32px;\">\n              <p style=\"margin:0;\">{valid_until_label} {valid_until}</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"color:#888;font-size:13px;border-top:1px solid #eee;padding-top:24px;\">\n              <p style=\"margin:0 0 8px;\"><strong>{share_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\"><strong>{not_requested_warning}</strong></p>\n              <p style=\"margin:0 0 8px;\">{forward_warning}</p>\n              <p style=\"margin:0;word-break:break-all;\">{direct_link_label} <a href=\"{link}\" style=\"color:#111827;\">{link}</a></p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>",
+            "Plain": "{heading}\n{app}\n\n{code_intro}\n\n{code}\n\n{link_alternative_intro}\n\n{link}\n\n{valid_until_label} {valid_until}\n\n{share_warning}\n{not_requested_warning}\n{forward_warning}"
           }
         ]
       },
       "deeplink-prefill": {
         "Contract": {
           "Slots": [
-            { "Name": "app", "Type": "string", "Source": "ServerSystem" },
-            { "Name": "code", "Type": "string", "Source": "ServerSystem" },
-            { "Name": "token", "Type": "string", "Source": "ServerSystem" },
+            { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext" },
+            { "Name": "code", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "token", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
             { "Name": "prefill_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "This mail confirms sign-in to Veriqa. Do not change the subject or the body of the mail." }
           ]
         },
@@ -75,12 +347,201 @@
                   "Sign in to {app}\nSend this message to sign in.\n\nAccess code\n{code}",
                   "Send this message to sign in.\n\nAccess code\n{code}",
                   "Send this message to sign in."
-                ]
+                ],
+                "ByLinkPurpose": {
+                  "button": {
+                    "Templates": [
+                      "------------------------\n   SIGN IN TO {app}\n------------------------\nJust send this message.\n\nAccess code:\n{code}",
+                      "------------------------\nJust send this message to sign in.\n------------------------\n\nAccess code:\n{code}",
+                      "Send this message to sign in."
+                    ]
+                  },
+                  "hop-qr": {
+                    "Templates": [
+                      "------------------------\n   SIGN IN TO {app}\n------------------------\nJust send this message.\n\nAccess code:\n{code}",
+                      "------------------------\nJust send this message to sign in.\n------------------------\n\nAccess code:\n{code}",
+                      "Send this message to sign in."
+                    ]
+                  }
+                }
               },
               "email": {
                 "Templates": [
                   { "Subject": "Veriqa login {token}", "Plain": "{prefill_intro}\n\nToken: {token}" },
                   { "Subject": "Sign in", "Plain": "Send this message to sign in." }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "phone-number-request": {
+        "Contract": {
+          "Slots": []
+        },
+        "Templates": [
+          "Share your phone number"
+        ],
+        "BySurface": {
+          "in-channel": {
+            "ByChannel": {
+              "instagram": {
+                "Templates": [
+                  "Share your phone number by tapping the button. If your profile has no phone number, tap Skip."
+                ]
+              },
+              "messenger": {
+                "Templates": [
+                  "Share your phone number by tapping the button. If your profile has no phone number, tap Skip."
+                ]
+              }
+            }
+          }
+        }
+      },
+      "phone-number-request-required": {
+        "Contract": {
+          "Slots": []
+        },
+        "Templates": [
+          "Share your phone number"
+        ],
+        "BySurface": {
+          "in-channel": {
+            "ByChannel": {
+              "instagram": {
+                "Templates": [
+                  "Share your phone number. If your profile has no phone number, you will need to add one and sign in again, or sign in via a messaging app where your phone number is set."
+                ]
+              },
+              "messenger": {
+                "Templates": [
+                  "Share your phone number. If your profile has no phone number, you will need to add one and sign in again, or sign in via a messaging app where your phone number is set."
+                ]
+              }
+            }
+          }
+        }
+      },
+      "web-confirmation-notice": {
+        "Contract": {
+          "Slots": []
+        },
+        "Templates": [
+          "Sign-in started — confirm it on the sign-in page"
+        ],
+        "ByType": {
+          "confirmation": {
+            "Templates": [
+              "Confirmation started — confirm it on the confirmation page"
+            ]
+          }
+        }
+      },
+      "claim-form-link": {
+        "Contract": {
+          "Slots": []
+        },
+        "Templates": [
+          "Complete the sign-in form"
+        ]
+      },
+      "channel-answer-line": {
+        "Contract": {
+          "Slots": [
+            { "Name": "channel_name", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
+            { "Name": "bot_name", "Type": "string", "Source": "ServerSystem" }
+          ]
+        },
+        "Templates": [
+          "You have moved to {channel_name}. Tap the confirmation button in the chat with {bot_name} if you want to continue signing in, or tap cancel.",
+          "You have moved to {channel_name}. Tap the confirmation button in the chat if you want to continue signing in, or tap cancel."
+        ],
+        "ByType": {
+          "confirmation": {
+            "Templates": [
+              "You have moved to {channel_name}. Answer the question in the chat with {bot_name} to confirm or decline.",
+              "You have moved to {channel_name}. Answer the question in the chat to confirm or decline."
+            ],
+            "BySurface": {
+              "core-page": {
+                "ByChannel": {
+                  "email": {
+                    "Templates": [
+                      "The confirmation email is open in your mail app. Send it to continue."
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "BySurface": {
+          "core-page": {
+            "ByChannel": {
+              "email": {
+                "Templates": [
+                  "The confirmation email is open in your mail app. Send it to continue."
+                ]
+              }
+            }
+          }
+        }
+      },
+      "channel-launched-line": {
+        "Contract": {
+          "Slots": [
+            { "Name": "channel_name", "Type": "string", "Source": "ServerSystem", "Guaranteed": true }
+          ]
+        },
+        "Templates": [
+          "Opening {channel_name}…"
+        ],
+        "BySurface": {
+          "core-page": {
+            "ByChannel": {
+              "email": {
+                "Templates": [
+                  "The confirmation email is open in your mail app. Send it to continue."
+                ]
+              }
+            }
+          }
+        }
+      },
+      "qr-scanned-line": {
+        "Contract": {
+          "Slots": [
+            { "Name": "channel_name", "Type": "string", "Source": "ServerSystem", "Guaranteed": true }
+          ]
+        },
+        "Templates": [
+          "QR code scanned. Continue in {channel_name}."
+        ],
+        "BySurface": {
+          "core-page": {
+            "ByChannel": {
+              "email": {
+                "Templates": [
+                  "QR code scanned. Continue on your phone to confirm by email."
+                ]
+              }
+            }
+          }
+        }
+      },
+      "hop-channel-hint": {
+        "Contract": {
+          "Slots": [
+            { "Name": "channel_name", "Type": "string", "Source": "ServerSystem", "Guaranteed": true }
+          ]
+        },
+        "BySurface": {
+          "core-page": {
+            "ByChannel": {
+              "messenger": {
+                "Templates": [
+                  "On iPhone, a browser page with two buttons may open first. Tap the one that opens Messenger, then confirm that you want to open the Messenger app."
                 ]
               }
             }
@@ -100,12 +561,36 @@
               "in-channel-messenger": {
                 "Templates": [
                   "Sign-in confirmed ✅"
-                ]
+                ],
+                "ByDevice": {
+                  "mobile": {
+                    "Templates": [
+                      "Sign-in confirmed ✅ Tap Back to return to the sign-in page."
+                    ]
+                  },
+                  "tablet": {
+                    "Templates": [
+                      "Sign-in confirmed ✅ Tap Back to return to the sign-in page."
+                    ]
+                  }
+                }
               },
               "in-channel-plain": {
                 "Templates": [
                   "Sign-in confirmed"
-                ]
+                ],
+                "ByDevice": {
+                  "mobile": {
+                    "Templates": [
+                      "Sign-in confirmed. Tap Back to return to the sign-in page."
+                    ]
+                  },
+                  "tablet": {
+                    "Templates": [
+                      "Sign-in confirmed. Tap Back to return to the sign-in page."
+                    ]
+                  }
+                }
               },
               "email-confirm-page": {
                 "Templates": [
@@ -125,6 +610,9 @@
         ],
         "ByType": {
           "login": {
+            "Templates": [
+              "Sign-in declined ❌"
+            ],
             "BySurface": {
               "in-channel-messenger": {
                 "Templates": [
@@ -176,6 +664,45 @@
             }
           }
         }
+      },
+      "outcome-receipt-awaiting-claims": {
+        "Contract": {
+          "Slots": []
+        },
+        "Templates": [
+          "Sign-in confirmed. One step left: provide the requested details to finish."
+        ]
+      },
+      "post-login-welcome": {
+        "Contract": {
+          "Slots": [
+            { "Name": "name", "Type": "string", "Source": "ServerIdentityClaims" }
+          ]
+        },
+        "Templates": [
+          "Welcome, {name}! You are signed in.",
+          "Welcome! You are signed in."
+        ]
+      },
+      "post-login-menu": {
+        "Contract": {
+          "Slots": [
+            { "Name": "name", "Type": "string", "Source": "ServerIdentityClaims" }
+          ]
+        },
+        "Templates": [
+          "You are signed in. Choose an action:"
+        ]
+      },
+      "post-login-redirect": {
+        "Contract": {
+          "Slots": [
+            { "Name": "name", "Type": "string", "Source": "ServerIdentityClaims" }
+          ]
+        },
+        "Templates": [
+          "You are signed in. Continue here:"
+        ]
       }
     }
   }

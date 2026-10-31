@@ -1,24 +1,90 @@
 {
   "name": "veriqa-approval",
-  "version": "0.4.3",
+  "version": "0.5.1",
   "description": "Ask a person to approve risky Claude Code actions in a trusted messenger through Veriqa: tool calls, long command cycles, costly runs.",
   "author": {
     "name": "Dmitrii Erusov"
   },
-  "homepage": "https://veriqa.app/docs/research/claude-code-approvals",
+  "homepage": "https://veriqa.app/docs/samples/showcase/claude-code",
   "license": "MIT",
+  "types": "./types/index.d.ts",
   "keywords": [
     "approval",
     "human-in-the-loop",
     "veriqa",
-    "telegram"
+    "telegram",
+    "messenger",
+    "whatsapp",
+    "instagram"
   ],
-  "mcpServers": {
-    "veriqa": {
-      "command": "node",
-      "args": [
-        "${CLAUDE_PLUGIN_ROOT}/scripts/qr-server.mjs"
-      ]
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "description": "own-host: your own Veriqa host with a client secret. shared-stand: the shared stand's facade, with a key this installation makes itself.",
+      "options": ["own-host", "shared-stand"],
+      "default": "own-host"
+    },
+    "host_url": {
+      "type": "string",
+      "title": "Host URL",
+      "description": "Address of your Veriqa host (own-host mode).",
+      "default": "https://127.0.0.1:8443"
+    },
+    "client_id": {
+      "type": "string",
+      "title": "Client id",
+      "description": "The client of the host fragment (own-host mode).",
+      "default": "claude-code"
+    },
+    "client_secret": {
+      "type": "string",
+      "title": "Client secret",
+      "description": "The secret of that client (own-host mode).",
+      "sensitive": true
+    },
+    "stand_url": {
+      "type": "string",
+      "title": "Shared stand URL",
+      "description": "Address of the shared stand's facade (shared-stand mode).",
+      "default": ""
+    },
+    "channel": {
+      "type": "string",
+      "title": "Channel",
+      "description": "The messenger the approval is answered in, or hop to pick one on the phone.",
+      "options": ["telegram", "messenger", "whatsapp", "instagram", "hop"],
+      "default": "telegram"
+    },
+    "ttl_seconds": {
+      "type": "number",
+      "title": "Approval lifetime, seconds",
+      "description": "How long a person has to answer: 60 to 1800.",
+      "default": 300
+    },
+    "locale": {
+      "type": "string",
+      "title": "Locale",
+      "description": "BCP 47 language of the question; empty for the host's language.",
+      "default": ""
+    },
+    "rules_file": {
+      "type": "string",
+      "title": "Rules file",
+      "description": "A rules file of your own; empty for the project's .claude/veriqa-approval.rules.json or the plugin's default.",
+      "default": ""
+    },
+    "price_input": {
+      "type": "number",
+      "title": "Input price, USD per million tokens",
+      "description": "Used for the cost of a costly run.",
+      "default": 5
+    },
+    "price_output": {
+      "type": "number",
+      "title": "Output price, USD per million tokens",
+      "description": "Used for the cost of a costly run.",
+      "default": 25
     }
   }
 }

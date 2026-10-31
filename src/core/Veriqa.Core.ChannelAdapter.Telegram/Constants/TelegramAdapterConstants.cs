@@ -29,6 +29,12 @@ internal static class TelegramAdapterConstants
     public const string DeepLinkPrefix = CallbackDataPrefixes.Auth;
 
     /// <summary>
+    /// The at-sign a bot username is shown to the user with; it is not part of the username itself
+    /// and has no place in a deep link.
+    /// </summary>
+    public const char BotUsernamePrefix = '@';
+
+    /// <summary>
     /// HTTP header of the Telegram Bot API webhook secret token.
     /// </summary>
     public const string WebhookSecretHeader = "X-Telegram-Bot-Api-Secret-Token";
@@ -44,16 +50,19 @@ internal static class TelegramAdapterConstants
     public const string DeclineButtonText = "Decline ❌";
 
     /// <summary>
-    /// Phone number request text.
-    /// Experimental reserve for ScopesClaims RequirePhone; currently unused.
+    /// Largest payload of a callback button, in bytes of its UTF-8 form. Named by the platform: Bot API,
+    /// <c>InlineKeyboardButton.callback_data</c> — "1-64 bytes" (the wording the XML documentation of
+    /// <c>InlineKeyboardButton.CallbackData</c> in the referenced <c>Telegram.Bot</c> package repeats).
     /// </summary>
-    public const string PhoneRequestText = "Share your phone number";
+    public const int CallbackDataMaxBytes = 64;
 
     /// <summary>
-    /// Text of the send-phone-number button.
-    /// Experimental reserve for ScopesClaims RequirePhone; currently unused.
+    /// Bytes of the field name of a shared contact in a Telegram update (<c>message.contact</c>, Bot API
+    /// <c>Message</c> object) — what the ownership answer looks for to claim a contact event, which carries
+    /// no Veriqa marker. A substring match, so a user's own text with this word in quotes also matches: the
+    /// ownership contract allows such a false positive.
     /// </summary>
-    public const string PhoneButtonText = "📱 Send phone number";
+    public static ReadOnlySpan<byte> ContactFieldMarker => "\"contact\""u8;
 
     /// <summary>
     /// Maximum raw metadata size in bytes (CA-005). Alias of the contract-wide

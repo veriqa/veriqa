@@ -1,18 +1,29 @@
 #nullable enable
+const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultEmailClaimCompletionKeyPrefix = "veriqa:ch:email:claim:" -> string!
 const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultEmailActionTokenKeyPrefix = "veriqa:ch:email:token:" -> string!
 const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultEmailPushCorrelationKeyPrefix = "veriqa:ch:email:corr:" -> string!
+const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultLinkHandleKeyPrefix = "veriqa:ch:link:" -> string!
+const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultPhoneRequestCorrelationKeyPrefix = "veriqa:ch:phone:" -> string!
 const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultProcessedMessageKeyPrefix = "veriqa:ch:email:msg:" -> string!
 const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultPromptKeyPrefix = "veriqa:ch:prompt:" -> string!
+const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultStartCodeKeyPrefix = "veriqa:ch:code:" -> string!
+const Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultWebProviderStateKeyPrefix = "veriqa:ch:webprovider:" -> string!
 static readonly Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.DefaultProcessedMessageRetention -> System.TimeSpan
 static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderRedisExtensions.UseRedisChannelStores(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters, System.Action<Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions!>! configure) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!
 Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderRedisExtensions
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.Configuration.get -> string!
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.Configuration.set -> void
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.EmailClaimCompletionKeyPrefix.get -> string!
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.EmailClaimCompletionKeyPrefix.set -> void
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.EmailActionTokenKeyPrefix.get -> string!
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.EmailActionTokenKeyPrefix.set -> void
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.EmailPushCorrelationKeyPrefix.get -> string!
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.EmailPushCorrelationKeyPrefix.set -> void
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.LinkHandleKeyPrefix.get -> string!
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.LinkHandleKeyPrefix.set -> void
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.PhoneRequestCorrelationKeyPrefix.get -> string!
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.PhoneRequestCorrelationKeyPrefix.set -> void
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.ProcessedMessageKeyPrefix.get -> string!
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.ProcessedMessageKeyPrefix.set -> void
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.ProcessedMessageRetention.get -> System.TimeSpan
@@ -20,3 +31,7 @@ Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.ProcessedMessageRetent
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.PromptKeyPrefix.get -> string!
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.PromptKeyPrefix.set -> void
 Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.RedisChannelStoreOptions() -> void
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.StartCodeKeyPrefix.get -> string!
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.StartCodeKeyPrefix.set -> void
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.WebProviderStateKeyPrefix.get -> string!
+Veriqa.Core.ChannelAdapter.Redis.RedisChannelStoreOptions.WebProviderStateKeyPrefix.set -> void

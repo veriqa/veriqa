@@ -1,6 +1,7 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using Veriqa.Core.ChannelAdapter.ClaimCompletion;
 using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.Contracts;
 
@@ -41,22 +42,17 @@ internal static class EmailAdapterConstants
     public const string PullConfirmPath = "/auth/email/confirm";
 
     /// <summary>
-    /// Path of the compose-helper page for the Push flow.
+    /// Endpoint path the code of a sign-in mail is entered at — the page the address was typed into posts
+    /// it there.
     /// </summary>
-    public const string PushComposePath = "/auth/email/push/compose";
+    public const string PullCodePath = "/auth/email/code";
 
     /// <summary>
-    /// Path of the CORE page that asks what a confirmation transaction is about (SPEC-039 R37) — where
-    /// this adapter hands the user over instead of asking a question of its own.
+    /// Path of the page a link of the claims-completion mail opens (SPEC-041 L50): the recipient
+    /// confirms the address there, and the page takes the token of the link as its only parameter
+    /// (<see cref="TokenQueryParam"/>).
     /// </summary>
-    /// <remarks>
-    /// The value duplicates the route constant of the auth server, and duplicating it is the same
-    /// trade its <c>EmailEndpointPaths</c> makes in the opposite direction: the adapter is a satellite
-    /// and does not reference the assembly that owns the route, so the alternative would be a
-    /// reference back into it. Both spellings are covered by the same acceptance check of the flow —
-    /// a link that lands anywhere else lands on nothing.
-    /// </remarks>
-    public const string CoreConfirmPagePath = "/auth/transaction/confirm";
+    public const string ClaimEmailConfirmPath = "/auth/email/claim";
 
     /// <summary>
     /// Name of the action/correlation token parameter in requests.
@@ -64,16 +60,17 @@ internal static class EmailAdapterConstants
     public const string TokenQueryParam = "token";
 
     /// <summary>
-    /// Name of the answer field of the served confirmation page. Both answers post to the same path;
-    /// this field is what distinguishes them.
+    /// Name of the form field the request page of a letter sends the browser fingerprint in when it
+    /// continues the transaction by itself (<see cref="SameBrowserMarkField"/>).
     /// </summary>
-    public const string AnswerFormField = "answer";
+    public const string SameBrowserFingerprintField = "fingerprint";
 
     /// <summary>
-    /// The answer value that declines the sign-in. Any other value (including an absent field) is a
-    /// confirmation, so the fast link — which posts no answer at all — keeps working unchanged.
+    /// Name of the form field that marks the POST of the request page of a letter as the one its script
+    /// sent by itself, having taken the browser for the one that took part in the transaction. A POST without
+    /// it is a press of the button.
     /// </summary>
-    public const string AnswerDecline = "no";
+    public const string SameBrowserMarkField = "same_browser";
 
     /// <summary>
     /// HTTP header of the webhook secret token.
@@ -146,14 +143,14 @@ internal static class EmailAdapterConstants
     public const string MetadataKeyDmarcResult = "dmarc_result";
 
     /// <summary>
-    /// Pull mode value for RawMetadata.
+    /// Pull mode value for RawMetadata and the mode claim.
     /// </summary>
-    public const string ModePull = "pull";
+    public const string ModePull = VeriqaEmailModes.Pull;
 
     /// <summary>
-    /// Push mode value for RawMetadata.
+    /// Push mode value for RawMetadata and the mode claim.
     /// </summary>
-    public const string ModePush = "push";
+    public const string ModePush = VeriqaEmailModes.Push;
 
     /// <summary>
     /// Error code: failed to send the email.
@@ -201,6 +198,19 @@ internal static class EmailAdapterConstants
     /// carrying no token.
     /// </summary>
     public const int MaxCorrelationTokenProbes = 8;
+
+    /// <summary>
+    /// Number of decimal digits of the code of a claims-completion mail (SPEC-041 R12: not fewer than six) —
+    /// the length the port of the email completion states, so the block that takes the code back from the
+    /// user expects the same shape.
+    /// </summary>
+    public const int ClaimCodeLength = ClaimEmailCode.Length;
+
+    /// <summary>
+    /// Exclusive upper bound of the random number a code of <see cref="ClaimCodeLength"/> digits is drawn
+    /// from: ten to the power of the length, so every code of that length is equally likely.
+    /// </summary>
+    public const int ClaimCodeExclusiveUpperBound = 1_000_000;
 
     /// <summary>
     /// Plus-addressing separator in the Push-mode recipient address.
@@ -251,4 +261,62 @@ internal static class EmailAdapterConstants
     /// graceful disconnect — so a stuck TCP SYN or a slow SMTP server does not block shutdown.
     /// </summary>
     public const int SmtpShutdownLockTimeoutSeconds = 5;
+
+    /// <summary>
+    /// Pause, in milliseconds, before the mailbox is visited again after the first failed visit in a
+    /// row — a refusal of the mailbox or of the authorization server alike.
+    /// </summary>
+    public const int ImapRetryBaseDelayMs = 1000;
+
+    /// <summary>
+    /// Ceiling of the pause between two failed visits to the mailbox, in milliseconds. Deliberately
+    /// below the default lifetime of a token: a mail sent during a short outage is still inside its
+    /// window when the mailbox is reached again.
+    /// </summary>
+    public const int ImapRetryMaxDelayMs = 60_000;
+
+    /// <summary>
+    /// What the pause is multiplied by on every further failed visit in a row.
+    /// </summary>
+    public const int ImapRetryBackoffMultiplier = 2;
+
+    /// <summary>
+    /// The port of IMAP over implicit TLS: the connection is encrypted from its first byte there,
+    /// while on any other port it is upgraded by STARTTLS before the sign-in.
+    /// </summary>
+    public const int ImapImplicitTlsPort = 993;
+
+    /// <summary>
+    /// How long, in seconds, a polite sign-out from the mailbox may take before the connection is
+    /// simply closed — so a silent server does not hold up a reconnect or the application shutdown.
+    /// </summary>
+    public const int ImapDisconnectTimeoutSeconds = 5;
+
+    /// <summary>
+    /// Name of the <c>IHttpClientFactory</c> client the access token of the mailbox is requested with.
+    /// </summary>
+    public const string ImapOAuthHttpClientName = "Veriqa.Email.ImapOAuth";
+
+    /// <summary>
+    /// Deadline of one request to the token endpoint, in seconds.
+    /// </summary>
+    public const int ImapOAuthRequestTimeoutSeconds = 30;
+
+    /// <summary>
+    /// Largest answer of the token endpoint that is read, in bytes. A token answer is a small JSON
+    /// object; the address is configured, but what answers from it is still an external party.
+    /// </summary>
+    public const int ImapOAuthMaxResponseBytes = 64 * 1024;
+
+    /// <summary>
+    /// How many seconds before the stated expiry an access token stops being reused, so that a
+    /// sign-in never starts with a token that expires on the way to the mailbox.
+    /// </summary>
+    public const int ImapOAuthExpiryMarginSeconds = 60;
+
+    /// <summary>
+    /// Longest <c>error</c> code of a token endpoint that is carried into the log. The code comes
+    /// from outside; anything longer is not a code and is reported as unknown.
+    /// </summary>
+    public const int ImapOAuthMaxErrorCodeLength = 64;
 }

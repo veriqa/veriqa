@@ -14,4 +14,9 @@ public static class WhatsAppProviderNames
     /// Meta Cloud API — the official path, the shipped default.
     /// </summary>
     public const string MetaCloudApi = "MetaCloudApi";
+
+    /// <summary>
+    /// Twilio Messages API — the second shipped provider, selected by this code in the configuration.
+    /// </summary>
+    public const string Twilio = "Twilio";
 }

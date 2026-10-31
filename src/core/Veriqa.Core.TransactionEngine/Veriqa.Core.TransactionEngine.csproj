@@ -11,7 +11,7 @@
     <PackageId>Veriqa.Core.TransactionEngine</PackageId>
     <Authors>Veriqa</Authors>
     <Description>Veriqa Transaction Engine — authentication transaction lifecycle, a pluggable store (InMemory in the box) and in-process event publishing; the EF Core and Redis stores and the RabbitMQ publisher live in satellite packages.</Description>
-    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;transactions</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;transactions;state-machine</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->
@@ -74,6 +74,16 @@
          slot assembly there must share one list of fields, and publishing the table would put a
          product-internal shape into the public surface. -->
     <InternalsVisibleTo Include="Veriqa.Core.ChannelAdapter" />
+    <!-- The auth server implements the internal seam of the rules a stored claim value is accepted by
+         (IStoredClaimValueRules): the rules live with the catalog of the claims and the rules of the form,
+         which the auth server owns, while the planner of the claims completion here asks them; a stored phone
+         number is checked by the one E.164 normalization (IdentityValueNormalizer). It also keys
+         the collected claims store by the one formula of the core subject (CoreSubject) when it records the
+         subject issued to the application. Its deletion endpoint runs the one deletion of collected claims
+         (CollectedClaimsDeletion) with the calling client as the actor of the audit record, which the public
+         host-call deletion does not take, and masks the subject in its log by the one mask
+         (IdentifierMask). The shape of that seam is product-internal, not public surface. -->
+    <InternalsVisibleTo Include="Veriqa.Core.AuthServer" />
   </ItemGroup>
 
 </Project>

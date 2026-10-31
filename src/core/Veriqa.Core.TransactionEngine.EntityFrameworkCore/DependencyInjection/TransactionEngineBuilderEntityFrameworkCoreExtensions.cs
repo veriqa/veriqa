@@ -3,6 +3,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Veriqa.Core.TransactionEngine.CollectedClaims.EfCore;
 using Veriqa.Core.TransactionEngine.Store;
 using Veriqa.Core.TransactionEngine.Store.EfCore;
 
@@ -47,5 +48,36 @@ public static class TransactionEngineBuilderEntityFrameworkCoreExtensions
         engine.StoreRegistered = true;
 
         return engine;
+    }
+
+    /// <summary>
+    /// Uses the EF Core collected claims store (SPEC-041 C37). The provider choice, connection string,
+    /// migrations assembly and migration history table belong to the caller; the migrations ship in the
+    /// transaction store's migrations assemblies, and the history table is
+    /// <see cref="CollectedClaimsMigrationDefaults.MigrationsHistoryTable"/> — the store may share a database
+    /// with the transaction store, and a shared history would mix the two sets of migrations:
+    /// <code>
+    /// engine.UseEfCoreCollectedClaimsStore(ef => ef.UseNpgsql(connectionString, npgsql => npgsql
+    ///     .MigrationsAssembly("Veriqa.Core.TransactionEngine.Migrations.PostgreSql")
+    ///     .MigrationsHistoryTable(CollectedClaimsMigrationDefaults.MigrationsHistoryTable)));
+    /// </code>
+    /// Registers the DbContext factory and the migration service (MigrateAsync); the store itself goes
+    /// through <see cref="TransactionEngineBuilder.UseCollectedClaimsStore{TStore}"/>, the registration every
+    /// implementation shares.
+    /// </summary>
+    /// <param name="engine">Transaction Engine builder.</param>
+    /// <param name="configure">Action configuring EF Core (for example UseNpgsql).</param>
+    /// <returns>Builder for chaining.</returns>
+    public static TransactionEngineBuilder UseEfCoreCollectedClaimsStore(
+        this TransactionEngineBuilder engine,
+        Action<DbContextOptionsBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(engine);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        engine.Services.AddDbContextFactory<CollectedClaimsDbContext>(configure);
+        engine.Services.AddHostedService<CollectedClaimsMigrationService>();
+
+        return engine.UseCollectedClaimsStore<EfCoreCollectedClaimsStore>();
     }
 }

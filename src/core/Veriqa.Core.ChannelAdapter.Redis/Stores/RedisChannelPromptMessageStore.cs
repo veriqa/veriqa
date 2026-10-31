@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 using Veriqa.Core.ChannelAdapter.Abstractions;
+using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.TransactionEngine.Configuration;
 using Veriqa.Core.TransactionEngine.Domain;
 
@@ -15,15 +16,22 @@ namespace Veriqa.Core.ChannelAdapter.Redis.Stores;
 
 /// <summary>
 /// Redis implementation of <see cref="IChannelPromptMessageStore"/> (SPEC-003 §4.5). Behaves like
-/// the in-process default in everything but distribution: the coordinates are visible to every
-/// replica, so the TTL-expiry event edits the prompt even when it lands on an instance other than
-/// the one that sent it.
+/// the in-process default in everything but distribution: the record is visible to every replica, so
+/// the TTL-expiry event reaches the chat even when it lands on an instance other than the one that
+/// wrote the record.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Remove-on-read is a single <c>GETDEL</c>, so concurrent takes across replicas resolve the same
 /// way a <c>ConcurrentDictionary.TryRemove</c> resolves in one process: exactly one caller receives
 /// the coordinates, everyone else receives null.
+/// </para>
+/// <para>
+/// The take of one channel's coordinates compares and removes in one Redis transaction conditioned
+/// on the value read, the way the in-process store removes the very entry it compared. The write of
+/// the phone number request reference is the same kind of transaction: a <c>SET</c> with
+/// <c>KEEPTTL</c> applied only while the key still holds the value read, so the record keeps the
+/// lifetime it was saved with.
 /// </para>
 /// <para>
 /// A prompt record has no expiry of its own, and <c>SaveAsync</c> is not given the expiry of the
@@ -88,6 +96,26 @@ internal sealed class RedisChannelPromptMessageStore : IChannelPromptMessageStor
     }
 
     /// <inheritdoc />
+    public async Task<ChannelPromptMessageRef?> FindAsync(
+        TransactionId transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // A plain GET: the record stays for the take that follows.
+        var value = await _db.StringGetAsync(GetKey(transactionId));
+
+        if (value.IsNullOrEmpty)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<ChannelPromptMessageRef>(
+            value.ToString(),
+            RedisChannelStoreSerialization.Options);
+    }
+
+    /// <inheritdoc />
     public async Task<ChannelPromptMessageRef?> TakeAsync(
         TransactionId transactionId,
         CancellationToken cancellationToken = default)
@@ -106,6 +134,95 @@ internal sealed class RedisChannelPromptMessageStore : IChannelPromptMessageStor
         return JsonSerializer.Deserialize<ChannelPromptMessageRef>(
             value.ToString(),
             RedisChannelStoreSerialization.Options);
+    }
+
+    /// <inheritdoc />
+    public async Task<ChannelPromptMessageRef?> TakeForChannelAsync(
+        TransactionId transactionId,
+        string channelType,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(channelType);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var key = GetKey(transactionId);
+        var value = await _db.StringGetAsync(key);
+
+        if (value.IsNullOrEmpty)
+        {
+            return null;
+        }
+
+        var reference = JsonSerializer.Deserialize<ChannelPromptMessageRef>(
+            value.ToString(),
+            RedisChannelStoreSerialization.Options);
+
+        if (reference is null || !string.Equals(reference.ChannelType, channelType, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        // The removal is applied only while the key still holds the very value compared above
+        // (SPEC-042 L62): an entry another channel saved in between fails the condition, the
+        // transaction is not applied and that entry stays. Nothing is retried — the entry is no
+        // longer this channel's to take.
+        var transaction = _db.CreateTransaction();
+        transaction.AddCondition(Condition.StringEqual(key, value));
+        var deleteTask = transaction.KeyDeleteAsync(key);
+
+        if (!await transaction.ExecuteAsync())
+        {
+            return null;
+        }
+
+        await deleteTask;
+        return reference;
+    }
+
+    /// <inheritdoc />
+    public async Task SetPhoneRequestMessageAsync(
+        TransactionId transactionId,
+        string channelType,
+        ChannelMessageRef requestMessage,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(channelType);
+        ArgumentNullException.ThrowIfNull(requestMessage);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var key = GetKey(transactionId);
+        var value = await _db.StringGetAsync(key);
+
+        if (value.IsNullOrEmpty)
+        {
+            return;
+        }
+
+        var reference = JsonSerializer.Deserialize<ChannelPromptMessageRef>(
+            value.ToString(),
+            RedisChannelStoreSerialization.Options);
+
+        if (reference is null || !string.Equals(reference.ChannelType, channelType, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var json = JsonSerializer.Serialize(
+            reference with { PhoneRequestMessage = requestMessage },
+            RedisChannelStoreSerialization.Options);
+
+        // The write is applied only while the key still holds the very value compared above: a
+        // record saved or taken in between fails the condition, the transaction is not applied and
+        // nothing is retried — that record is not the one the reference was meant for. KEEPTTL
+        // leaves the lifetime the record was saved with.
+        var transaction = _db.CreateTransaction();
+        transaction.AddCondition(Condition.StringEqual(key, value));
+        var setTask = transaction.StringSetAsync(key, json, keepTtl: true);
+
+        if (await transaction.ExecuteAsync())
+        {
+            await setTask;
+        }
     }
 
     /// <summary>
@@ -129,9 +246,9 @@ internal sealed class RedisChannelPromptMessageStore : IChannelPromptMessageStor
     {
         var engineOptions = _engineOptions.CurrentValue;
 
-        // The record is consumed by the expiry event, and that event is published by the engine's
-        // cleanup sweep: a transaction that expires just after one sweep waits a whole
-        // CleanupIntervalSeconds for the next. One sweep is only the lower bound of the wait — it
+        // The record is consumed by the expiry event, and when no late decision publishes it first,
+        // that event is published by the engine's cleanup sweep: a transaction that expires just after
+        // one sweep waits a whole CleanupIntervalSeconds for the next. One sweep is only the lower bound of the wait — it
         // takes at most CleanupBatchSize transactions, so a backlog spreads publication over several
         // passes — and the completed-retention window is taken whenever it is the larger of the two,
         // as the scale on which this engine is already configured to keep an expired transaction

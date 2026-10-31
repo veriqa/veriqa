@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Veriqa.Sample.PseudoChannels.Adapter</RootNamespace>
+    <AssemblyName>Veriqa.Sample.PseudoChannels.Adapter</AssemblyName>
+    <!-- The sample is not a public package -->
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Consent to the unsettled part of the contracts surface: ChannelInboundResult and
+         ConfirmationPromptContext are marked [Experimental("VERIQAEXP0001")]. Inside this repository
+         the root Directory.Build.targets already suppresses the identifier; the line is kept so a
+         copy of this project builds outside the tree. -->
+    <NoWarn>$(NoWarn);VERIQAEXP0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The only Veriqa dependency of the adapter: the MIT contracts package. -->
+    <ProjectReference Include="..\..\..\..\src\core\Veriqa.Core.Contracts\Veriqa.Core.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Logging only: the adapter has no web surface of its own, the host owns all of it. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

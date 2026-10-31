@@ -34,8 +34,8 @@ internal static class CorePageStyles
 
     /// <summary>
     /// Shared layer of the contour: <c>:root</c>, dark and auto theme overrides, reduced-motion,
-    /// the element reset and the primitives shared by both page families (the button, SPEC-015 §4.6).
-    /// Included by every page of the contour.
+    /// the element reset and the primitives shared by both page families (the spinner, the button, the
+    /// text link and the divider, SPEC-015 §4.3, §4.6, §4.11, §4.12). Included by every page of the contour.
     /// <para>
     /// Norms the layer implements (they are named here because the stylesheet's own comments reach
     /// the browser, see <see cref="CorePageEmbeddedText"/>): spacing tokens reuse the site scale name
@@ -43,18 +43,24 @@ internal static class CorePageStyles
     /// theme is forced by <c>data-theme="dark"</c>, and the OS setting is followed only for
     /// <c>data-theme="auto"</c> (SPEC-015 §2.2); <c>prefers-reduced-motion</c> collapses animations and
     /// transitions (SPEC-015 §2.3); the attribution line under the card is kept against the
-    /// integrator's stylesheet (SPEC-015 §4.18).
+    /// integrator's stylesheet (SPEC-015 §4.18); on a computer the root font of every page of the
+    /// contour follows the height of the browser window down to a floor, so that the card fits with a
+    /// small margin, the spacing tokens follow it in rem and a QR image keeps its size, while a phone
+    /// scrolls the page as before, a window lower than a height bound in em (a page zoomed in far enough,
+    /// or a large default font of the browser) keeps the user's own font size, and a card that still does
+    /// not fit scrolls with its top in view (SPEC-015 §2.5).
     /// </para>
     /// </summary>
     internal static string Base => CorePageEmbeddedText.Load(typeof(CorePageStyles).Assembly, BaseResourceName);
 
     /// <summary>
-    /// Rules of the service pages (confirmation, expired callback, email adapter pages).
+    /// Rules of the service pages (confirmation, expired callback, email adapter pages, the form of the
+    /// claims completion).
     /// Included in addition to <see cref="Base"/>.
     /// <para>
     /// Primitives of SPEC-015 the rule set implements for this page family: the card as the
     /// composition frame (§4.7), the title and text blocks (§4.15), the status plate of the
-    /// confirmation page (§4.4), the email entry form (§4.10), the fields of the letter being composed
+    /// confirmation page (§4.4), the email entry form (§4.10), the labelled fields of a form
     /// (§4.14), the secondary action in link styling (§4.11) and the focus indicator as a
     /// <c>:focus-visible</c> outline rather than a border tint (§6.2).
     /// </para>

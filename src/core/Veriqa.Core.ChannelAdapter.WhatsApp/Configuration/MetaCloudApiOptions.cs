@@ -16,7 +16,7 @@ public sealed class MetaCloudApiOptions
     /// <summary>
     /// Default Graph API version.
     /// </summary>
-    public const string DefaultGraphApiVersion = "v21.0";
+    public const string DefaultGraphApiVersion = "v26.0";
 
     /// <summary>
     /// WhatsApp Business phone number identifier (Phone Number ID).

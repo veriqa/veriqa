@@ -27,8 +27,8 @@ form directory as one ZIP, so the sample has to be downloadable as a single unit
 
 - .NET SDK 10.0+
 - A running Docker daemon (the transaction store is a container started by Aspire)
-- (optional) a demo bot token for the Telegram or MAX channel, if you want a real sign-in via a
-  messenger
+- (optional) a demo bot token for the Telegram channel, if you want a real sign-in via a
+  messaging app
 
 ## Running
 
@@ -38,8 +38,19 @@ dotnet run --project samples/dotnet/aspire/login
 
 Aspire starts the store container, then the application, and opens the dashboard
 (`https://localhost:17320`, see `Properties/launchSettings.json`). The application itself is at
-`https://localhost:7320`; opening its root route shows `Hello, {name}!` after a successful
-sign-in and `Hello!` before it.
+`https://localhost:7320`; its root route answers `Hello!` and nothing more — it tells the host is
+up.
+
+The application is the issuer, so it starts no sign-in and has no page for a signed-in user. A
+sign-in is started by a relying party and ends there: run the client sample against this issuer
+and open `https://localhost:7020/` — after the sign-in that page shows `Hello, {name}!`.
+
+```bash
+dotnet run --project samples/dotnet/inproc/login-client -- --Oidc:Authority=https://localhost:7320
+```
+
+The `my-app` client in `app/appsettings.json` is registered with the redirect URI of that client
+(`https://localhost:7020/signin-oidc`), so only the issuer address has to be passed.
 
 Running `app/` alone is not supported: without the AppHost there is no store connection string
 and startup fails with an explicit error — that is deliberate, so the sample never silently falls

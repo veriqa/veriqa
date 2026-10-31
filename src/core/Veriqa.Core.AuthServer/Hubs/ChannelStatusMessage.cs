@@ -22,7 +22,7 @@ public sealed class ChannelStatusMessage
     public required string ChannelType { get; init; }
 
     /// <summary>
-    /// Channel-specific status code (for example, "sent", "compose_opened").
+    /// Channel-specific status code (for example, "sent", "mail_received").
     /// </summary>
     public required string ChannelStatus { get; init; }
 }

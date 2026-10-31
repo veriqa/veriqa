@@ -1,0 +1,130 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# The stand of the CI gate: the platform stub, three instances of the adapter and the conformance suite.
+# Started by run.sh, which builds the images and generates every secret, SID and number into an env file
+# outside the repository; nothing here holds a value of its own.
+#
+#   adapter-suite   posts its events to the suite
+#   adapter-checks  posts its events to the recorder of the stub, for the own checks
+#   adapter-tenants posts its events to the recorder of the stub; the account of shop-a alone, no default
+#                   record — the own checks of the credentials per tenant
+#
+# The first two serve the same three Twilio accounts — the default one and shop-a, shop-b — each with its own
+# Account SID and WhatsApp sender, so the credential of a platform action tells the tenants apart.
+
+x-adapter-common: &adapter-common
+  image: veriqa-sample-whatsapp-twilio-adapter:latest
+  depends_on: [stub]
+
+x-twilio-accounts: &twilio-accounts
+  VERIQA_CHANNEL_TYPE: whatsapp-twilio
+  VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+  TWILIO_API_URL: http://stub:9000
+  TWILIO_ACCOUNT_SID: ${STAND_DEFAULT_SID}
+  TWILIO_AUTH_TOKEN: ${STAND_DEFAULT_TOKEN}
+  TWILIO_WHATSAPP_FROM: ${STAND_DEFAULT_FROM}
+  TWILIO_PROMPT_CONTENT_SID: ${STAND_DEFAULT_CONTENT_SID}
+  TWILIO_ACCOUNT_1_TENANT: shop-a
+  TWILIO_ACCOUNT_1_SID: ${STAND_SHOP_A_SID}
+  TWILIO_ACCOUNT_1_AUTH_TOKEN: ${STAND_SHOP_A_TOKEN}
+  TWILIO_ACCOUNT_1_WHATSAPP_FROM: ${STAND_SHOP_A_FROM}
+  TWILIO_ACCOUNT_1_PROMPT_CONTENT_SID: ${STAND_SHOP_A_CONTENT_SID}
+  TWILIO_ACCOUNT_2_TENANT: shop-b
+  TWILIO_ACCOUNT_2_SID: ${STAND_SHOP_B_SID}
+  TWILIO_ACCOUNT_2_AUTH_TOKEN: ${STAND_SHOP_B_TOKEN}
+  TWILIO_ACCOUNT_2_WHATSAPP_FROM: ${STAND_SHOP_B_FROM}
+  TWILIO_ACCOUNT_2_PROMPT_CONTENT_SID: ${STAND_SHOP_B_CONTENT_SID}
+
+services:
+
+  stub:
+    image: veriqa-sample-whatsapp-twilio-stand:latest
+    command: ["node", "stub.mjs"]
+    environment:
+      STUB_PORT: "9000"
+      STUB_ACCOUNTS: ${STAND_ACCOUNTS}
+      STUB_USER: ${STAND_USER}
+      STUB_ADAPTER_URL: http://adapter-suite:8000
+
+  adapter-suite:
+    <<: *adapter-common
+    environment:
+      <<: *twilio-accounts
+      VERIQA_URL: http://suite:8080
+      # The address the stub posts the webhooks to and signs them for.
+      TWILIO_PUBLIC_URL: http://adapter-suite:8000
+
+  adapter-checks:
+    <<: *adapter-common
+    environment:
+      <<: *twilio-accounts
+      VERIQA_URL: http://stub:9000/registrar
+      TWILIO_PUBLIC_URL: http://adapter-checks:8000
+
+  adapter-tenants:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://stub:9000/registrar
+      VERIQA_CHANNEL_TYPE: whatsapp-twilio
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      TWILIO_API_URL: http://stub:9000
+      TWILIO_PUBLIC_URL: http://adapter-tenants:8000
+      TWILIO_ACCOUNT_1_TENANT: shop-a
+      TWILIO_ACCOUNT_1_SID: ${STAND_SHOP_A_SID}
+      TWILIO_ACCOUNT_1_AUTH_TOKEN: ${STAND_SHOP_A_TOKEN}
+      TWILIO_ACCOUNT_1_WHATSAPP_FROM: ${STAND_SHOP_A_FROM}
+      TWILIO_ACCOUNT_1_PROMPT_CONTENT_SID: ${STAND_SHOP_A_CONTENT_SID}
+
+  # The own checks of the stand and the helpers of run.sh; started with `docker compose run`.
+  checks:
+    image: veriqa-sample-whatsapp-twilio-stand:latest
+    profiles: [checks]
+    command: ["node", "checks.mjs", "own"]
+    environment:
+      STAND_STUB_URL: http://stub:9000
+      STAND_ADAPTER_URL: http://adapter-checks:8000
+      STAND_TENANTS_ADAPTER_URL: http://adapter-tenants:8000
+      STAND_ADAPTER_URLS: http://adapter-suite:8000/,http://adapter-checks:8000/,http://adapter-tenants:8000/
+      STAND_USER: ${STAND_USER}
+      STAND_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      STAND_SETTINGS_MARKER: ${STAND_SETTINGS_MARKER}
+      STAND_DEFAULT_FROM: ${STAND_DEFAULT_FROM}
+      STAND_DEFAULT_TOKEN: ${STAND_DEFAULT_TOKEN}
+      STAND_SHOP_A_FROM: ${STAND_SHOP_A_FROM}
+      STAND_SHOP_A_TOKEN: ${STAND_SHOP_A_TOKEN}
+      STAND_SHOP_B_TOKEN: ${STAND_SHOP_B_TOKEN}
+
+  # The conformance suite in the automatic mode, configured with the keys Veriqa reads for the channel.
+  suite:
+    image: veriqa-http-channel-conformance:latest
+    profiles: [suite]
+    depends_on: [stub, adapter-suite]
+    environment:
+      Conformance__ChannelType: whatsapp-twilio
+      Conformance__Mode: automatic
+      Conformance__ChannelUserId: ${STAND_USER}
+      Conformance__Tenants__0: "-"
+      Conformance__Tenants__1: shop-a
+      Conformance__Tenants__2: shop-b
+      Conformance__TenantCredentials__shop-a: ${STAND_SHOP_A_SID}
+      Conformance__TenantCredentials__shop-b: ${STAND_SHOP_B_SID}
+      Conformance__PlatformStubUrl: http://stub:9000/
+      # WhatsApp has a case in which it refuses a prompt: the closed customer service window.
+      Conformance__PlatformCannotConfirm: "true"
+      Conformance__ReportPath: /tmp/report.json
+      Veriqa__Channels__whatsapp-twilio__InboundVerification: signature
+      Veriqa__Channels__whatsapp-twilio__Http__BaseUrl: http://adapter-suite:8000/
+      Veriqa__Channels__whatsapp-twilio__Http__AllowInsecureHttp: "true"
+      Veriqa__Channels__whatsapp-twilio__Http__TransportSecret: ${STAND_TRANSPORT_SECRET}
+      Veriqa__Channels__whatsapp-twilio__Http__AdapterSettings: '{"prefill_text": "Send this message to sign in."}'
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__SupportsInChannelConfirmation: "true"
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__SupportsMessageUpdate: "false"
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__DeliversOutcomeNotice: "true"
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__ProvidesRecipientLocale: "false"
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__SupportedMessageKinds__0: plain_text
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__RendersEmoji: "true"
+      # The phone number: the WhatsApp address of the sender is the number itself, so every event carries
+      # it and it is proven. Nothing is asked for — WhatsApp through Twilio has no request for a contact.
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__PhoneNumber__Acquisition__0: Automatic
+      Veriqa__Channels__whatsapp-twilio__Http__Capabilities__PhoneNumber__Proof: Proven

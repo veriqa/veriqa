@@ -3,6 +3,7 @@
 
 using OpenIddict.Abstractions;
 using Veriqa.Core.AuthServer.Constants;
+using Veriqa.Core.TransactionEngine.Domain;
 
 namespace Veriqa.Core.AuthServer.Configuration;
 
@@ -23,8 +24,15 @@ internal static class OidcClientValidationRules
     /// </summary>
     /// <param name="client">Client entry (already normalized by <see cref="OidcClientsOptionsPostConfigure"/>).</param>
     /// <param name="index">Position of the entry in the Clients array (for the failure text).</param>
+    /// <param name="scopeCatalog">
+    /// Core catalog of scopes and claims (<see cref="ScopesClaimsOptions.Scopes"/>) the entry is judged
+    /// against — the catalog the OpenIddict registration of scopes follows.
+    /// </param>
     /// <returns>Failure descriptions; empty when the entry is valid.</returns>
-    public static IReadOnlyList<string> Collect(OidcClientOptions client, int index)
+    public static IReadOnlyList<string> Collect(
+        OidcClientOptions client,
+        int index,
+        IReadOnlyList<ScopeDefinition> scopeCatalog)
     {
         var failures = new List<string>();
 
@@ -95,6 +103,16 @@ internal static class OidcClientValidationRules
             }
         }
 
+        // The deletion of collected claims answers a client credentials token only (SPEC-041 N87): the flag
+        // on any other client could never be used, so the start fails instead of leaving it dead.
+        if (client is { AllowCollectedClaimsDeletion: true, AllowClientCredentials: false })
+        {
+            failures.Add(
+                $"Clients[{index}] ({client.ClientId}): AllowCollectedClaimsDeletion requires " +
+                "AllowClientCredentials — the collected claims deletion endpoint accepts a client credentials " +
+                "token only.");
+        }
+
         // Compatibility quirks: the configuration selects keys from a closed registry, so an unknown
         // key is a deployment error and must stop the start rather than be skipped silently. The
         // comparison is Ordinal and case-sensitive — a differently-cased spelling is rejected here
@@ -126,6 +144,54 @@ internal static class OidcClientValidationRules
                 $"Allowed profiles: {string.Join(", ", ClientCompatibilityProfiles.KnownNames)}.");
         }
 
+        failures.AddRange(ScopeCatalogFailures(client, index, scopeCatalog));
+
         return failures;
+    }
+
+    /// <summary>
+    /// Rules of the entry against the catalog of scopes and claims (SPEC-041 C30, L92): the application
+    /// NARROWS the catalog through its allowed scopes and never widens it, and it raises the level of a
+    /// claim only where Veriqa can complete that claim.
+    /// </summary>
+    /// <param name="client">Client entry.</param>
+    /// <param name="index">Position of the entry in the Clients array.</param>
+    /// <param name="scopeCatalog">Core catalog of scopes and claims.</param>
+    /// <returns>Failure descriptions.</returns>
+    private static IEnumerable<string> ScopeCatalogFailures(
+        OidcClientOptions client,
+        int index,
+        IReadOnlyList<ScopeDefinition> scopeCatalog)
+    {
+        // An empty catalog registers the product's own set of scopes, and the allowed scopes are then
+        // bounded by OpenIddict's registration alone, as they were before the catalog existed.
+        if (scopeCatalog.Count > 0)
+        {
+            var declared = scopeCatalog.Select(scope => scope.Name).ToHashSet(StringComparer.Ordinal);
+
+            foreach (var scope in client.AllowedScopes)
+            {
+                if (!declared.Contains(scope)
+                    && !string.Equals(scope, OpenIddictConstants.Scopes.OpenId, StringComparison.Ordinal))
+                {
+                    yield return
+                        $"Clients[{index}] ({client.ClientId}): AllowedScopes contains '{scope}', which the scope "
+                        + $"catalog {ScopesClaimsOptions.SectionName}:{nameof(ScopesClaimsOptions.Scopes)} does "
+                        + "not declare — an application narrows the catalog, it does not widen it.";
+                }
+            }
+        }
+
+        foreach (var (claim, level) in client.ClaimLevels ?? new Dictionary<string, ClaimRequirementLevel>())
+        {
+            if (level > ClaimRequirementLevel.IfAvailable
+                && !ScopesClaimsCatalogRules.HasCompletionPath(scopeCatalog, claim))
+            {
+                yield return
+                    $"Clients[{index}] ({client.ClientId}): ClaimLevels raises '{claim}' to {level}, which cannot "
+                    + "be enforced: the claim has no completion path — only phone_number, email and a claim "
+                    + "whose catalog row describes its Completion have one.";
+            }
+        }
     }
 }

@@ -49,6 +49,7 @@ public sealed class QrCodeOverrideOptions
     /// Every rejected entry is named by the same snapshot report, one line per entry.
     /// </summary>
     [JsonPropertyName("pixels_per_module_by_channel")]
+    [JsonConverter(typeof(TolerantMapConverter<IDictionary<string, int>, int>))]
     public IDictionary<string, int>? PixelsPerModuleByChannel { get; set; }
 
     /// <summary>

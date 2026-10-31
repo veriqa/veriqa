@@ -1,8 +1,10 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Collections.Frozen;
 using System.Security.Claims;
 using OpenIddict.Abstractions;
+using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.Contracts;
 
 namespace Veriqa.Core.AuthServer.Infrastructure;
@@ -25,15 +27,18 @@ internal static class ClaimDestinationsHelper
         OpenIddictConstants.Claims.Nickname,
         OpenIddictConstants.Claims.PreferredUsername,
         OpenIddictConstants.Claims.Locale,
-        OpenIddictConstants.Claims.Zoneinfo
+        OpenIddictConstants.Claims.Zoneinfo,
+        VeriqaClaimTypes.UpdatedAt
     };
 
     /// <summary>
-    /// Claims available with the "phone" scope.
+    /// Claims available with the "phone" scope (OIDC Core §5.4): the number and its verification mark
+    /// (SPEC-041 C38).
     /// </summary>
     private static readonly HashSet<string> PhoneClaims = new(VeriqaClaimTypes.NameComparer)
     {
-        OpenIddictConstants.Claims.PhoneNumber
+        OpenIddictConstants.Claims.PhoneNumber,
+        OpenIddictConstants.Claims.PhoneNumberVerified
     };
 
     /// <summary>
@@ -60,13 +65,58 @@ internal static class ClaimDestinationsHelper
     };
 
     /// <summary>
+    /// Standard scope of each claim a standard scope gates — the claim sets above and the avatar scope
+    /// of the picture claim — so that the scope a claim belongs to is stated in this one place.
+    /// </summary>
+    private static readonly FrozenDictionary<string, string> StandardScopeByClaim =
+        ProfileClaims.Select(claim => KeyValuePair.Create(claim, OpenIddictConstants.Scopes.Profile))
+            .Concat(PhoneClaims.Select(claim => KeyValuePair.Create(claim, OpenIddictConstants.Scopes.Phone)))
+            .Concat(EmailClaims.Select(claim => KeyValuePair.Create(claim, OpenIddictConstants.Scopes.Email)))
+            .Concat(ChannelClaims.Select(claim => KeyValuePair.Create(claim, VeriqaScopes.Channel)))
+            .Append(KeyValuePair.Create(OpenIddictConstants.Claims.Picture, VeriqaScopes.Avatar))
+            .ToFrozenDictionary(VeriqaClaimTypes.NameComparer);
+
+    /// <summary>
+    /// Claims each standard scope gates — the same pairs as <see cref="StandardScopeByClaim"/>, read the
+    /// other way round.
+    /// </summary>
+    private static readonly FrozenDictionary<string, string[]> StandardClaimsByScope =
+        StandardScopeByClaim
+            .GroupBy(pair => pair.Value, StringComparer.Ordinal)
+            .ToFrozenDictionary(
+                group => group.Key,
+                group => group.Select(pair => pair.Key).ToArray(),
+                StringComparer.Ordinal);
+
+    /// <summary>
+    /// Standard scope that gates a claim — <c>profile</c>, <c>phone</c>, <c>email</c>, <c>channel</c> or
+    /// <c>avatar</c>.
+    /// </summary>
+    /// <param name="claim">Claim name.</param>
+    /// <returns>Name of the standard scope; null when no standard scope gates the claim.</returns>
+    public static string? StandardScopeOf(string claim) =>
+        StandardScopeByClaim.GetValueOrDefault(claim);
+
+    /// <summary>
+    /// Claims a standard scope gates.
+    /// </summary>
+    /// <param name="scope">Scope name.</param>
+    /// <returns>The claims of the standard scope; empty when the scope is not a standard one.</returns>
+    public static IReadOnlyList<string> StandardClaimsOf(string scope) =>
+        StandardClaimsByScope.GetValueOrDefault(scope) ?? [];
+
+    /// <summary>
     /// Determines the destinations for a claim — access_token and/or id_token,
     /// taking the requested scopes into account.
     /// </summary>
     /// <param name="claim">User claim.</param>
     /// <param name="requestedScopes">Set of scopes requested by the relying party.</param>
+    /// <param name="claimScopes">Scopes of the claims of the effective catalog of the relying party.</param>
     /// <returns>List of destinations.</returns>
-    public static IEnumerable<string> GetDestinations(Claim claim, IReadOnlySet<string> requestedScopes)
+    public static IEnumerable<string> GetDestinations(
+        Claim claim,
+        IReadOnlySet<string> requestedScopes,
+        CatalogClaimScopes claimScopes)
     {
         // The method determines where each claim ends up based on its type and the requested scopes
 
@@ -153,6 +203,22 @@ internal static class ClaimDestinationsHelper
         if (ChannelClaims.Contains(claim.Type))
         {
             if (requestedScopes.Contains(VeriqaScopes.Channel))
+            {
+                yield return OpenIddictConstants.Destinations.AccessToken;
+                yield return OpenIddictConstants.Destinations.IdentityToken;
+            }
+
+            yield break;
+        }
+
+        // Claims the catalog declares under a scope (SPEC-041 R21, C38) — both tokens when that scope is
+        // granted and no token otherwise, whether the scope is a standard one or not and whether the value
+        // came from the channel or was collected by Veriqa. Every standard claim has returned above, so the
+        // scope found here is the one of the catalog row; a claim the catalog does not declare falls
+        // through to the branch below as before.
+        if (claimScopes.ScopeOf(claim.Type) is { } catalogScope)
+        {
+            if (requestedScopes.Contains(catalogScope))
             {
                 yield return OpenIddictConstants.Destinations.AccessToken;
                 yield return OpenIddictConstants.Destinations.IdentityToken;

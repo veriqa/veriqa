@@ -16,6 +16,11 @@ public enum ConfigValueRejectionPolicy
     /// next step of the same level, and then to the level below (CFG-240, the behaviour of every
     /// setting before the policy existed). A broken entry of one owner does not stop the host, and the
     /// operator is told about it once per configuration snapshot rather than once per request.
+    /// <para>
+    /// At the CORE level there is no level below: once the chain of the level is exhausted, the level
+    /// answers as over a record stating nothing — with the value its owner declared for it, where one
+    /// was declared — rather than leaving the consumer with the default of the type.
+    /// </para>
     /// </summary>
     SkipStep = 0,
 
@@ -44,7 +49,10 @@ public enum ConfigValueRejectionPolicy
     /// successfully, so there is nothing to fall back to), and on a RELOAD the level answers with the
     /// last value it was successfully read with and the host goes on serving. A reload that brings an
     /// inadmissible value where the core level stated nothing before takes nothing away, and the step is
-    /// dropped by the default of CFG-240.
+    /// dropped by the default of CFG-240. The last value is kept by the resolution, not by the walk: a
+    /// level no resolution has read since start has none, and only a value the DOMAIN refused is
+    /// answered with it — a value that cannot be read into the type of the setting leaves the step
+    /// unset on the resolution path, by the same default of CFG-240.
     /// </description></item>
     /// </list>
     /// <para>

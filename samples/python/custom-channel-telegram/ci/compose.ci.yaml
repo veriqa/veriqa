@@ -1,0 +1,26 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# CI overlay of compose.yaml for the check compose.up of run.sh: the Bot API of the adapter is the platform
+# stub of the stand, and no port is published on the machine that runs the check. The values of .env
+# come from the env file run.sh generates.
+#
+#   docker compose -f compose.yaml -f ci/compose.ci.yaml --env-file <generated> up -d
+
+services:
+
+  veriqa:
+    ports: !reset []
+
+  adapter:
+    depends_on: [stub]
+    environment:
+      TELEGRAM_API_URL: http://stub:9000
+
+  stub:
+    image: veriqa-sample-telegram-stand:latest
+    command: ["python", "stub.py"]
+    environment:
+      STUB_PORT: "9000"
+      STUB_USER_ID: "1"
+      STUB_BOT_TOKENS: ${TELEGRAM_BOT_TOKEN}

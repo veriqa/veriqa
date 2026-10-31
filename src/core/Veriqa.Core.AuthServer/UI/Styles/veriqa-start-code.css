@@ -1,0 +1,70 @@
+/*
+ * Copyright (c) Dmitrii Erusov
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * Rules of the block that shows the message of the start by a code on the pages of the "Core"
+ * contour. Loaded after veriqa-core-base.css, whose tokens the rules use, next to the rules of
+ * the page itself.
+ * The file is inlined into the generated document, not served over a URL. Every comment of it
+ * therefore reaches the end user's browser verbatim: the norms these rules implement are named
+ * in ChannelStartCodeBlock (C#), not here.
+ */
+.veriqa-start-code { text-align: center; }
+.veriqa-start-code-caption {
+    color: var(--veriqa-muted);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    margin-bottom: var(--veriqa-spacing-sm);
+}
+/* The message is the thing to read on the block: the text color and the largest size of the
+   card. It is selectable as a whole with one press, and a message longer than the line wraps
+   instead of pushing the card wider. */
+.veriqa-start-code-message {
+    padding: var(--veriqa-spacing-12) var(--veriqa-spacing-14);
+    border: 1px solid var(--veriqa-surface-variant);
+    border-radius: var(--veriqa-radius);
+    background: var(--veriqa-surface);
+    color: var(--veriqa-text);
+    font-family: var(--veriqa-font-mono);
+    font-size: 1.375rem;
+    font-weight: 700;
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    margin-bottom: var(--veriqa-spacing-md);
+    overflow-wrap: anywhere;
+    -webkit-user-select: all;
+    user-select: all;
+}
+/* The status line keeps its height while empty, so the text of a finished copy does not move
+   the page under the finger that has just pressed the button. It stays in the layout and in
+   the accessibility tree from the load: a live region shown only once it has text is not
+   announced. */
+.veriqa-start-code-status {
+    min-height: 1.6em;
+    color: var(--veriqa-success);
+    font-family: var(--veriqa-font-mono);
+    font-size: 0.75rem;
+    line-height: 1.6;
+}
+/* The spare form: the message a person sends when the link of the channel opened the chat and
+   nothing started there. It is the lesser thing of its panel - set apart from the channel button
+   by a rule, with the message in a smaller size on one line with its button. The caption and the
+   status line span the block; the message takes the room the button leaves and wraps inside it. */
+.veriqa-start-code--spare {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--veriqa-spacing-sm);
+    padding-top: var(--veriqa-spacing-md);
+    border-top: 1px solid var(--veriqa-surface-variant);
+}
+.veriqa-start-code--spare .veriqa-start-code-caption,
+.veriqa-start-code--spare .veriqa-start-code-status { grid-column: 1 / -1; }
+.veriqa-start-code--spare .veriqa-start-code-message {
+    padding: var(--veriqa-spacing-sm) var(--veriqa-spacing-12);
+    font-size: 1rem;
+    margin-bottom: 0;
+}
+/* The button of the spare form keeps the height of a button of the contour and takes the width of
+   its text, not of the card. */
+.veriqa-start-code-copy { width: auto; }

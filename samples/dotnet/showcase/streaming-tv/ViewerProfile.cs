@@ -1,6 +1,7 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MIT
 
+using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -13,7 +14,8 @@ namespace Veriqa.Sample.DotNet.Showcase.StreamingTv;
 /// The card of the person watching, built from the claims Veriqa issued for them. Which fields a
 /// card carries depends on the channel the person signed in through: Telegram gives a picture,
 /// WhatsApp a phone number, Email an address — and a field the channel did not give stays null so
-/// the page can leave the line out instead of drawing an empty one.
+/// the page can leave the line out instead of drawing an empty one. The age and the favourite genre
+/// come from no channel: Veriqa collected them on its form inside the sign-in.
 /// </summary>
 /// <param name="DisplayName">The <c>name</c> claim; always present for a signed-in person.</param>
 /// <param name="GivenName">The <c>given_name</c> claim, or null.</param>
@@ -26,6 +28,10 @@ namespace Veriqa.Sample.DotNet.Showcase.StreamingTv;
 /// <param name="ChannelUserIdMasked">The Telegram user id from <c>channel_user_id</c>, already masked, or
 /// null for any other channel: there the identifier is the phone number or the address, which the
 /// card shows already.</param>
+/// <param name="Age">Age in full years, worked out from the <c>birthdate</c> claim, or null when the
+/// claim is absent or is not a date. The date itself is not part of the card.</param>
+/// <param name="PreferredGenre">The <c>preferred_genre</c> claim when it names a genre of the
+/// catalogue, or null.</param>
 public sealed record ViewerProfile(
     string DisplayName,
     string? GivenName,
@@ -35,8 +41,13 @@ public sealed record ViewerProfile(
     string? PhoneMasked,
     string? Email,
     string? Username,
-    string? ChannelUserIdMasked)
+    string? ChannelUserIdMasked,
+    int? Age,
+    string? PreferredGenre)
 {
+    /// <summary>The form of a <c>birthdate</c> claim (OIDC Core §5.1).</summary>
+    private const string BirthdateFormat = "yyyy-MM-dd";
+
     /// <summary>
     /// Shortest number that keeps any digit visible. A number with fewer digits than this is masked
     /// whole: on a short number the country code and the last two digits are most of it, so showing
@@ -60,11 +71,15 @@ public sealed record ViewerProfile(
     /// Builds the card from the claims of the signed-in person. The phone number and the Telegram
     /// user id are masked HERE, on the server: the browser is never handed either in full, so no
     /// script of the page can leak one. The full <c>channel_user_id</c> addresses the step-up and
-    /// stays on the server.
+    /// stays on the server. The date of birth is treated the same way: the card carries the age the
+    /// caller worked out from it (<see cref="AgeOn"/>), never the date.
     /// </summary>
     /// <param name="user">The signed-in person.</param>
+    /// <param name="age">Age of the person in full years, or null when it is not known.</param>
+    /// <param name="preferredGenre">Favourite genre of the person, already checked against the
+    /// catalogue, or null.</param>
     /// <returns>The card, or null when the person is not signed in.</returns>
-    public static ViewerProfile? FromClaims(ClaimsPrincipal user)
+    public static ViewerProfile? FromClaims(ClaimsPrincipal user, int? age, string? preferredGenre)
     {
         ArgumentNullException.ThrowIfNull(user);
 
@@ -89,7 +104,39 @@ public sealed record ViewerProfile(
             MaskPhone(Value(user, VeriqaClaimTypes.PhoneNumber)),
             Value(user, VeriqaClaimTypes.Email),
             Value(user, VeriqaClaimTypes.PreferredUsername),
-            isTelegram ? MaskIdentifier(Value(user, VeriqaClaimTypes.ChannelUserId)) : null);
+            isTelegram ? MaskIdentifier(Value(user, VeriqaClaimTypes.ChannelUserId)) : null,
+            age,
+            preferredGenre);
+    }
+
+    /// <summary>
+    /// Age in full years on a given day, from a <c>birthdate</c> claim. The comparison is by date,
+    /// not by year, so the age grows on the birthday itself. A value that is absent, is not a
+    /// <c>YYYY-MM-DD</c> date or lies in the future gives no age: the claim is outside data, and
+    /// <c>Required</c> in the catalog does not guarantee it — the form can be switched off in
+    /// configuration, and the token then arrives without it.
+    /// </summary>
+    /// <param name="birthdate">The claim value, or null.</param>
+    /// <param name="today">The day the age is asked for.</param>
+    /// <returns>The age, or null when it cannot be told.</returns>
+    public static int? AgeOn(string? birthdate, DateOnly today)
+    {
+        var parsed = DateOnly.TryParseExact(
+            birthdate,
+            BirthdateFormat,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var born);
+
+        if (!parsed || born > today)
+        {
+            return null;
+        }
+
+        var years = today.Year - born.Year;
+
+        // The birthday of this year has not come yet: the last full year is the one before.
+        return born.AddYears(years) > today ? years - 1 : years;
     }
 
     /// <summary>

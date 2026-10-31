@@ -14,6 +14,7 @@ using Veriqa.Core.ChannelAdapter.Email.Configuration;
 using Veriqa.Core.ChannelAdapter.Email.Constants;
 using Veriqa.Core.ChannelAdapter.Email.Domain;
 using Veriqa.Core.ChannelAdapter.Email.Enums;
+using Veriqa.Core.ChannelAdapter.Pipeline;
 using Veriqa.Core.Configuration;
 using Veriqa.Core.TransactionEngine.Domain;
 using Veriqa.Core.TransactionEngine.Events;
@@ -207,7 +208,7 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
             _logger.LogWarning(
                 "Push inbound: sender verification failed (policy {Policy}). Sender: {MaskedSender}",
                 inbound.VerificationPolicy,
-                EmailAddressHelper.Mask(verifiedSender));
+                ChannelIdentityMask.MaskEmail(verifiedSender));
 
             // Audit event email_sender_verification_failed (EM-032):
             // the transaction is not confirmed, the rejection is recorded for audit consumers
@@ -265,7 +266,7 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
 
         _logger.LogInformation(
             "Push inbound: mail verified successfully. Sender: {MaskedSender}, TransactionId: {TransactionId}",
-            EmailAddressHelper.Mask(normalizedSender),
+            ChannelIdentityMask.MaskEmail(normalizedSender),
             correlation.TransactionId);
 
         return new ChannelAuthConfirmResult
@@ -308,7 +309,7 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
                     OccurredAt = _timeProvider.GetUtcNow(),
                     ChannelType = ChannelTypes.Email,
                     EventCode = EmailAdapterConstants.ErrorCodeSenderVerificationFailed,
-                    Details = $"policy={policy}; sender={EmailAddressHelper.Mask(sender)}"
+                    Details = $"policy={policy}; sender={ChannelIdentityMask.MaskEmail(sender)}"
                 },
                 cancellationToken);
         }

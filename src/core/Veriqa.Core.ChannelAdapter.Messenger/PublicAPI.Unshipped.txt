@@ -1,0 +1,56 @@
+#nullable enable
+const Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.DefaultGraphApiBaseUrl = "https://graph.facebook.com" -> string!
+const Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.DefaultGraphApiVersion = "v26.0" -> string!
+const Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.SectionName = "Veriqa:Channels:Messenger" -> string!
+override Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderMessengerExtensions.AddMessenger(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!
+static Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+const Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys.UnaddressedReplyEnabledKeyName = "Channels.messenger.UnaddressedReplyEnabled" -> string!
+const Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys.UnaddressedReplyEnabledMember = "UnaddressedReplyEnabled" -> string!
+static Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys.UnaddressedReplyEnabled.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+const Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys.DeepLinkByPageIdKeyName = "Channels.messenger.DeepLinkByPageId" -> string!
+const Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys.DeepLinkByPageIdMember = "DeepLinkByPageId" -> string!
+static Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys.DeepLinkByPageId.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.DeepLinkByPageId.get -> bool
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.DeepLinkByPageId.set -> void
+static Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys.Credentials.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials!>!
+static Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.operator !=(Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials? left, Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials? right) -> bool
+static Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.operator ==(Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials? left, Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials? right) -> bool
+Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderMessengerExtensions
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerConfigKeys
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.AppSecret.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.AppSecret.set -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.Enabled.get -> bool
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.Enabled.set -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.GetTenantCredentials() -> Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.GraphApiBaseUrl.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.GraphApiBaseUrl.set -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.GraphApiVersion.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.GraphApiVersion.set -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.MessengerOptions() -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.PageAccessToken.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.PageAccessToken.set -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.PageId.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.PageId.set -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.PageName.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.PageName.set -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.WebhookVerifyToken.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerOptions.WebhookVerifyToken.set -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.<Clone>$() -> Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.AppSecret.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.AppSecret.init -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.Deconstruct(out string! PageId, out string! PageName, out string! PageAccessToken, out string! AppSecret, out string! WebhookVerifyToken) -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.Equals(Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials? other) -> bool
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.MessengerTenantCredentials(string! PageId, string! PageName, string! PageAccessToken, string! AppSecret, string! WebhookVerifyToken) -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.PageAccessToken.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.PageAccessToken.init -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.PageId.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.PageId.init -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.PageName.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.PageName.init -> void
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.WebhookVerifyToken.get -> string!
+Veriqa.Core.ChannelAdapter.Messenger.Configuration.MessengerTenantCredentials.WebhookVerifyToken.init -> void

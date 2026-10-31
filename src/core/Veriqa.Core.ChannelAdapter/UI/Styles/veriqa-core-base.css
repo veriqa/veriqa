@@ -44,9 +44,9 @@
     --veriqa-error-border: #fecaca;
     --veriqa-warning-surface: #fef3c7;
     --veriqa-on-warning-surface: #92400e;
-    /* Code sample block (setup instructions of the compose helper) */
-    --veriqa-code-bg: #1e293b;
-    --veriqa-on-code-bg: #86efac;
+    /* Smallest size of a pointer target. It is in px on purpose: the scale of a short window shrinks
+       the text and the spacing, and a target must not shrink with them below this size. */
+    --veriqa-target-min-size: 24px;
     /* Corner radii */
     --veriqa-radius: 8px;
     --veriqa-radius-lg: 12px;
@@ -144,11 +144,152 @@
 .veriqa-btn:hover { transform: translateY(-1px); opacity: 0.88; }
 .veriqa-btn:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; }
 .veriqa-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+/* A button the page script hides keeps hidden: the display of the button would otherwise win over
+   the hidden attribute. */
+.veriqa-btn[hidden] { display: none; }
+/* Secondary, outlined variant of the button - "No" of a confirmation question, "Cancel sign-in"
+   and the actions of the email block of the claims completion that are not the main one. It is declared in this shared layer for the reason the base is: both page
+   families use it, and neither loads the other's rules. */
+.veriqa-btn-decline {
+    border-color: var(--veriqa-soft);
+    background: var(--veriqa-bg);
+    color: var(--veriqa-text);
+}
+/* Text link - an action in link styling: the Push/Pull toggle of the sign-in window, the other
+   ways of the email block of the claims completion. Declared in this shared layer for the reason
+   the button is: both page families use it. */
+.veriqa-text-link {
+    background: none;
+    border: none;
+    color: var(--veriqa-soft);
+    font-size: 0.6875rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    margin-top: var(--veriqa-spacing-12);
+    padding: 0;
+    font-family: var(--veriqa-font-mono);
+    display: block;
+    width: 100%;
+    text-align: center;
+    transition: color var(--veriqa-transition-fast);
+}
+.veriqa-text-link:hover { color: var(--veriqa-text); }
+.veriqa-text-link:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; border-radius: 2px; }
+/* A link the page script hides keeps hidden, as the button does. */
+.veriqa-text-link[hidden] { display: none; }
+/* "OR" divider in front of an alternative - the manual email entry link of the sign-in window,
+   the other ways of the email block of the claims completion. Shared for the same reason. */
+.veriqa-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--veriqa-spacing-10);
+    margin: var(--veriqa-spacing-14) 0 0;
+    color: var(--veriqa-soft);
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    font-family: var(--veriqa-font-mono);
+}
+.veriqa-divider::before,
+.veriqa-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--veriqa-surface-variant);
+}
+/* Spinner - the waiting indicator of every page family: the sign-in window shows it from its script,
+   a service page by a rule of its own. Hidden until a page shows it. */
+.veriqa-spinner {
+    display: none;
+    margin: var(--veriqa-spacing-md) auto 0;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--veriqa-surface-variant);
+    border-top-color: var(--veriqa-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+/* Channel colors of the button - the same on every page that leads into a channel: a messenger
+   keeps its brand color in any preset, Email and a third-party channel take the neutral primary. */
+.veriqa-btn-telegram { background: #26a5e4; border-color: #26a5e4; color: #ffffff; }
+.veriqa-btn-whatsapp { background: #25d366; border-color: #25d366; color: #ffffff; }
+.veriqa-btn-instagram { background: #ff0069; border-color: #ff0069; color: #ffffff; }
+.veriqa-btn-messenger { background: #0866ff; border-color: #0866ff; color: #ffffff; }
+.veriqa-btn-wechat { background: #07c160; border-color: #07c160; color: #ffffff; }
+.veriqa-btn-viber { background: #7360f2; border-color: #7360f2; color: #ffffff; }
+.veriqa-btn-max { background: #9500ff; border-color: #9500ff; color: #ffffff; }
+.veriqa-btn-email { background: var(--veriqa-primary); border-color: var(--veriqa-primary); }
+.veriqa-btn-default { background: var(--veriqa-primary); border-color: var(--veriqa-primary); }
 
 /* Page composition: the card and the attribution line under it are stacked, so the body lays its
    children out in a column. Both family stylesheets center the body as a flex container and leave
-   the direction to this shared layer. */
-body { flex-direction: column; }
+   the direction and the height to this shared layer. The card is centred in the visible height of the
+   window: the second min-height is the dynamic viewport, which a phone's browser bars do not take, and
+   an engine that does not know the unit keeps the first. A card taller than the window grows the body
+   instead of overflowing it, so the page scrolls and the top of the card is never pushed above the
+   window; the block padding keeps the card off both edges then. */
+body {
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-block: var(--veriqa-spacing-md);
+}
+
+/* Fitting the card into a short window of a computer (a pointer device: a phone scrolls the page as it
+   always has). The text of every page of the contour is sized in rem, so the size of the root font is
+   the scale of the card, and the spacing follows it (below). The scale follows the height of the
+   window, so that the tallest states of the sign-in window, with the padding of the body around them,
+   fit into it: a channel tab with the QR code, the channel button, the status and "Cancel sign-in" on
+   the one-column card, and the "Any channel" tab of the two-column card. The service pages are lower
+   and follow the same scale. Those heights are bounded by a straight line of the root font size -
+   --veriqa-window-fit-per-rem times it plus --veriqa-window-fit-fixed, the second taking what does not
+   follow the font: a QR image keeps its size, its scanning minimum is not traded for the fit - and the
+   scale is that line solved for the height of the window. It never exceeds the user's own font size
+   (100%) and never goes below --veriqa-window-fit-floor-font, the floor of the root font (a text
+   sized below 1rem is proportionally smaller there): a window too low for the line at the floor
+   scrolls, with the top of the card in view, and so does a card taller than those states.
+   The fit works only in a window at least 37.5em high. An em of a media query is the browser's default
+   font size, so the bound is 600px at the usual 16px and rises with a larger font set in the browser.
+   Zooming the page in lowers the window in CSS px, and a larger default font raises the bound; either
+   way the fit would take the user's choice back, so below the bound it is off: the text is the user's
+   own size and the page scrolls. A screen 768px high at 100% stays above the bound and fits; at 200%
+   (a screen 1080px high gives about 480px) the fit is off. In between the bound does not separate: at
+   about 150% the window is still above it and the text stays about as large as at 100%.
+   In a window low enough for the scale to drop below 16px, the spacing tokens are the same values in
+   rem. The upper height that media query names is where the scale reaches 16px -
+   16 * --veriqa-window-fit-per-rem + --veriqa-window-fit-fixed - so the switch moves nothing at a
+   default font of 16px and larger; at a smaller one the spacing steps down at that height in the
+   ratio of that font to 16px. It also carries the lower bound, so below it the root font and the
+   spacing return together. A media query cannot read a custom property, so these values change together. An engine
+   that does not know the comparison functions or these media features keeps the card as it is. */
+@media (hover: hover) and (pointer: fine) and (min-height: 37.5em) {
+    :root {
+        --veriqa-window-fit-fixed: 182px;
+        --veriqa-window-fit-per-rem: 43;
+        --veriqa-window-fit-floor-font: 10px;
+        font-size: min(100%, max(var(--veriqa-window-fit-floor-font), calc((100vh - var(--veriqa-window-fit-fixed)) / var(--veriqa-window-fit-per-rem))));
+    }
+}
+@media (hover: hover) and (pointer: fine) and (min-height: 37.5em) and (max-height: 870px) {
+    :root {
+        --veriqa-spacing-2: 0.125rem;
+        --veriqa-spacing-xs: 0.25rem;
+        --veriqa-spacing-6: 0.375rem;
+        --veriqa-spacing-sm: 0.5rem;
+        --veriqa-spacing-9: 0.5625rem;
+        --veriqa-spacing-10: 0.625rem;
+        --veriqa-spacing-11: 0.6875rem;
+        --veriqa-spacing-12: 0.75rem;
+        --veriqa-spacing-14: 0.875rem;
+        --veriqa-spacing-md: 1rem;
+        --veriqa-spacing-18: 1.125rem;
+        --veriqa-spacing-20: 1.25rem;
+        --veriqa-spacing-lg: 1.5rem;
+        --veriqa-spacing-40: 2.5rem;
+        --veriqa-spacing-48: 3rem;
+    }
+}
 
 /* Attribution line - "Powered by Veriqa" under the card of every page of the contour.
    The line is kept against the integrator's stylesheet, which is linked AFTER these inline styles and

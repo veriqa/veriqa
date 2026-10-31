@@ -59,7 +59,7 @@ public static class VeriqaClaimTypes
     public const string VeriqaChannel = "veriqa_channel";
 
     /// <summary>
-    /// Veriqa Email-channel mode claim: "pull" or "push" (SPEC-016 §6.3).
+    /// Veriqa Email-channel mode claim: <see cref="VeriqaEmailModes.Pull"/> or <see cref="VeriqaEmailModes.Push"/> (SPEC-016 §6.3).
     /// </summary>
     public const string VeriqaEmailMode = "veriqa_email_mode";
 
@@ -100,9 +100,22 @@ public static class VeriqaClaimTypes
     public const string PhoneNumber = "phone_number";
 
     /// <summary>
+    /// Standard OIDC claim indicating whether the phone number has been verified — a JSON boolean on
+    /// the wire, a member of <see cref="BooleanClaims"/>.
+    /// </summary>
+    public const string PhoneNumberVerified = "phone_number_verified";
+
+    /// <summary>
     /// Standard OIDC picture (avatar URL) claim.
     /// </summary>
     public const string Picture = "picture";
+
+    /// <summary>
+    /// Standard OIDC claim of the time the information of the user was last updated (OIDC Core 1.0 section
+    /// 5.1) — a JSON number of seconds since the epoch on the wire, a member of <see cref="NumericDateClaims"/>.
+    /// The core states it when a sign-in hands out values Veriqa kept from an earlier one (SPEC-041 C38).
+    /// </summary>
+    public const string UpdatedAt = "updated_at";
 
     /// <summary>
     /// Separator between an adapter's channel type and the rest of its own claim name:
@@ -140,8 +153,8 @@ public static class VeriqaClaimTypes
 
     /// <summary>
     /// Group 2 — claims reserved for the core: it derives them from typed snapshot fields, so an
-    /// adapter that has the value states it in the field rather than in a free-form claim.
-    /// Never accepted from an adapter's free-form claims.
+    /// adapter that has the value states it in the field rather than in a free-form claim, or states them
+    /// itself (<see cref="UpdatedAt"/>). Never accepted from an adapter's free-form claims.
     /// </summary>
     public static readonly IReadOnlySet<string> CoreReservedClaims = new[]
     {
@@ -150,18 +163,21 @@ public static class VeriqaClaimTypes
         PreferredUsername,
         Locale,
         PhoneNumber,
+        PhoneNumberVerified,
         Email,
         EmailVerified,
         Picture,
-        IsBot
+        IsBot,
+        UpdatedAt
     }.ToFrozenSet(NameComparer);
 
     /// <summary>
     /// Claim names the core issues with a JSON boolean value on the wire (OIDC Core 1.0 section 5.1
-    /// states <c>email_verified</c> as a boolean, and <c>is_bot</c> follows the same shape).
+    /// states <c>email_verified</c> and <c>phone_number_verified</c> as booleans, and <c>is_bot</c>
+    /// follows the same shape).
     /// <para>
     /// This is the single point that knows WHICH claim is boolean: the mapper types a claim by
-    /// membership here rather than by naming either claim, so a boolean claim added to the core is
+    /// membership here rather than by naming any of them, so a boolean claim added to the core is
     /// typed by adding its name to this set and nothing else. The internal transport stays a string —
     /// the resolver and the snapshots carry <c>"true"</c>/<c>"false"</c>, which is the spelling of the
     /// JSON literal, and the typed claim is what turns it into a boolean on the wire.
@@ -170,7 +186,19 @@ public static class VeriqaClaimTypes
     public static readonly IReadOnlySet<string> BooleanClaims = new[]
     {
         EmailVerified,
+        PhoneNumberVerified,
         IsBot
+    }.ToFrozenSet(NameComparer);
+
+    /// <summary>
+    /// Claim names the core issues with a JSON number of seconds since the epoch on the wire (OIDC Core 1.0
+    /// section 5.1 states <c>updated_at</c> as a number). Like <see cref="BooleanClaims"/>, the single point
+    /// that knows which claim has this shape: the mapper types a claim by membership here, and the internal
+    /// transport carries the number as its invariant decimal string.
+    /// </summary>
+    public static readonly IReadOnlySet<string> NumericDateClaims = new[]
+    {
+        UpdatedAt
     }.ToFrozenSet(NameComparer);
 
     /// <summary>

@@ -13,7 +13,8 @@ namespace Veriqa.Core.AuthServer.Endpoints;
 /// Transaction status polling endpoint (GET /api/transaction/{id}/status).
 /// Provides a fallback for clients without WebSocket support (SPEC-007 §5.4).
 /// Returns a safe public subset of the transaction state:
-/// state, channel_type, ttl_seconds, reason_code, awaiting_web_confirmation.
+/// state, channel_type, ttl_seconds, reason_code, awaiting_web_confirmation, answer_browser_bound, awaiting_answer_in_channel,
+/// authorization_code_issued, claim_completion.
 /// </summary>
 public static class TransactionStatusEndpoint
 {
@@ -21,6 +22,15 @@ public static class TransactionStatusEndpoint
     /// Full endpoint path.
     /// </summary>
     private const string RoutePath = OidcEndpoints.TransactionStatusBase + "/{id}/status";
+
+    /// <summary>
+    /// Builds the root-relative address of the status of one transaction — the address every page of the
+    /// contour polls, built in one place.
+    /// </summary>
+    /// <param name="sessionId">External session identifier of the transaction.</param>
+    /// <returns>Root-relative URL of the status, without the path base.</returns>
+    internal static string BuildStatusPath(string sessionId) =>
+        $"{OidcEndpoints.TransactionStatusBase}/{Uri.EscapeDataString(sessionId)}/status";
 
     /// <summary>
     /// Registers the transaction status polling endpoint with rate limiting.
@@ -116,7 +126,54 @@ public static class TransactionStatusEndpoint
             // is now on the core page, so the browser must go to the callback. It is a separate
             // field rather than a synthetic value of "state", which stays the name of a state-machine
             // state.
-            awaiting_web_confirmation = transaction.IsAwaitingWebConfirmation()
+            awaiting_web_confirmation = transaction.IsAwaitingWebConfirmation(),
+
+            // Whether that question takes its answer from one browser only — the one the channel identity
+            // was attached from, where the question is already open. A page following the transaction
+            // then stays where it is: the question would refuse it. The same fact the hub sends with the
+            // status, so polling and the hub cannot disagree.
+            answer_browser_bound = transaction.IsAwaitingWebConfirmation()
+                && transaction.SubjectBinding is { AnswerBrowserBound: true },
+
+            // Whether the answer is awaited in the channel: a sender has entered the sign-in, and neither the
+            // decision nor a hand-over of the question to the core page is written yet. The same predicate
+            // under which the hub sends and replays the channel status channel_answered, so polling and the
+            // hub cannot disagree; a page that does not subscribe to the hub learns from it that its spare
+            // ways to start lead nowhere now. A separate field for the same reason as the one above; it
+            // carries nothing about the subject the sign-in is bound to (SPEC-007 UI-095).
+            awaiting_answer_in_channel = transaction.IsAwaitingAnswerInChannel(),
+
+            // Whether the authorization code of the sign-in has been issued — the one mark the callback
+            // answers with the "session expired" page. A page shown for a sign-in already Completed learns
+            // from it that "Yes" was answered: the state alone does not change then (SPEC-007 UI-123). A
+            // separate field for the same reason as the one above; it carries nothing about the user
+            // (SPEC-007 UI-095).
+            authorization_code_issued = AuthorizeCallbackEndpoint.HasIssuedAuthorizationCode(transaction),
+
+            // The same signal the broadcast carries as the ClaimCompletion status (SPEC-041 L91): the
+            // current step of the claims completion and the surface of the web step. Null outside the
+            // completion, and once every missing claim has an outcome while Confirm is not written
+            // yet. Names of the steps only — never a claim value (SPEC-007 UI-095).
+            claim_completion = BuildClaimCompletionStatus(transaction)
         };
+    }
+
+    /// <summary>
+    /// Builds the claims completion part of the public status: the current step and the surface of
+    /// the web step, by their member names.
+    /// </summary>
+    /// <param name="transaction">Transaction.</param>
+    /// <returns>Anonymous object with the step and the surface, or null when no step is on.</returns>
+    private static object? BuildClaimCompletionStatus(Transaction transaction)
+    {
+        var step = transaction.GetCurrentClaimCompletionStep();
+
+        return step is null
+            ? null
+            : new
+            {
+                step = step.Value.ToString(),
+                surface = transaction.ClaimCompletion!.Surface?.ToString()
+            };
     }
 }

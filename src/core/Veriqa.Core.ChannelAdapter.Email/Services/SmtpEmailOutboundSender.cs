@@ -14,6 +14,7 @@ using MimeKit;
 using QRCoder;
 
 using Veriqa.Core.ChannelAdapter.Email.Abstractions;
+using Veriqa.Core.ChannelAdapter.Email.ClaimCompletion;
 using Veriqa.Core.ChannelAdapter.Email.Configuration;
 using Veriqa.Core.ChannelAdapter.Email.Constants;
 using Veriqa.Core.ChannelAdapter.Email.Domain;
@@ -34,11 +35,22 @@ namespace Veriqa.Core.ChannelAdapter.Email.Services;
 /// effective credentials still match the snapshot it was opened with — otherwise it is dropped and
 /// reopened (SPEC-003 §17.8). No per-tenant client cache: at N=1 the effective credentials are the core
 /// ones, so the snapshot matches for as long as the configuration does and one connection serves every send.
-/// The mail body itself belongs to the template layer (<see cref="IEmailMessageComposer"/>): this
-/// class receives a ready subject and body and only transports them.
+/// The mail body itself belongs to the template layer (<see cref="IEmailMessageComposer"/>, and
+/// <see cref="ClaimCompletionMailComposer"/> for the mails of the claims completion): this class receives a
+/// ready subject and body and only transports them — every kind of mail over the one connection below.
 /// </summary>
 internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisposable
 {
+    /// <summary>
+    /// Name of the sign-in mail in the log.
+    /// </summary>
+    private const string LoginMailKind = "sign-in";
+
+    /// <summary>
+    /// Name of a mail of the claims completion in the log.
+    /// </summary>
+    private const string ClaimCompletionMailKind = "claims completion";
+
     /// <summary>
     /// Canonical layer resolver (SPEC-003 §17.4, SPEC-012 CFG-234): resolves the Email tenant-credential
     /// group per send. Never snapshot the options in the constructor — that would pin one tenant's
@@ -50,6 +62,11 @@ internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisp
     /// Mail body assembly over the template registry (SPEC-003 CA-160).
     /// </summary>
     private readonly IEmailMessageComposer _composer;
+
+    /// <summary>
+    /// Body assembly of the mails of the claims completion (SPEC-041 L51).
+    /// </summary>
+    private readonly ClaimCompletionMailComposer _claimCompletionComposer;
 
     /// <summary>
     /// Logger.
@@ -81,20 +98,66 @@ internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisp
     /// </summary>
     /// <param name="resolver">Canonical layer resolver (SPEC-003 §17.4).</param>
     /// <param name="composer">Mail body assembly over the template registry.</param>
+    /// <param name="claimCompletionComposer">Body assembly of the mails of the claims completion.</param>
     /// <param name="logger">Logger.</param>
     public SmtpEmailOutboundSender(
         IConfigurationResolver resolver,
         IEmailMessageComposer composer,
+        ClaimCompletionMailComposer claimCompletionComposer,
         ILogger<SmtpEmailOutboundSender> logger)
     {
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
+        _claimCompletionComposer = claimCompletionComposer ?? throw new ArgumentNullException(nameof(claimCompletionComposer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc />
-    public async Task<EmailSendResult> SendLoginEmailAsync(
+    public bool SupportsClaimCompletionEmail => true;
+
+    /// <inheritdoc />
+    public Task<EmailSendResult> SendLoginEmailAsync(
         EmailLoginMessage message,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        return SendAsync(
+            async (outbound, token) => BuildLoginMimeMessage(message, await _composer.ComposeAsync(message, token), outbound),
+            LoginMailKind,
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<EmailSendResult> SendClaimCompletionEmailAsync(
+        EmailClaimCompletionMessage message,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        return SendAsync(
+            async (outbound, token) => BuildMimeMessage(
+                message.ToAddress,
+                await _claimCompletionComposer.ComposeAsync(message, token),
+                outbound,
+                attachQrImage: null),
+            ClaimCompletionMailKind,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends one mail over the persistent SMTP connection — the one transport every kind of mail of this
+    /// provider shares, so a mail of the claims completion opens no second client.
+    /// </summary>
+    /// <param name="buildMessage">
+    /// Builds the MIME message out of the effective outbound settings of the tenant (the From branding).
+    /// </param>
+    /// <param name="mailKind">What is being sent, for the log only.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The email send result.</returns>
+    private async Task<EmailSendResult> SendAsync(
+        Func<EmailOutboundOptions, CancellationToken, ValueTask<MimeMessage>> buildMessage,
+        string mailKind,
         CancellationToken cancellationToken)
     {
         // The method builds the email and sends it over the persistent SMTP connection.
@@ -143,8 +206,7 @@ internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisp
         }
 
         // The body belongs to the template layer: this provider only transports what it is handed.
-        var body = await _composer.ComposeAsync(message, cancellationToken);
-        var email = BuildMimeMessage(message, body, outbound);
+        var email = await buildMessage(outbound, cancellationToken);
 
         // Snapshot of the effective credentials of this send — compared against the snapshot the
         // current connection was opened with (see below). Built outside the lock: it is a pure value.
@@ -198,7 +260,8 @@ internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisp
             var sentMessageId = await _client.SendAsync(email, cancellationToken);
 
             _logger.LogInformation(
-                "Magic link email sent to [MASKED]. MessageId: {MessageId}",
+                "The {MailKind} mail was sent to [MASKED]. MessageId: {MessageId}",
+                mailKind,
                 sentMessageId);
 
             return EmailSendResult.Ok(sentMessageId);
@@ -221,9 +284,10 @@ internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisp
 
             _logger.LogError(
                 ex,
-                "Error sending the magic link email via SMTP {Host}:{Port}. A repeated attempt may succeed "
+                "Error sending the {MailKind} mail via SMTP {Host}:{Port}. A repeated attempt may succeed "
                     + "on a new connection while this cause persists — a retry that works is not evidence "
                     + "that the problem is gone.",
+                mailKind,
                 smtp.Host,
                 smtp.Port);
 
@@ -388,16 +452,53 @@ internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisp
     }
 
     /// <summary>
-    /// Builds a MimeMessage around the body the template layer produced.
+    /// Builds the MimeMessage of the sign-in mail: the envelope around the body, and the magic link QR
+    /// code when the rendered body references it.
     /// </summary>
     /// <param name="message">The email data.</param>
     /// <param name="body">The ready mail body (subject, HTML and text parts, QR reference flag).</param>
     /// <param name="outbound">The effective tenant outbound settings (From branding), resolved per send.</param>
     /// <returns>The ready <see cref="MimeMessage"/>.</returns>
-    private static MimeMessage BuildMimeMessage(
+    private static MimeMessage BuildLoginMimeMessage(
         EmailLoginMessage message,
         EmailBodyContent body,
         EmailOutboundOptions outbound)
+    {
+        // The magic link QR code is embedded as a CID attachment (SPEC-016 §4.3, EM-105):
+        // cross-device scenario — the email is opened on one device, sign-in completes on another.
+        // A CID attachment is rendered by mail clients without loading external content.
+        // The attachment is transport, the reference to it is body: it is generated only when the
+        // template says it referenced the image, so a template without a QR does not ship an
+        // attachment nothing points at.
+        return BuildMimeMessage(
+            message.ToAddress,
+            body,
+            outbound,
+            body.EmbedsQrImage
+                ? (BodyBuilder bodyBuilder) =>
+                {
+                    var qrImage = bodyBuilder.LinkedResources.Add(
+                        EmailAdapterConstants.PullQrContentId + ".png",
+                        GenerateQrPng(EmailMagicLink.Build(message)),
+                        new ContentType("image", "png"));
+                    qrImage.ContentId = EmailAdapterConstants.PullQrContentId;
+                }
+        : null);
+    }
+
+    /// <summary>
+    /// Builds a MimeMessage around the body the template layer produced.
+    /// </summary>
+    /// <param name="toAddress">Recipient address.</param>
+    /// <param name="body">The ready mail body (subject, HTML and text parts).</param>
+    /// <param name="outbound">The effective tenant outbound settings (From branding), resolved per send.</param>
+    /// <param name="attachQrImage">Adds the linked image the body references; null — the mail has none.</param>
+    /// <returns>The ready <see cref="MimeMessage"/>.</returns>
+    private static MimeMessage BuildMimeMessage(
+        string toAddress,
+        EmailBodyContent body,
+        EmailOutboundOptions outbound,
+        Action<BodyBuilder>? attachQrImage)
     {
         // The method builds a MimeMessage with the HTML email body
         var email = new MimeMessage();
@@ -406,7 +507,7 @@ internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisp
             outbound.FromName,
             outbound.FromAddress));
 
-        email.To.Add(MailboxAddress.Parse(message.ToAddress));
+        email.To.Add(MailboxAddress.Parse(toAddress));
 
         // Reply-To (SPEC-016 EM-033: a presentation header, not identity): when the tenant set a
         // Reply-To address, add it so replies go to a monitored mailbox rather than the From sender.
@@ -434,20 +535,7 @@ internal sealed class SmtpEmailOutboundSender : IEmailOutboundSender, IAsyncDisp
             bodyBuilder.TextBody = body.TextBody;
         }
 
-        // The magic link QR code is embedded as a CID attachment (SPEC-016 §4.3, EM-105):
-        // cross-device scenario — the email is opened on one device, sign-in completes on another.
-        // A CID attachment is rendered by mail clients without loading external content.
-        // The attachment is transport, the reference to it is body: it is generated only when the
-        // template says it referenced the image, so a template without a QR does not ship an
-        // attachment nothing points at.
-        if (body.EmbedsQrImage)
-        {
-            var qrImage = bodyBuilder.LinkedResources.Add(
-                EmailAdapterConstants.PullQrContentId + ".png",
-                GenerateQrPng(EmailMagicLink.Build(message)),
-                new ContentType("image", "png"));
-            qrImage.ContentId = EmailAdapterConstants.PullQrContentId;
-        }
+        attachQrImage?.Invoke(bodyBuilder);
 
         email.Body = bodyBuilder.ToMessageBody();
 

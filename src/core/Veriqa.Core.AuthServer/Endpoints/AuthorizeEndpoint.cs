@@ -15,6 +15,7 @@ using OpenIddict.Server.AspNetCore;
 using Veriqa.Core.AuthServer.Configuration;
 using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Constants;
+using Veriqa.Core.AuthServer.HopMode;
 using Veriqa.Core.AuthServer.InitiatorContext;
 using Veriqa.Core.AuthServer.Infrastructure;
 using Veriqa.Core.AuthServer.UI;
@@ -36,6 +37,12 @@ namespace Veriqa.Core.AuthServer.Endpoints;
 public static class AuthorizeEndpoint
 {
     /// <summary>
+    /// Closing sentence of the warning about a subject that could not be recorded: the authorization
+    /// code is issued whether or not the record was made.
+    /// </summary>
+    private const string IssuedSubjectStoreFailureOutcome = "the code is issued.";
+
+    /// <summary>
     /// Browser nonce length in bytes.
     /// </summary>
     private const int BrowserNonceByteLength = 32;
@@ -55,6 +62,12 @@ public static class AuthorizeEndpoint
     /// Digits of a numeric region subtag of a language tag — RFC 5646 §2.2.4 (<c>"es-419"</c>).
     /// </summary>
     private const int RegionDigitCount = 3;
+
+    /// <summary>
+    /// <c>error_description</c> of the <c>login_required</c> answer to a <c>prompt=none</c> request.
+    /// </summary>
+    private const string LoginRequiredDescription =
+        "The user must sign in: the server keeps no sign-in session to answer prompt=none.";
 
     /// <summary>
     /// Registers the authorization endpoint with rate limiting (SPEC-007 §6.1).
@@ -123,14 +136,52 @@ public static class AuthorizeEndpoint
 
                 if (signedInTransaction is not null)
                 {
-                    // The user is already authenticated — issue an authorization code
-                    return await IssueAuthorizationCodeAsync(
-                        httpContext, signedInTransaction, claimsMapper, transactionStore);
+                    if (IsRequestOfSignedInTransaction(request, signedInTransaction.OidcContext!))
+                    {
+                        // The user is already authenticated — issue an authorization code
+                        var issued = await IssueAuthorizationCodeAsync(
+                            httpContext, signedInTransaction, claimsMapper, transactionService);
+                        if (issued is not null)
+                        {
+                            return issued;
+                        }
+
+                        // The sign-in was redeemed by a parallel request carrying the same cookie, or its
+                        // transaction left the store in between: no code for this one, and it goes on as
+                        // an unauthenticated request.
+                    }
+                    else
+                    {
+                        // SPEC-002 §4.2: the cookie was set for one authorization request of its client,
+                        // and this is another one of the same client — its code would reach a request the
+                        // user never signed in for. The cookie is gone (removed above), the transaction is
+                        // left to its TTL, and this request is treated as an unauthenticated one. The
+                        // parameter values stay out of the log.
+                        var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                            .CreateLogger(typeof(AuthorizeEndpoint));
+                        logger.LogWarning(
+                            "An authorization request carried the sign-in cookie of a transaction started by "
+                            + "another authorization request of the same application. "
+                            + "ClientId: {ClientId}, RequestId: {RequestId}",
+                            request.ClientId,
+                            httpContext.TraceIdentifier);
+                    }
                 }
 
-                // The cookie outlived its transaction (reaped, already redeemed, or stored by another
-                // instance without a shared store): the request is treated as an unauthenticated one.
+                // The cookie leads to no sign-in that can still issue a code — its transaction was reaped,
+                // has already issued its code, or is stored by another instance without a shared store:
+                // the request is treated as an unauthenticated one.
             }
+        }
+
+        // SPEC-002 §4.2: Veriqa keeps no sign-in session — the intermediate cookie is single-use and only
+        // carries the return leg of a sign-in that has just completed — so a request that must not show
+        // any UI (prompt=none, OIDC Core §3.1.2.1) and got no code above can only be answered
+        // login_required, before a transaction or a page exists. OpenIddict itself rejects "none"
+        // combined with other prompt values.
+        if (request.HasPromptValue(OpenIddictConstants.PromptValues.None))
+        {
+            return LoginRequiredError();
         }
 
         // The user is not authenticated — create a transaction.
@@ -149,13 +200,52 @@ public static class AuthorizeEndpoint
     }
 
     /// <summary>
+    /// Checks that the authorization request is the one the signed-in transaction was started for: its
+    /// <c>redirect_uri</c>, <c>state</c>, <c>nonce</c> and <c>code_challenge</c> match the OIDC context of
+    /// the transaction (ordinal comparison). The callback rebuilds the request from that context and
+    /// leaves out the parameters it holds as null, so an absent parameter and an empty one are equal.
+    /// </summary>
+    /// <param name="request">The current authorization request.</param>
+    /// <param name="oidcContext">OIDC context of the signed-in transaction.</param>
+    /// <returns>True when all four parameters match.</returns>
+    private static bool IsRequestOfSignedInTransaction(OpenIddictRequest request, OidcContext oidcContext)
+    {
+        return IsSameParameter(request.RedirectUri, oidcContext.RedirectUri)
+            && IsSameParameter(request.State, oidcContext.State)
+            && IsSameParameter(request.Nonce, oidcContext.Nonce)
+            && IsSameParameter(request.CodeChallenge, oidcContext.CodeChallenge);
+    }
+
+    /// <summary>
+    /// Compares a parameter of the request with the value stored on the transaction: ordinal, with an
+    /// absent value equal to an empty one.
+    /// </summary>
+    /// <param name="requested">Value of the current request.</param>
+    /// <param name="stored">Value stored on the transaction.</param>
+    /// <returns>True when the values are the same.</returns>
+    private static bool IsSameParameter(string? requested, string? stored)
+    {
+        return string.IsNullOrEmpty(requested)
+            ? string.IsNullOrEmpty(stored)
+            : string.Equals(requested, stored, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Finds the transaction the intermediate cookie refers to, provided it can still issue a code.
     /// </summary>
     /// <remarks>
     /// The cookie written by the callback carries the session identifier of the transaction and no
     /// claims (SPEC-002 §4.3). A usable transaction is a completed sign-in with its OIDC context and
-    /// both completion snapshots; anything else — no identifier, no transaction, another state — yields
-    /// null, and the caller treats the request as unauthenticated instead of failing it.
+    /// both completion snapshots that has not issued its code yet; anything else — no identifier, no
+    /// transaction, another state, a code already issued — yields null, and the caller treats the
+    /// request as unauthenticated instead of failing it.
+    /// <para>
+    /// The transaction stays in the store after its code is issued, for as long as any completed one,
+    /// so a repeated cookie is turned away here by the mark and not by a missing record. This read
+    /// only spares a redeemed cookie the claims mapping: of two simultaneous requests both may pass
+    /// it, and the conditional write of the mark decides between them
+    /// (<see cref="IssueAuthorizationCodeAsync"/>).
+    /// </para>
     /// </remarks>
     /// <param name="httpContext">HTTP context.</param>
     /// <param name="principal">Principal of the intermediate cookie.</param>
@@ -182,24 +272,35 @@ public static class AuthorizeEndpoint
             ResolvedIdentitySnapshot: not null,
             CompletionSnapshot: not null
         }
+            && !AuthorizeCallbackEndpoint.HasIssuedAuthorizationCode(transaction)
             ? transaction
             : null;
     }
 
     /// <summary>
     /// Issues an authorization code for a completed sign-in: builds the claims from the transaction,
-    /// deletes the transaction and hands the principal to OpenIddict.
+    /// marks the transaction as having issued its code and hands the principal to OpenIddict.
     /// </summary>
+    /// <remarks>
+    /// The transaction is kept: it lives out the retention of any completed transaction, and the mark is
+    /// what makes the sign-in redeemable once. The mark is the last step before the principal is handed
+    /// over — everything that can refuse (the claims mapping, the scopes of the catalog) runs before it,
+    /// so a refusal does not spend the sign-in. A failure of the store while writing the mark is not
+    /// caught: the request fails and no code is issued.
+    /// </remarks>
     /// <param name="httpContext">HTTP context.</param>
     /// <param name="transaction">Completed sign-in transaction the intermediate cookie referred to.</param>
     /// <param name="claimsMapper">Claims mapper.</param>
-    /// <param name="transactionStore">Transaction store.</param>
-    /// <returns>SignIn result via OpenIddict, or the claims mapping failure.</returns>
-    private static async Task<IResult> IssueAuthorizationCodeAsync(
+    /// <param name="transactionService">Transaction service — writes the mark.</param>
+    /// <returns>
+    /// SignIn result via OpenIddict, or the claims mapping failure; null — the mark was not won (another
+    /// request redeemed the sign-in, or the transaction is no longer stored) and no code is issued.
+    /// </returns>
+    private static async Task<IResult?> IssueAuthorizationCodeAsync(
         HttpContext httpContext,
         Transaction transaction,
         IClaimsMapper claimsMapper,
-        ITransactionStore transactionStore)
+        ITransactionService transactionService)
     {
         // The method builds the principal for OpenIddict and issues an authorization code
 
@@ -239,6 +340,13 @@ public static class AuthorizeEndpoint
                 title: OidcErrorCodes.ClaimsMappingFailed);
         }
 
+        await IssuedSubjectRecorder.RecordAsync(
+            httpContext,
+            transaction,
+            claimsResult.Value,
+            httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AuthorizeEndpoint)),
+            IssuedSubjectStoreFailureOutcome);
+
         var identity = new ClaimsIdentity(
             claimsResult.Value,
             TokenValidationParameters.DefaultAuthenticationType,
@@ -248,25 +356,43 @@ public static class AuthorizeEndpoint
         var principal = new ClaimsPrincipal(identity);
         principal.SetScopes(scopeSet);
 
-        // Set destinations for each claim — a substituted mapper is not required to state them
+        // Set destinations for each claim — a substituted mapper is not required to state them. The gate of
+        // the catalog applies to its claims as well (SPEC-041 R21).
+        var claimScopes = await CatalogClaimScopes.ResolveAsync(
+            httpContext.RequestServices.GetRequiredService<IConfigurationResolver>(),
+            transaction.GetTenantId(),
+            transaction.GetApplicationId(),
+            httpContext.RequestAborted);
+
         foreach (var claim in principal.Claims)
         {
-            claim.SetDestinations(ClaimDestinationsHelper.GetDestinations(claim, scopeSet));
+            claim.SetDestinations(ClaimDestinationsHelper.GetDestinations(claim, scopeSet, claimScopes));
         }
 
-        // Hand the sign-in language on to a page of THIS request that renders after the transaction is
-        // gone: the form_post auto-posting page, which the OpenIddict pipeline writes while applying the
-        // response below and reaches through the same HTTP context (SPEC-007 UI-102). Written BEFORE the
-        // deletion, because after it the value has no source left.
+        // Hand the sign-in language on to a page of THIS request that is not handed the transaction: the
+        // form_post auto-posting page, which the OpenIddict pipeline writes while applying the response
+        // below and reaches through the same HTTP context alone (SPEC-007 UI-102).
         var uiLocale = transaction.GetUiLocale();
         if (!string.IsNullOrWhiteSpace(uiLocale))
         {
             httpContext.Items[AuthPageConstants.TransactionUiLocaleItemKey] = uiLocale;
         }
 
-        // Clear the transaction from the store (SPEC-002 §4.3, step 10): the code carries everything the
-        // token request needs. CancellationToken.None — cleanup must run even if the request is cancelled.
-        await transactionStore.DeleteAsync(transaction.Id, CancellationToken.None);
+        // Of two simultaneous requests carrying the same cookie exactly one wins the mark; the other is
+        // answered as an unauthenticated request. The token is the request's own: the mark is a condition
+        // of the issuance, not a cleanup that has to outlive the request.
+        if (!await transactionService.TryMarkAuthorizationCodeIssuedAsync(transaction.Id, httpContext.RequestAborted))
+        {
+            // transaction.Id.ToString() — a Base62 string (alphabet 0-9, a-z, A-Z), log injection is excluded
+            httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger(typeof(AuthorizeEndpoint))
+                .LogInformation(
+                    "The sign-in has already issued its authorization code or is no longer stored; "
+                    + "no code is issued for this request. TransactionId: {TransactionId}",
+                    transaction.Id.ToString());
+
+            return null;
+        }
 
         return Results.SignIn(
             principal,
@@ -314,8 +440,12 @@ public static class AuthorizeEndpoint
         // so without this answer the page would resolve past the tenant level (SPEC-012 CFG-042), and a
         // reader that meets the transaction later would have no other source. The shipped resolver
         // answers from the client's configuration entry; a client stating no tenant answers null — the
-        // single default tenant of a self-hosted installation.
-        var tenantId = await ClientTenantLookup.ResolveAsync(httpContext, request.ClientId, uiConfigLogger);
+        // single default tenant of a self-hosted installation. A resolver that failed answers null too, and
+        // the transaction states the failure: its tenant is unknown rather than none, which keeps the
+        // collected claims store off this sign-in (SPEC-041 E62).
+        var tenantResolution = await ClientTenantLookup.ResolveWithOutcomeAsync(
+            httpContext, request.ClientId, uiConfigLogger);
+        var tenantId = tenantResolution.TenantId;
 
         // Validate the ui_config selector of the request against the ui_config LEVEL of the resolver:
         // the record store has a single reader behind that level, and no other path to it (CFG-231).
@@ -348,7 +478,23 @@ public static class AuthorizeEndpoint
         var pageSettings = await pageSettingsResolver.ResolveAsync(resolution, httpContext.RequestAborted);
 
         // Parse acr_values to filter channels (TASK-005, SPEC-012 CFG-013)
-        var allowedChannelTypes = ExtractChannelTypesFromAcrValues(request.AcrValues);
+        var acrChannelTypes = ExtractChannelTypesFromAcrValues(request.AcrValues);
+
+        // The requirement set of the transaction is written here, once, before the transaction exists
+        // (SPEC-041 C35), and a required phone number narrows the channels of acr_values to those able to
+        // provide it (SPEC-041 L48). Both refusals come before creation: nothing is stored for a request
+        // that cannot be served.
+        var claimRequirements = await httpContext.RequestServices.GetRequiredService<ClaimRequirementsBuilder>()
+            .BuildAsync(request, resolution, acrChannelTypes, httpContext.RequestAborted);
+        if (claimRequirements.IsFailure)
+        {
+            return string.Equals(
+                claimRequirements.Error.Code, OidcErrorCodes.NoChannelForRequiredPhone, StringComparison.Ordinal)
+                ? NoChannelForRequiredPhoneError(claimRequirements.Error.Message)
+                : Results.BadRequest(OidcErrorCodes.OidcRequestInvalid);
+        }
+
+        var allowedChannelTypes = claimRequirements.Value.AllowedChannelTypes;
 
         // Generate a browser nonce
         var browserNonceBytes = RandomNumberGenerator.GetBytes(BrowserNonceByteLength);
@@ -387,7 +533,12 @@ public static class AuthorizeEndpoint
         var oidcContext = new OidcContext
         {
             ClientId = request.ClientId,
+            // The name and the brand the texts of this sign-in show, taken now, as a confirmation takes
+            // them: the application slot does not depend on whether an initiator context was collected.
+            ApplicationName = clientsSnapshot.ApplicationNameOf(request.ClientId),
+            BrandName = pageSettings.Design.BrandName,
             TenantId = tenantId,
+            TenantResolutionFailed = tenantResolution.Failed,
             RedirectUri = request.RedirectUri,
             Scope = request.Scope,
             State = request.State,
@@ -416,6 +567,7 @@ public static class AuthorizeEndpoint
             Type = TransactionTypes.Login,
             OidcContext = oidcContext,
             AllowedChannelTypes = allowedChannelTypes,
+            ClaimRequirements = claimRequirements.Value.Requirements,
             InitiatorContext = initiatorContext,
             TtlSeconds = pageSettings.TtlSeconds,
             // Trace identifier of the request that started the sign-in, which is what the audit trail
@@ -448,6 +600,9 @@ public static class AuthorizeEndpoint
         var sessionId = SessionIdMapper.ToSessionId(transaction.Id);
 
         // Store the browser nonce in a SameSite=Strict cookie.
+        // The cookie lives exactly as long as the transaction it binds: the callback and the cancel
+        // route both read it, so a cookie that expired first would turn a live sign-in into a
+        // browser_nonce_mismatch. The transaction's expiry is fixed at creation and never extended.
         // The cookie Path includes PathBase: when the issuer is hosted under a sub-path (for example,
         // /demo) the browser matches Path against the full request path — without the prefix the cookie is not sent.
         httpContext.Response.Cookies.Append(
@@ -460,17 +615,12 @@ public static class AuthorizeEndpoint
                 Secure = true,
                 SameSite = SameSiteMode.Strict,
                 Path = $"{httpContext.Request.PathBase}{OidcEndpoints.AuthorizeCallback}",
-                MaxAge = TimeSpan.FromMinutes(OidcConstants.BrowserNonceCookieMaxAgeMinutes)
+                MaxAge = transaction.ExpiresAt - timeProvider.GetUtcNow()
             });
 
         // Per-request channel display override (SPEC-002 §4.6, CFG-211): it can only narrow the global
-        // display set/order/mode. The mode is a key with a core level of its own, so the chain answers
-        // it on an ordinary request and the override handed to the service carries the effective mode.
-        // The null branch is what is left of "global behavior": no level spoke at all — the core level
-        // stating a value it cannot read — and the service then resolves the mode itself.
-        var displayOverride = pageSettings.Channels is null && pageSettings.ChannelDisplayMode is null
-            ? null
-            : new ChannelDisplayOverride(pageSettings.Channels, pageSettings.ChannelDisplayMode);
+        // display set/order/mode.
+        var displayOverride = ChannelDisplayOverride.Of(pageSettings);
 
         // State the effective external stylesheet and script of this page for its CSP: a
         // CustomCss/JsPath owned by a level above the global section must not be blocked by a policy
@@ -483,9 +633,11 @@ public static class AuthorizeEndpoint
         // Prepare channel data: deep link + QR codes (SPEC-007 §3, §4)
         var channelDataResult = await channelDisplayService.GetChannelDisplayDataAsync(
             transaction.Id,
+            transaction.ExpiresAt,
             transaction.AllowedChannelTypes,
             resolution,
             displayOverride,
+            ChannelQrSurface.CorePage,
             httpContext.RequestAborted);
 
         if (channelDataResult.IsFailure)
@@ -503,6 +655,18 @@ public static class AuthorizeEndpoint
                 title: OidcErrorCodes.ChannelDisplayFailed);
         }
 
+        // The one QR code of the transaction when the unified hop mode applies for this page (SPEC-025
+        // HOP-183, HOP-187) — decided and drawn by the function the channel choice page of a
+        // confirmation shares; null keeps the per-channel QR codes.
+        var unifiedPageQr = httpContext.RequestServices.GetRequiredService<HopUnifiedPageQr>();
+        var unifiedQr = await unifiedPageQr.RenderAsync(
+            transaction.Id,
+            transaction.ExpiresAt,
+            channelDataResult.Value,
+            resolution,
+            pageSettings.QrVisibility,
+            httpContext.RequestAborted);
+
         // The page language was already detected above (ui_locales → Accept-Language); what the
         // transaction carries is the tag of THAT language as stated, with the subtags it was stated with —
         // a region among them only when one was asked for (OidcContext.UiLocale)
@@ -519,6 +683,28 @@ public static class AuthorizeEndpoint
         var restartUrl = await ResolveRestartUrlAsync(
             httpContext, pageSettingsResolver, resolution, request.ClientId, environment, uiConfigLogger);
 
+        // The texts of the window the levels of this request override, resolved once over the same context
+        // as the rest of the page: the renderer is synchronous and only applies them.
+        var texts = await httpContext.RequestServices.GetRequiredService<CorePageTextResolver>()
+            .ResolveAsync(resolution, httpContext.RequestAborted);
+
+        // The lines the window shows for its channels — messages resolved over the levels of the transaction
+        // and handed to the renderer ready, like the texts.
+        var channelLines = await httpContext.RequestServices.GetRequiredService<CorePageChannelLineResolver>()
+            .ForWindowAsync(transaction, channelDataResult.Value, texts, language, httpContext.RequestAborted);
+
+        // The "Cancel sign-in" button, where the levels of this request leave it on. Where the refusal goes
+        // is the surface's to know — this one returns it to the client — so the form is built here and never
+        // inside the renderer.
+        var cancelForm = BuildCancelForm(httpContext, pageSettings.CancelEnabled, oidcContext.RedirectUri);
+
+        // The colors the levels state for the buttons of the channels this window shows.
+        var channelButtonColors = await httpContext.RequestServices.GetRequiredService<CorePageBrandingResolver>()
+            .ResolveChannelButtonColorsAsync(
+                resolution,
+                [.. channelDataResult.Value.Select(channel => channel.ChannelType)],
+                httpContext.RequestAborted);
+
         var renderContext = new AuthPageRenderContext
         {
             SessionId = sessionId,
@@ -529,7 +715,10 @@ public static class AuthorizeEndpoint
             // browser's clock is what used to end live transactions on a device running fast.
             RemainingSeconds = Math.Max(0, (transaction.ExpiresAt - timeProvider.GetUtcNow()).TotalSeconds),
             RestartUrl = restartUrl,
+            CancelForm = cancelForm,
             Channels = channelDataResult.Value,
+            ChannelLines = channelLines.Lines,
+            FallbackChannelLaunchedLine = channelLines.FallbackLaunched,
             Language = language,
             CspNonce = cspNonce,
             // The design, the title and the instruction arrive ALREADY RESOLVED: a renderer — including
@@ -537,16 +726,73 @@ public static class AuthorizeEndpoint
             Design = pageSettings.Design,
             Title = pageSettings.Title,
             Instruction = pageSettings.Instruction,
+            InstructionWithoutQr = pageSettings.InstructionWithoutQr,
+            InstructionWithoutButton = pageSettings.InstructionWithoutButton,
+            ChannelButtonColors = channelButtonColors,
+            Texts = texts,
             // The application path base — used to prefix root-relative page URLs
             // (issuer under an origin sub-path, for example veriqa.app/demo)
             PathBase = httpContext.Request.PathBase.Value ?? string.Empty,
-            // The QR visibility arrives already resolved as well (SPEC-007 UI-020).
-            QrVisibility = pageSettings.QrVisibility
+            // The QR visibility arrives already resolved as well (SPEC-007 UI-020), and the visibility
+            // of the channel buttons with it — the one reconciled with the QR visibility, not the stated.
+            QrVisibility = pageSettings.QrVisibility,
+            ChannelButtonVisibility = pageSettings.EffectiveChannelButtonVisibility,
+            // The layout of the channels as the levels state it; whether this page has anything to
+            // arrange is the renderer's to tell.
+            ChannelLayout = pageSettings.ChannelLayout,
+            UnifiedQrCodeBase64 = unifiedQr?.QrCodeBase64,
+            UnifiedQrExpiresAt = unifiedQr?.ExpiresAt,
+            UnifiedQrWithChannelQrCodes = unifiedQr is { WithChannelQrCodes: true },
+            AnyChannelTabShowsChannelButtons = unifiedQr?.AnyChannelTabShowsChannelButtons ?? true,
+            TransactionType = transaction.Type
         };
 
         var html = authPageRenderer.RenderAuthPage(renderContext);
 
         return Results.Content(html, AuthPageConstants.HtmlContentType, Encoding.UTF8);
+    }
+
+    /// <summary>
+    /// Builds the form behind the "Cancel sign-in" button of the sign-in window and lets the response of
+    /// the window post along the path that button takes.
+    /// </summary>
+    /// <remarks>
+    /// The button posts to the core, and the answer to that post is a redirect to the client's
+    /// <c>redirect_uri</c>. A browser applies the <c>form-action</c> directive of the page to the whole
+    /// chain of redirects after a form post, so a window carrying the form is the third response that
+    /// allows the validated <c>redirect_uri</c> as a form target (SPEC-007 UI-091). The source is stated
+    /// only together with the form: a window without the button keeps <c>form-action 'self'</c>.
+    /// <para>
+    /// A <c>redirect_uri</c> no CSP source can be derived from leaves the window without the button —
+    /// the post could not reach the client, and no wider source is ever stated in its place.
+    /// </para>
+    /// </remarks>
+    /// <param name="httpContext">HTTP context — the response the AntiForgery token is issued for.</param>
+    /// <param name="enabled">Whether the levels of the request leave the button on.</param>
+    /// <param name="redirectUri">The <c>redirect_uri</c> OpenIddict validated for this request.</param>
+    /// <returns>The form, or null when the window carries no such button.</returns>
+    private static AuthPageCancelForm? BuildCancelForm(HttpContext httpContext, bool enabled, string? redirectUri)
+    {
+        if (!enabled)
+        {
+            return null;
+        }
+
+        var formActionSource = SecurityHeadersMiddleware.GetFormActionSource(redirectUri);
+        if (string.IsNullOrEmpty(formActionSource))
+        {
+            return null;
+        }
+
+        var cancelForm = AuthPageCancelForm.Issue(httpContext, OidcEndpoints.AuthorizeCallbackCancel);
+        if (cancelForm is null)
+        {
+            return null;
+        }
+
+        httpContext.Items[SecurityHeaderConstants.FormActionTargetItemKey] = formActionSource;
+
+        return cancelForm;
     }
 
     /// <summary>
@@ -562,11 +808,8 @@ public static class AuthorizeEndpoint
     /// this code: after enough time the RP may refuse the callback by the age of its own
     /// <c>state</c>/<c>nonce</c>/PKCE (the stock ASP.NET handler allows 15 minutes).
     /// <para>
-    /// A stated value is taken only when it is an ABSOLUTE URL of an allowed scheme — https, or http
-    /// in Development, where an entry point without TLS is a normal local arrangement. Anything else
-    /// is treated as unstated and logged: the value comes from configuration, and a page that put an
-    /// arbitrary scheme into an href would let a setting turn into script on a page the deployment
-    /// serves.
+    /// Which stated values are taken is not decided here: the rule is
+    /// <see cref="InitiateLoginUriRule"/>, shared with the callback's "session expired" page.
     /// </para>
     /// </remarks>
     /// <param name="httpContext">HTTP context (source of the request's own URL).</param>
@@ -584,41 +827,10 @@ public static class AuthorizeEndpoint
         IHostEnvironment environment,
         ILogger logger)
     {
-        var stated = await pageSettingsResolver.ResolveInitiateLoginUriAsync(
-            resolution, httpContext.RequestAborted);
+        var stated = await InitiateLoginUriRule.ResolveAdmissibleAsync(
+            pageSettingsResolver, resolution, clientId, environment, logger, httpContext.RequestAborted);
 
-        if (!string.IsNullOrWhiteSpace(stated))
-        {
-            if (IsAdmissibleInitiateLoginUri(stated, environment))
-            {
-                return stated;
-            }
-
-            logger.LogWarning(
-                "The initiate_login_uri stated for client {ClientId} is not an absolute https URL and is "
-                + "ignored; the expired sign-in page offers a repeat of the authorize request instead",
-                clientId);
-        }
-
-        return httpContext.Request.GetEncodedUrl();
-    }
-
-    /// <summary>
-    /// Tells whether a stated login-initiation address may be put on the page: an absolute URL whose
-    /// scheme is https — or http, in Development only.
-    /// </summary>
-    /// <param name="stated">Value stated by the application level.</param>
-    /// <param name="environment">Host environment.</param>
-    /// <returns><see langword="true"/> when the address is admissible.</returns>
-    private static bool IsAdmissibleInitiateLoginUri(string stated, IHostEnvironment environment)
-    {
-        if (!Uri.TryCreate(stated, UriKind.Absolute, out var uri))
-        {
-            return false;
-        }
-
-        return uri.Scheme == Uri.UriSchemeHttps
-            || (uri.Scheme == Uri.UriSchemeHttp && environment.IsDevelopment());
+        return stated ?? httpContext.Request.GetEncodedUrl();
     }
 
     /// <summary>
@@ -743,6 +955,33 @@ public static class AuthorizeEndpoint
             detail: UiConfigSelectorResolver.InvalidSelectorMessage,
             statusCode: StatusCodes.Status400BadRequest,
             title: OidcErrorCodes.UiConfigInvalid);
+
+    /// <summary>
+    /// Builds the <c>login_required</c> answer to a <c>prompt=none</c> request: a forbid of the server
+    /// scheme, which OpenIddict returns to the client's <c>redirect_uri</c> in the response mode of the
+    /// request, with its <c>state</c> and <c>iss</c>.
+    /// </summary>
+    /// <returns>The error answer.</returns>
+    private static IResult LoginRequiredError() =>
+        Results.Forbid(
+            properties: new AuthenticationProperties(new Dictionary<string, string?>
+            {
+                [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.LoginRequired,
+                [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = LoginRequiredDescription
+            }),
+            authenticationSchemes: [OpenIddictServerAspNetCoreDefaults.AuthenticationScheme]);
+
+    /// <summary>
+    /// Builds a 400 no_channel_for_required_phone response (SPEC-041 L48): the phone number is required and
+    /// no channel of the request can provide it. The detail names no claim value.
+    /// </summary>
+    /// <param name="detail">Description of the refusal.</param>
+    /// <returns>The problem response.</returns>
+    private static IResult NoChannelForRequiredPhoneError(string detail) =>
+        Results.Problem(
+            detail: detail,
+            statusCode: StatusCodes.Status400BadRequest,
+            title: OidcErrorCodes.NoChannelForRequiredPhone);
 
     /// <summary>
     /// Extracts channel types from the acr_values parameter of the OIDC request (TASK-005, SPEC-012 CFG-013).

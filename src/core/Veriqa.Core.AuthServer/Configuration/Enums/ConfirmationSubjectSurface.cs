@@ -18,10 +18,9 @@ public enum ConfirmationSubjectSurface
     InteractionPage,
 
     /// <summary>
-    /// The hop interstitial (SPEC-025). The value is part of the axis as the specification declares
-    /// it, and configuration accepts it — but no display stands behind it while that specification is
-    /// frozen, and a deployment that states it is told so at startup rather than left believing the
-    /// display is configured.
+    /// The launch page of the hop mode (SPEC-025 HOP-069a): the page a phone lands on after scanning,
+    /// before it is taken into the channel. Showing the subject there tells the user what they are about
+    /// to confirm on the device they will confirm it on; a recognized link preview never gets it.
     /// </summary>
     HopInterstitial
 }

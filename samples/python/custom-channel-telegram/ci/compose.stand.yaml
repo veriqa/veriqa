@@ -1,0 +1,172 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# The stand of the CI gate: the platform stub, six instances of the adapter and the conformance suite.
+# Started by run.sh, which builds the images and generates every secret and token into an env file
+# outside the repository; nothing here holds a value of its own.
+#
+#   adapter-suite       posts its events to the suite; three bots: the default one and shop-a, shop-b. Its
+#                       CODE_START is STAND_SUITE_CODE_START, off until run.sh recreates it with only for the
+#                       second run of the suite
+#   adapter-forward     posts its events to the recorder of the stub and forwards the rest to it
+#   adapter-standalone  posts its events to the recorder of the stub and forwards nothing
+#   adapter-tenants     posts its events to the recorder of the stub; bots of shop-a and shop-b alone, no
+#                       default record — the own checks of the credentials per tenant
+#   adapter-code-only   CODE_START=only: posts its events to the recorder of the stub and forwards the rest
+#                       to it — the own checks of the start by a code with a link that only opens the chat
+#   adapter-code-fallback  CODE_START=fallback: posts its events to the recorder of the stub, forwards
+#                       nothing — the own checks of the code as a fallback beside the link
+
+x-adapter-common: &adapter-common
+  image: veriqa-sample-telegram-adapter:latest
+  depends_on: [stub]
+
+services:
+
+  stub:
+    image: veriqa-sample-telegram-stand:latest
+    command: ["python", "stub.py"]
+    environment:
+      STUB_PORT: "9000"
+      STUB_USER_ID: ${STAND_USER_ID}
+      STUB_BOT_TOKENS: ${STAND_BOT_TOKENS}
+
+  adapter-suite:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://suite:8080
+      VERIQA_CHANNEL_TYPE: telegram-http
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      TELEGRAM_API_URL: http://stub:9000
+      TELEGRAM_INBOUND_MODE: webhook
+      TELEGRAM_PUBLIC_URL: http://adapter-suite:8000
+      TELEGRAM_BOT_TOKEN: ${STAND_DEFAULT_BOT_TOKEN}
+      TELEGRAM_BOT_1_TENANT: shop-a
+      TELEGRAM_BOT_1_TOKEN: ${STAND_SHOP_A_BOT_TOKEN}
+      TELEGRAM_BOT_2_TENANT: shop-b
+      TELEGRAM_BOT_2_TOKEN: ${STAND_SHOP_B_BOT_TOKEN}
+      CODE_START: ${STAND_SUITE_CODE_START:-off}
+
+  adapter-forward:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://stub:9000/registrar
+      VERIQA_CHANNEL_TYPE: telegram-http
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      TELEGRAM_API_URL: http://stub:9000
+      TELEGRAM_INBOUND_MODE: webhook
+      TELEGRAM_PUBLIC_URL: http://adapter-forward:8000
+      TELEGRAM_BOT_1_TENANT: ${STAND_FORWARD_TENANT}
+      TELEGRAM_BOT_1_TOKEN: ${STAND_FORWARD_BOT_TOKEN}
+      TELEGRAM_BOT_1_FORWARD_URL: http://stub:9000/registrar/forward
+
+  adapter-standalone:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://stub:9000/registrar
+      VERIQA_CHANNEL_TYPE: telegram-http
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      TELEGRAM_API_URL: http://stub:9000
+      TELEGRAM_INBOUND_MODE: webhook
+      TELEGRAM_PUBLIC_URL: http://adapter-standalone:8000
+      TELEGRAM_BOT_TOKEN: ${STAND_STANDALONE_BOT_TOKEN}
+
+  adapter-tenants:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://stub:9000/registrar
+      VERIQA_CHANNEL_TYPE: telegram-http
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      TELEGRAM_API_URL: http://stub:9000
+      TELEGRAM_INBOUND_MODE: webhook
+      TELEGRAM_PUBLIC_URL: http://adapter-tenants:8000
+      TELEGRAM_BOT_1_TENANT: shop-a
+      TELEGRAM_BOT_1_TOKEN: ${STAND_TENANTS_SHOP_A_BOT_TOKEN}
+      TELEGRAM_BOT_2_TENANT: shop-b
+      TELEGRAM_BOT_2_TOKEN: ${STAND_TENANTS_SHOP_B_BOT_TOKEN}
+
+  adapter-code-only:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://stub:9000/registrar
+      VERIQA_CHANNEL_TYPE: telegram-http
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      TELEGRAM_API_URL: http://stub:9000
+      TELEGRAM_INBOUND_MODE: webhook
+      TELEGRAM_PUBLIC_URL: http://adapter-code-only:8000
+      TELEGRAM_BOT_1_TENANT: ${STAND_CODE_ONLY_TENANT}
+      TELEGRAM_BOT_1_TOKEN: ${STAND_CODE_ONLY_BOT_TOKEN}
+      TELEGRAM_BOT_1_FORWARD_URL: http://stub:9000/registrar/forward
+      CODE_START: only
+
+  adapter-code-fallback:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://stub:9000/registrar
+      VERIQA_CHANNEL_TYPE: telegram-http
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      TELEGRAM_API_URL: http://stub:9000
+      TELEGRAM_INBOUND_MODE: webhook
+      TELEGRAM_PUBLIC_URL: http://adapter-code-fallback:8000
+      TELEGRAM_BOT_TOKEN: ${STAND_CODE_FALLBACK_BOT_TOKEN}
+      CODE_START: fallback
+
+  # The own checks of the stand and the helpers of run.sh; started with `docker compose run`.
+  checks:
+    image: veriqa-sample-telegram-stand:latest
+    profiles: [checks]
+    command: ["python", "checks.py", "own"]
+    environment:
+      STAND_STUB_URL: http://stub:9000
+      STAND_USER_ID: ${STAND_USER_ID}
+      STAND_BOT_IDS: ${STAND_BOT_IDS}
+      STAND_FORWARD_BOT_ID: ${STAND_FORWARD_BOT_ID}
+      STAND_FORWARD_TENANT: ${STAND_FORWARD_TENANT}
+      STAND_STANDALONE_BOT_ID: ${STAND_STANDALONE_BOT_ID}
+      STAND_STANDALONE_ADAPTER_URL: http://adapter-standalone:8000/
+      STAND_TENANTS_ADAPTER_URL: http://adapter-tenants:8000/
+      STAND_TENANTS_SHOP_A_BOT_ID: ${STAND_TENANTS_SHOP_A_BOT_ID}
+      STAND_TENANTS_SHOP_B_BOT_ID: ${STAND_TENANTS_SHOP_B_BOT_ID}
+      STAND_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      STAND_SETTINGS_MARKER: ${STAND_SETTINGS_MARKER}
+      STAND_CODE_ONLY_BOT_ID: ${STAND_CODE_ONLY_BOT_ID}
+      STAND_CODE_ONLY_TENANT: ${STAND_CODE_ONLY_TENANT}
+      STAND_CODE_ONLY_ADAPTER_URL: http://adapter-code-only:8000/
+      STAND_CODE_FALLBACK_BOT_ID: ${STAND_CODE_FALLBACK_BOT_ID}
+      STAND_CODE_FALLBACK_ADAPTER_URL: http://adapter-code-fallback:8000/
+      STAND_CODE_TEXT: ${STAND_CODE_TEXT}
+      STAND_CODE_TEXT_SEPARATED: ${STAND_CODE_TEXT_SEPARATED}
+
+  # The conformance suite in the automatic mode, configured with the keys Veriqa reads for the channel. The
+  # second run adds the declaration of the start by a code (run.sh, `run -e`).
+  suite:
+    image: veriqa-http-channel-conformance:latest
+    profiles: [suite]
+    depends_on: [stub, adapter-suite]
+    environment:
+      Conformance__ChannelType: telegram-http
+      Conformance__Mode: automatic
+      Conformance__ChannelUserId: ${STAND_USER_ID}
+      Conformance__Tenants__0: "-"
+      Conformance__Tenants__1: shop-a
+      Conformance__Tenants__2: shop-b
+      Conformance__TenantCredentials__shop-a: ${STAND_SHOP_A_BOT_ID}
+      Conformance__TenantCredentials__shop-b: ${STAND_SHOP_B_BOT_ID}
+      Conformance__PlatformStubUrl: http://stub:9000/
+      Conformance__ReportPath: /tmp/report.json
+      Veriqa__Channels__telegram-http__InboundVerification: shared_secret
+      Veriqa__Channels__telegram-http__Http__BaseUrl: http://adapter-suite:8000/
+      Veriqa__Channels__telegram-http__Http__AllowInsecureHttp: "true"
+      Veriqa__Channels__telegram-http__Http__TransportSecret: ${STAND_TRANSPORT_SECRET}
+      Veriqa__Channels__telegram-http__Http__AdapterSettings: '{"disable_notification": false}'
+      Veriqa__Channels__telegram-http__Http__Capabilities__SupportsInChannelConfirmation: "true"
+      Veriqa__Channels__telegram-http__Http__Capabilities__SupportsMessageUpdate: "true"
+      Veriqa__Channels__telegram-http__Http__Capabilities__DeliversOutcomeNotice: "true"
+      Veriqa__Channels__telegram-http__Http__Capabilities__ProvidesRecipientLocale: "true"
+      Veriqa__Channels__telegram-http__Http__Capabilities__SupportedMessageKinds__0: plain_text
+      Veriqa__Channels__telegram-http__Http__Capabilities__SupportedMessageKinds__1: phone_number_request
+      # The phone number: asked for with the contact button of Telegram, which shares the number of the
+      # account itself — hence proven. Declare it only for a bot without a forward address (see the README).
+      Veriqa__Channels__telegram-http__Http__Capabilities__PhoneNumber__Acquisition__0: OnRequest
+      Veriqa__Channels__telegram-http__Http__Capabilities__PhoneNumber__Proof: Proven
+      Veriqa__Channels__telegram-http__Http__Capabilities__RendersEmoji: "true"

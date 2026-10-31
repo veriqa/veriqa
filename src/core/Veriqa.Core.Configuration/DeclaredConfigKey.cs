@@ -323,6 +323,46 @@ public sealed class DeclaredConfigKey<T> : DeclaredConfigKey
     }
 
     /// <summary>
+    /// What ONE step of the chain states over a record: the parse hook of the key where it states one,
+    /// the answer carried by the presence of the record, and otherwise the address read the way the
+    /// declaration says (<see cref="StatedAt"/>), with the declared answer of the core level where the
+    /// record said nothing there.
+    /// <para>
+    /// It is the single place the reading of a STEP lives, as <see cref="StatedAt"/> is for an address.
+    /// The resolution asks it of the step it was handed (<see cref="PathConfigKeyRegistrar"/>), and the
+    /// walk of a snapshot asks it of every point of the core level it enumerates
+    /// (<see cref="DeclaredConfigValueCatalog{T}"/>) — so HOW a key is read is the key's own business
+    /// and neither path has to know it, a parse hook included.
+    /// </para>
+    /// </summary>
+    /// <param name="node">Record of the level.</param>
+    /// <param name="path">Address the step resolved to, inside the record.</param>
+    /// <param name="point">Point of the chain the step stands at.</param>
+    /// <returns>Value the step states, before the domain of the key is asked about it.</returns>
+    /// <exception cref="Exception">The record states a value the read cannot take; see the callers.</exception>
+    internal LayerValue<T> StatedAtStep(ConfigNode node, string path, ConfigDimensionValues point)
+    {
+        if (Parse is { } parse)
+        {
+            return parse(node, path, point);
+        }
+
+        // The presence of the record is the whole answer where the owner declared it so: the address
+        // is not what such a key is about, and nothing is read at it.
+        if (PresenceMeans.HasValue)
+        {
+            return PresenceMeans;
+        }
+
+        var stated = StatedAt(node, path);
+
+        // The declared answer of the core level is reached exactly where the record said nothing —
+        // which includes a record silenced whole after a value of a shape the setting is not read
+        // from. Above the core there is no such answer, and the level cedes to the one below.
+        return stated.HasValue || node.Level is not ConfigLevel.Core ? stated : Default;
+    }
+
+    /// <summary>
     /// Whether a value the record states is, BY THE DECLARATION of the key, no statement at all.
     /// </summary>
     /// <param name="value">Value the record states.</param>

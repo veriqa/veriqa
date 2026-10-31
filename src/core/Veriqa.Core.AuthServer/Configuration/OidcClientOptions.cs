@@ -1,6 +1,7 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using Veriqa.Core.AuthServer.Configuration.Enums;
 using Veriqa.Core.TransactionEngine.Domain;
 
 namespace Veriqa.Core.AuthServer.Configuration;
@@ -87,13 +88,26 @@ public sealed class OidcClientOptions
     public bool AllowIntrospection { get; set; }
 
     /// <summary>
+    /// Allow this client to delete the collected claims of a subject through
+    /// <c>DELETE /api/collected-claims</c> (SPEC-041 C82, N87). Default: disabled.
+    /// <para>
+    /// The right is a deletion of personal data of any subject of the tenant the client belongs to, so it is
+    /// granted to one client of the integrator explicitly, and the endpoint applies no rate limit of its own.
+    /// The flag requires <see cref="AllowClientCredentials"/> — the endpoint accepts only a client credentials
+    /// token — and the gap fails the start.
+    /// </para>
+    /// </summary>
+    public bool AllowCollectedClaimsDeletion { get; set; }
+
+    /// <summary>
     /// Tenant this application belongs to. Null or blank — the entry states no tenant, and the
     /// transaction is created without one, which is what a self-hosted installation with a single
     /// tenant means. The shipped <see cref="Veriqa.Core.TransactionEngine.Services.IClientTenantResolver"/>
     /// reads it once per request on three HTTP paths: the authorization endpoint stores it on the
     /// transaction's OIDC context, the confirmation transaction endpoint on the transaction's request
-    /// context, and the form-post response resolves it again for branding, the transaction being gone
-    /// by then. Readers of a transaction take it from the transaction, not from configuration.
+    /// context, and the form-post response resolves it again for branding, because the handler that
+    /// writes that page is given the HTTP context and not the transaction. Readers of a transaction
+    /// take it from the transaction, not from configuration.
     /// <para>
     /// The field states a fact about a client and nothing more: it is not a tenant catalog and
     /// carries no isolation. Isolation is provided by <c>client_id</c>, which sits above the tenant,
@@ -141,18 +155,71 @@ public sealed class OidcClientOptions
     public bool? RejectBots { get; set; }
 
     /// <summary>
+    /// Per-application requirement of the phone_number claim (SPEC-041 C30, key
+    /// <c>ScopesClaims.RequirePhone</c>). Null — the level is not set. The application may only make the
+    /// requirement stricter: <c>false</c> does not lift a requirement a level above states (protective
+    /// ceiling).
+    /// </summary>
+    public bool? RequirePhone { get; set; }
+
+    /// <summary>
+    /// Per-application requirement of the email claim — the same rule as <see cref="RequirePhone"/>
+    /// (key <c>ScopesClaims.RequireEmail</c>).
+    /// </summary>
+    public bool? RequireEmail { get; set; }
+
+    /// <summary>
+    /// Per-application requirement levels of claims, keyed by the claim name (SPEC-041 C30, key
+    /// <c>ScopesClaims.ClaimLevel</c>). Null — the application raises nothing. The application may only
+    /// RAISE the level the catalog row states: the levels are combined by seniority, so a lower value
+    /// here changes nothing. A level above <c>IfAvailable</c> on a claim without a completion path
+    /// fails the start (SPEC-041 L92).
+    /// </summary>
+    public IReadOnlyDictionary<string, ClaimRequirementLevel>? ClaimLevels { get; set; }
+
+    /// <summary>
+    /// Per-application switch of the claims completion form of Veriqa (SPEC-041 C34, key
+    /// <c>ClaimCompletion.FormEnabled</c>). Null — the level is not set, the core value applies. The
+    /// application overrides freely: a relying party with a profile completion form of its own turns
+    /// the form of Veriqa off with <c>false</c>, and every missing claim but <c>phone_number</c> and
+    /// <c>email</c> then stops blocking the sign-in (SPEC-041 R16).
+    /// </summary>
+    public bool? ClaimCompletionFormEnabled { get; set; }
+
+    /// <summary>
+    /// Per-application surface of the claims completion form (SPEC-041 C34, L53, key
+    /// <c>ClaimCompletion.FormSurface</c>). Null — the level is not set, the core value applies. The
+    /// application overrides freely: where the user fills the form is the integrator's choice.
+    /// </summary>
+    public ClaimFormSurface? ClaimCompletionFormSurface { get; set; }
+
+    /// <summary>
     /// Per-application login confirmation surface (CFG-042: the key is declared at the core, tenant and
-    /// application levels, with no user step and no gate). Null — the level is not set, the tenant or
-    /// core value applies. The application
+    /// application levels, with no user step and no gate) for every channel that has no entry in
+    /// <see cref="LoginConfirmationModeByChannel"/> (<c>LoginConfirmationModeByChannel:{channel}</c> of
+    /// the same client entry). Null — the level is not set, the tenant or core
+    /// value applies. The application
     /// overrides freely: unlike <see cref="RejectBots"/> this key has no protective ceiling — the
     /// surface is the deploying party's policy, and the clamp that can still change it is the channel
-    /// routing of CFG-049a, not a level above.
+    /// routing of CFG-049a, not a level above. The level outranks the channel (CFG-238): stated alone,
+    /// this member decides the surface of every channel, whatever per-channel map the tenant or the core
+    /// level carries.
     /// <para>
     /// This is NOT reachable through <c>ui_config</c>: the client-selectable surface must not carry
     /// the confirmation policy (CFG-049), so the value comes from the client's own configuration entry.
     /// </para>
     /// </summary>
     public LoginConfirmationMode? LoginConfirmationMode { get; set; }
+
+    /// <summary>
+    /// Per-application, per-channel overrides of <see cref="LoginConfirmationMode"/>, keyed by channel
+    /// type: for example <c>LoginConfirmationModeByChannel:telegram = InChannel</c> asks the question of a
+    /// Telegram sign-in in the chat while every other channel of the application keeps
+    /// <see cref="LoginConfirmationMode"/> (CFG-237). Null — the level states no per-channel mode. The
+    /// record of a tenant states the same member under the same name. Like the plain member, it is not
+    /// reachable through <c>ui_config</c> (CFG-049).
+    /// </summary>
+    public IReadOnlyDictionary<string, LoginConfirmationMode>? LoginConfirmationModeByChannel { get; set; }
 
     /// <summary>
     /// Per-application set of enabled compatibility quirk keys — named relaxations of the request form

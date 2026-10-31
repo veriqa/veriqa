@@ -36,6 +36,24 @@ public static class TransactionContextExtensions
     }
 
     /// <summary>
+    /// Whether the tenant of the transaction is unknown because its resolution failed at creation
+    /// (<see cref="OidcContext.TenantResolutionFailed"/>), rather than stated as none. The collected claims
+    /// store is keyed by the tenant, so such a transaction neither reads nor writes it (SPEC-041 E62).
+    /// </summary>
+    /// <remarks>
+    /// Only the OIDC context can carry the failure: a server-to-server transaction states its tenant in the
+    /// request context, which nobody resolves, and the two containers are never populated together.
+    /// </remarks>
+    /// <param name="transaction">Transaction whose context is read.</param>
+    /// <returns>true — the tenant resolution failed.</returns>
+    internal static bool HasFailedTenantResolution(this Transaction transaction)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+
+        return transaction.OidcContext is { TenantResolutionFailed: true };
+    }
+
+    /// <summary>
     /// Application attribution of the transaction (the calling client's identifier).
     /// </summary>
     /// <param name="transaction">Transaction whose context is read.</param>
@@ -45,6 +63,31 @@ public static class TransactionContextExtensions
         ArgumentNullException.ThrowIfNull(transaction);
 
         return transaction.RequestContext?.ApplicationId ?? transaction.OidcContext?.ClientId;
+    }
+
+    /// <summary>
+    /// Display name of the application of the transaction, taken at creation from the entry of the
+    /// client — the same for a sign-in and a confirmation.
+    /// </summary>
+    /// <param name="transaction">Transaction whose context is read.</param>
+    /// <returns>The name, or null when the transaction was created without one.</returns>
+    public static string? GetApplicationName(this Transaction transaction)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+
+        return transaction.RequestContext?.ApplicationName ?? transaction.OidcContext?.ApplicationName;
+    }
+
+    /// <summary>
+    /// Brand name the levels of the transaction stated at its creation, as configured.
+    /// </summary>
+    /// <param name="transaction">Transaction whose context is read.</param>
+    /// <returns>The brand name, or null when no level stated one.</returns>
+    public static string? GetBrandName(this Transaction transaction)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+
+        return transaction.RequestContext?.BrandName ?? transaction.OidcContext?.BrandName;
     }
 
     /// <summary>

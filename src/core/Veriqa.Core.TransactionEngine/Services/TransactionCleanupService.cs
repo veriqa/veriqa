@@ -48,10 +48,16 @@ internal sealed class TransactionCleanupService : BackgroundService
     private readonly TimeProvider _timeProvider;
 
     /// <summary>
-    /// Lifecycle metrics: the two terminal transitions this service drives itself — expiry by TTL
-    /// and the finalization timeout — never pass through the transaction service.
+    /// Lifecycle metrics of the finalization timeout, the terminal transition this service drives
+    /// itself.
     /// </summary>
     private readonly TransactionMetrics _metrics;
+
+    /// <summary>
+    /// The expiry step this pass shares with the transaction service, which takes it when a decision
+    /// arrives after the deadline.
+    /// </summary>
+    private readonly TransactionExpiry _expiry;
 
     /// <summary>
     /// Creates an instance of the cleanup service.
@@ -70,6 +76,7 @@ internal sealed class TransactionCleanupService : BackgroundService
         _logger = logger;
         _timeProvider = timeProvider;
         _metrics = metrics;
+        _expiry = new TransactionExpiry(store, eventPublisher, timeProvider, metrics);
     }
 
     /// <inheritdoc />
@@ -134,7 +141,8 @@ internal sealed class TransactionCleanupService : BackgroundService
     }
 
     /// <summary>
-    /// Moves the transactions their passed deadline ends into the Expired state.
+    /// Moves the transactions their passed deadline ends into the Expired state — the ones no decision
+    /// arriving after the deadline has already moved (that path takes the same step on its own).
     /// </summary>
     private async Task ExpireTransactionsAsync(TransactionEngineOptions options, CancellationToken cancellationToken)
     {
@@ -151,49 +159,15 @@ internal sealed class TransactionCleanupService : BackgroundService
 
         foreach (var transaction in expired)
         {
-            var previousToken = transaction.ConcurrencyToken;
-            var transitionResult = TransactionStateMachine.TryTransition(
-                transaction, TransactionState.Expired, _timeProvider.GetUtcNow(), TransactionErrorCodes.TransactionExpired);
-
-            // A refusal here means the store handed back a record its deadline does not end — the
-            // contract of GetExpiredAsync says it must not, and the shipped stores do not. The
-            // transition is the one gate that holds for a store written outside these assemblies too:
-            // it decides by the same table the stores select by, so the pass never writes a move the
-            // state machine forbids.
-            if (transitionResult.IsFailure)
+            // A record the step leaves alone is either one the store handed back although its deadline
+            // does not end it — the contract of GetExpiredAsync says it must not, and the shipped stores
+            // do not; the transition table inside the step is the gate that holds for a store written
+            // outside these assemblies too — or one another writer got to first: a decision that met
+            // the deadline, a parallel pass. Either way there is nothing of this pass to announce.
+            if (await _expiry.TryExpireAsync(transaction, cancellationToken))
             {
-                continue;
+                expiredCount++;
             }
-
-            var updated = await _store.UpdateAsync(transaction, previousToken, cancellationToken);
-            if (!updated)
-            {
-                // Concurrency conflict — skip; it will be handled in the next cycle
-                continue;
-            }
-
-            expiredCount++;
-
-            // After the transition actually landed in the store, not before: a refused transition or
-            // a lost concurrency race above must not show up as an expiry that happened.
-            RecordTerminated(transaction, TransactionOutcomes.Expired);
-
-            // Publish the event
-            await _eventPublisher.PublishAsync(
-                new TransactionExpiredEvent
-                {
-                    TransactionId = transaction.Id,
-                    OccurredAt = _timeProvider.GetUtcNow(),
-
-                    // The deadline the transaction ended at, not the clock of this pass: the sweep
-                    // runs on its own interval, so it always notices an expiry after the fact, and a
-                    // subscriber that reports WHEN the transaction ended must not be given the moment
-                    // this loop happened to reach it. The transition above leaves ExpiresAt as it was.
-                    ExpiresAt = transaction.ExpiresAt,
-                    ReasonCode = TransactionErrorCodes.TransactionExpired,
-                    Context = TransactionEventContext.FromTransaction(transaction)
-                },
-                cancellationToken);
         }
 
         if (expiredCount > 0)
@@ -241,7 +215,7 @@ internal sealed class TransactionCleanupService : BackgroundService
 
             // A stalled confirmation is a system failure, not the user's refusal, so it joins the
             // "failed" outcome the transaction service reports for every other non-refusal code.
-            RecordTerminated(transaction, TransactionOutcomes.Failed);
+            _metrics.RecordTerminated(transaction, TransactionOutcomes.Failed, _timeProvider.GetUtcNow());
 
             // Publish the event
             await _eventPublisher.PublishAsync(
@@ -261,30 +235,6 @@ internal sealed class TransactionCleanupService : BackgroundService
                 "Cleanup: {FailedCount} transactions moved to Failed (finalization_timeout)",
                 failedCount);
         }
-    }
-
-    /// <summary>
-    /// Records a terminal transition this service drove itself: the outcome counter and the lifetime
-    /// histogram, measured from <c>CreatedAt</c> to this moment.
-    /// </summary>
-    /// <remarks>
-    /// A copy of the transaction service's private helper by necessity, not by oversight: these two
-    /// transitions are written straight to the store here and never reach that service, so there is
-    /// no shared call path to put the recording on. Both go through
-    /// <c>TransactionMetrics.RecordTerminated</c>, which is where the shape of the record lives.
-    /// </remarks>
-    /// <param name="transaction">Transaction that has just reached its terminal state.</param>
-    /// <param name="outcome">Terminal outcome to report.</param>
-    private void RecordTerminated(Transaction transaction, string outcome)
-    {
-        var channelType = transaction.ChannelIdentitySnapshot?.ChannelType
-            ?? transaction.RequestedChannelType
-            ?? TransactionTelemetry.UnknownChannelType;
-
-        _metrics.RecordTerminated(
-            outcome,
-            channelType,
-            _timeProvider.GetUtcNow() - transaction.CreatedAt);
     }
 
     /// <summary>

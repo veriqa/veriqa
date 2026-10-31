@@ -1,7 +1,7 @@
 # MAX passwordless login for ASP.NET Core — OpenID Connect in Docker
 
-Passwordless sign-in through MAX for an ASP.NET Core app: a standard OpenID Connect (OIDC) provider
-in one Docker container, plus a minimal client app that signs in against it.
+Sign in with MAX for an ASP.NET Core app, with no password: a standard OpenID Connect (OIDC)
+provider in one Docker container, plus a minimal client app that signs in against it.
 
 ## What you get
 
@@ -10,19 +10,20 @@ your phone; on the phone itself you tap a button. MAX opens your bot, you confir
 you are back in the app, signed in, looking at the claims the provider issued. No password, no form,
 no SMS code.
 
-The provider is [Veriqa](https://veriqa.app): an OpenID Connect server built on OpenIddict that
-confirms sign-ins in messaging apps — MAX, Telegram, WhatsApp and Email among them. The client knows
-nothing about Veriqa: it is the stock ASP.NET Core OpenID Connect handler (Authorization Code +
-PKCE), so the same setup works for any stack with an OIDC library.
+The provider is [Veriqa](https://veriqa.app): an open-source OpenID Connect provider built on
+OpenIddict that confirms sign-ins in messaging apps — MAX, Telegram, WhatsApp, Instagram, Messenger,
+WeChat, Viber and Email among them. The client knows nothing about Veriqa: it is the stock ASP.NET
+Core OpenID Connect handler (Authorization Code + PKCE), so the same setup works for any stack with
+an OIDC library.
 
-Each folder next to `rp/` is one way to connect MAX, with a stand of its own; they share the
-client app in `rp/`. `built-in/` uses the MAX channel built into Veriqa.
+Each folder next to `clients/` is one way to connect MAX, with a stand of its own; they share the
+client app in `clients/dotnet/`. `built-in/` uses the MAX channel built into Veriqa.
 
 ```
 built-in/            the stand with the MAX channel built into Veriqa
   docker-compose.yml   Veriqa from the published image, MAX channel only
   .env.example         the values you fill in
-rp/                  the client app (ASP.NET Core, Microsoft.AspNetCore.Authentication.OpenIdConnect)
+clients/dotnet/      the client app (ASP.NET Core, Microsoft.AspNetCore.Authentication.OpenIdConnect)
 ```
 
 ## Before you start
@@ -75,7 +76,7 @@ Wait until the status reads `healthy`, then check that it is ready:
 **4. Start the client.**
 
 ```bash
-dotnet run --project ../rp -- --Oidc:Channel max
+dotnet run --project ../clients/dotnet -- --Oidc:Channel max
 ```
 
 **5. Sign in.** Open `https://localhost:7020`, scan the QR code with your phone and confirm in MAX.
@@ -84,7 +85,7 @@ can go again.
 
 ## How it fits together
 
-- `rp/` asks the provider for a sign-in with `acr_values=channel:max`, so the sign-in page goes
+- `clients/dotnet/` asks the provider for a sign-in with `acr_values=channel:max`, so the sign-in page goes
   straight to MAX. Without `--Oidc:Channel` it offers every enabled channel.
 - `built-in/docker-compose.yml` registers the client (`rp`, redirect
   `https://localhost:7020/signin-oidc`), sets the issuer to `https://localhost:8443` and enables the

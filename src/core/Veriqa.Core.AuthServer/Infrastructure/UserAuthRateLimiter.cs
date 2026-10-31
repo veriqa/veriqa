@@ -1,7 +1,6 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Collections.Concurrent;
 using System.Threading.RateLimiting;
 
 using Microsoft.Extensions.Options;
@@ -16,8 +15,10 @@ namespace Veriqa.Core.AuthServer.Infrastructure;
 /// <summary>
 /// In-memory implementation of a per-user authentication rate limiter.
 /// Uses <see cref="PartitionedRateLimiter{T}"/> with the key {channel_type}:{channel_user_id}.
-/// Limits the number of unique partitions via <see cref="RateLimitOptions.UserAuthMaxPartitions"/>:
-/// new users beyond the limit are routed to a shared overflow partition.
+/// Limits the number of CONCURRENTLY ACTIVE partitions via
+/// <see cref="RateLimitOptions.UserAuthMaxPartitions"/>: a key not seen for a whole limit window leaves the
+/// registry and frees its place, and only a new user arriving while the registry is full of keys active
+/// within the window is routed to a shared overflow partition.
 /// Single-instance only: counters are in-process and are not shared across nodes.
 /// </summary>
 internal sealed class UserAuthRateLimiter : IUserAuthRateLimiter, IDisposable
@@ -48,20 +49,32 @@ internal sealed class UserAuthRateLimiter : IUserAuthRateLimiter, IDisposable
     private readonly Func<CancellationToken, Task<PartitionedRateLimiter<string>>> _buildLimiter;
 
     /// <summary>
-    /// Registry of registered partitions.
-    /// Used to control the number of unique keys and prevent unbounded memory growth.
+    /// Registry of the partitions in use: key → its node in <see cref="_partitionsByLastAccess"/>.
+    /// Bounds the number of unique keys it holds. The platform limiter keeps its own cache of the
+    /// per-key limiters, which lets go of an evicted key only some seconds after its window resets —
+    /// so the limiters held may briefly exceed the registry bound.
     /// </summary>
-    private readonly ConcurrentDictionary<string, byte> _partitionKeys =
+    private readonly Dictionary<string, LinkedListNode<PartitionEntry>> _partitionKeys =
         new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Atomic counter of registered partitions.
-    /// Duplicates _partitionKeys.Count, but Count on a ConcurrentDictionary is O(n).
+    /// The registered partitions ordered by their last access, the least recently used first. The order
+    /// lets a full registry find its idle keys at the head without a pass over all of them.
     /// </summary>
-    private int _partitionCount;
+    private readonly LinkedList<PartitionEntry> _partitionsByLastAccess = new();
 
     /// <summary>
-    /// Upper bound on the number of unique partitions.
+    /// Guard of <see cref="_partitionKeys"/> and <see cref="_partitionsByLastAccess"/>, which change together.
+    /// </summary>
+    private readonly Lock _partitionGate = new();
+
+    /// <summary>
+    /// Clock of the last access of a partition.
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+
+    /// <summary>
+    /// Upper bound on the number of concurrently active partitions.
     /// </summary>
     private readonly int _maxPartitions;
 
@@ -70,8 +83,14 @@ internal sealed class UserAuthRateLimiter : IUserAuthRateLimiter, IDisposable
     /// </summary>
     /// <param name="options">Rate limiting settings.</param>
     /// <param name="resolver">Canonical multi-level configuration resolver.</param>
-    public UserAuthRateLimiter(IOptions<RateLimitOptions> options, IConfigurationResolver resolver)
+    /// <param name="timeProvider">Clock of the last access of a partition.</param>
+    public UserAuthRateLimiter(
+        IOptions<RateLimitOptions> options,
+        IConfigurationResolver resolver,
+        TimeProvider timeProvider)
     {
+        _timeProvider = timeProvider;
+
         // The machinery (partitions/queue) stays in the core and is NOT split across levels (CFG-230):
         // QueueLimit/MaxPartitions are read directly from config.
         var config = options.Value;
@@ -97,13 +116,17 @@ internal sealed class UserAuthRateLimiter : IUserAuthRateLimiter, IDisposable
                 ConfigDimensionValues.None,
                 cancellationToken)).Value;
 
+            // The idle threshold of the partition registry is this same window: a key idle for a whole
+            // window has had its window reset, so leaving the registry costs it nothing.
+            var window = TimeSpan.FromSeconds(windowSeconds);
+
             return PartitionedRateLimiter.Create<string, string>(
                 resourceId => RateLimitPartition.GetFixedWindowLimiter(
-                    ResolvePartitionKey(resourceId),
+                    ResolvePartitionKey(resourceId, window),
                     _ => new FixedWindowRateLimiterOptions
                     {
                         PermitLimit = permitLimit,
-                        Window = TimeSpan.FromSeconds(windowSeconds),
+                        Window = window,
                         QueueLimit = queueLimit
                     }));
         };
@@ -173,34 +196,69 @@ internal sealed class UserAuthRateLimiter : IUserAuthRateLimiter, IDisposable
     }
 
     /// <summary>
-    /// Returns the partition key for the given userKey.
-    /// If the number of registered partitions has reached <see cref="_maxPartitions"/>,
-    /// returns <see cref="OverflowPartitionKey"/> — all "over-limit" users
-    /// fall into a single shared partition, limiting memory growth.
+    /// Returns the partition key for the given userKey and records the access.
+    /// A known key is moved to the tail of the access order. A new key is registered while there is room;
+    /// when the registry is full, the keys idle for at least <paramref name="idleThreshold"/> are evicted
+    /// first, in this same call, and only if none was idle does the new user fall into the shared
+    /// <see cref="OverflowPartitionKey"/>.
     /// </summary>
     /// <param name="userKey">Original user key.</param>
+    /// <param name="idleThreshold">Idle time after which a key leaves the registry — the limit window.</param>
     /// <returns>Partition key for the limiter.</returns>
-    private string ResolvePartitionKey(string userKey)
+    private string ResolvePartitionKey(string userKey, TimeSpan idleThreshold)
     {
-        // If the key is already known — return it directly
-        if (_partitionKeys.ContainsKey(userKey))
+        var now = _timeProvider.GetTimestamp();
+
+        lock (_partitionGate)
         {
+            // A known key: refresh its last access and move it to the tail of the order
+            if (_partitionKeys.TryGetValue(userKey, out var known))
+            {
+                known.Value = known.Value with { LastAccessTimestamp = now };
+                _partitionsByLastAccess.Remove(known);
+                _partitionsByLastAccess.AddLast(known);
+                return userKey;
+            }
+
+            // Registry full: free the places of the idle keys before deciding on the new one
+            if (_partitionKeys.Count >= _maxPartitions)
+            {
+                EvictIdlePartitions(now, idleThreshold);
+            }
+
+            // Still full of keys active within the window: route the new user to overflow
+            if (_partitionKeys.Count >= _maxPartitions)
+            {
+                return OverflowPartitionKey;
+            }
+
+            _partitionKeys.Add(userKey, _partitionsByLastAccess.AddLast(new PartitionEntry(userKey, now)));
             return userKey;
         }
-
-        // Partition limit reached: route the new user to overflow
-        if (_partitionCount >= _maxPartitions)
-        {
-            return OverflowPartitionKey;
-        }
-
-        // Atomically add the new key and increment the counter.
-        // A small overshoot of the limit during concurrent addition is acceptable.
-        if (_partitionKeys.TryAdd(userKey, 0))
-        {
-            Interlocked.Increment(ref _partitionCount);
-        }
-
-        return _partitionKeys.ContainsKey(userKey) ? userKey : OverflowPartitionKey;
     }
+
+    /// <summary>
+    /// Removes from the registry the keys idle for at least <paramref name="idleThreshold"/>. The access
+    /// order keeps the least recently used key at the head, so the walk stops at the first active key:
+    /// a registry full of active keys costs one check, and each evicted key is paid for once.
+    /// Must be called under <see cref="_partitionGate"/>.
+    /// </summary>
+    /// <param name="now">Timestamp of the current access.</param>
+    /// <param name="idleThreshold">Idle time after which a key leaves the registry.</param>
+    private void EvictIdlePartitions(long now, TimeSpan idleThreshold)
+    {
+        while (_partitionsByLastAccess.First is { } oldest
+            && _timeProvider.GetElapsedTime(oldest.Value.LastAccessTimestamp, now) >= idleThreshold)
+        {
+            _partitionsByLastAccess.RemoveFirst();
+            _partitionKeys.Remove(oldest.Value.Key);
+        }
+    }
+
+    /// <summary>
+    /// A registered partition and the timestamp of its last access.
+    /// </summary>
+    /// <param name="Key">Partition key.</param>
+    /// <param name="LastAccessTimestamp">Timestamp of the last access, from <see cref="_timeProvider"/>.</param>
+    private readonly record struct PartitionEntry(string Key, long LastAccessTimestamp);
 }

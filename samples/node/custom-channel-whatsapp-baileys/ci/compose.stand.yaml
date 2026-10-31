@@ -1,0 +1,138 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# The stand of the CI gate: the platform stub, four instances of the adapter and the conformance suite.
+# Started by run.sh, which builds the images and writes the transport secret, the labels and the fictional
+# numbers of the run into an env file outside the repository; nothing here holds a value of its own.
+#
+#   adapter-suite    stub mode, posts its events to the suite
+#   adapter-checks   stub mode, posts its events to the recorder of the stub, for the own checks
+#   adapter-baileys  baileys mode with no session state, for the check that the service path is closed
+#   adapter-tenants  stub mode, posts its events to the recorder of the stub; the record of shop-a alone, no
+#                    default record — the own checks of the credentials per tenant
+#
+# The first two serve the same three records — the default one and shop-a, shop-b — each with its own label
+# and number, so the credential of a platform action tells the tenants apart.
+#
+# The network has no way out: nothing on the stand needs one, and the instance in the baileys mode, which
+# connects to WhatsApp Web at start, reaches nothing — it only reconnects after a pause, and never asks
+# WhatsApp for a pairing code.
+
+x-adapter-common: &adapter-common
+  image: veriqa-sample-whatsapp-baileys-adapter:latest
+  depends_on: [stub]
+
+x-stub-records: &stub-records
+  VERIQA_CHANNEL_TYPE: whatsapp-baileys
+  VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+  WHATSAPP_PLATFORM: stub
+  WHATSAPP_STUB_URL: http://stub:9000
+  WHATSAPP_LABEL: ${STAND_DEFAULT_LABEL}
+  WHATSAPP_NUMBER: ${STAND_DEFAULT_NUMBER}
+  WHATSAPP_ACCOUNT_1_TENANT: shop-a
+  WHATSAPP_ACCOUNT_1_LABEL: ${STAND_SHOP_A_LABEL}
+  WHATSAPP_ACCOUNT_1_NUMBER: ${STAND_SHOP_A_NUMBER}
+  WHATSAPP_ACCOUNT_2_TENANT: shop-b
+  WHATSAPP_ACCOUNT_2_LABEL: ${STAND_SHOP_B_LABEL}
+  WHATSAPP_ACCOUNT_2_NUMBER: ${STAND_SHOP_B_NUMBER}
+
+networks:
+  default:
+    internal: true
+
+services:
+
+  stub:
+    image: veriqa-sample-whatsapp-baileys-stand:latest
+    command: ["node", "stub.mjs"]
+    environment:
+      STUB_PORT: "9000"
+      STUB_RECORDS: ${STAND_RECORDS}
+      STUB_USER: ${STAND_USER}
+      STUB_ADAPTER_URL: http://adapter-suite:8000
+
+  adapter-suite:
+    <<: *adapter-common
+    environment:
+      <<: *stub-records
+      VERIQA_URL: http://suite:8080
+
+  adapter-checks:
+    <<: *adapter-common
+    environment:
+      <<: *stub-records
+      VERIQA_URL: http://stub:9000/registrar
+
+  adapter-tenants:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://stub:9000/registrar
+      VERIQA_CHANNEL_TYPE: whatsapp-baileys
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      WHATSAPP_PLATFORM: stub
+      WHATSAPP_STUB_URL: http://stub:9000
+      WHATSAPP_ACCOUNT_1_TENANT: shop-a
+      WHATSAPP_ACCOUNT_1_LABEL: ${STAND_SHOP_A_LABEL}
+      WHATSAPP_ACCOUNT_1_NUMBER: ${STAND_SHOP_A_NUMBER}
+
+  adapter-baileys:
+    <<: *adapter-common
+    environment:
+      VERIQA_URL: http://stub:9000/registrar
+      VERIQA_CHANNEL_TYPE: whatsapp-baileys
+      VERIQA_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      WHATSAPP_PLATFORM: baileys
+      WHATSAPP_LABEL: ${STAND_BAILEYS_LABEL}
+      WHATSAPP_NUMBER: ${STAND_BAILEYS_NUMBER}
+
+  # The own checks of the stand and the helpers of run.sh; started with `docker compose run`.
+  checks:
+    image: veriqa-sample-whatsapp-baileys-stand:latest
+    profiles: [checks]
+    command: ["node", "checks.mjs", "own"]
+    environment:
+      STAND_STUB_URL: http://stub:9000
+      STAND_ADAPTER_URL: http://adapter-checks:8000
+      STAND_BAILEYS_ADAPTER_URL: http://adapter-baileys:8000
+      STAND_TENANTS_ADAPTER_URL: http://adapter-tenants:8000
+      STAND_ADAPTER_URLS: http://adapter-suite:8000/,http://adapter-checks:8000/,http://adapter-baileys:8000/,http://adapter-tenants:8000/
+      STAND_USER: ${STAND_USER}
+      STAND_STRANGER: ${STAND_STRANGER}
+      STAND_TRANSPORT_SECRET: ${STAND_TRANSPORT_SECRET}
+      STAND_SETTINGS_MARKER: ${STAND_SETTINGS_MARKER}
+      STAND_DEFAULT_LABEL: ${STAND_DEFAULT_LABEL}
+      STAND_DEFAULT_NUMBER: ${STAND_DEFAULT_NUMBER}
+      STAND_SHOP_A_LABEL: ${STAND_SHOP_A_LABEL}
+      STAND_SHOP_B_LABEL: ${STAND_SHOP_B_LABEL}
+      STAND_BAILEYS_LABEL: ${STAND_BAILEYS_LABEL}
+
+  # The conformance suite in the automatic mode, configured with the keys Veriqa reads for the channel.
+  suite:
+    image: veriqa-http-channel-conformance:latest
+    profiles: [suite]
+    depends_on: [stub, adapter-suite]
+    environment:
+      Conformance__ChannelType: whatsapp-baileys
+      Conformance__Mode: automatic
+      Conformance__ChannelUserId: ${STAND_USER}
+      Conformance__Tenants__0: "-"
+      Conformance__Tenants__1: shop-a
+      Conformance__Tenants__2: shop-b
+      Conformance__TenantCredentials__shop-a: ${STAND_SHOP_A_LABEL}
+      Conformance__TenantCredentials__shop-b: ${STAND_SHOP_B_LABEL}
+      Conformance__PlatformStubUrl: http://stub:9000/
+      # A personal number has no customer service window, and no other case in which the platform cannot
+      # carry a confirmation out is known: platform.cannot-continue is not applicable.
+      Conformance__PlatformCannotConfirm: "false"
+      Conformance__ReportPath: /tmp/report.json
+      Veriqa__Channels__whatsapp-baileys__InboundVerification: outbound_fetch
+      Veriqa__Channels__whatsapp-baileys__Http__BaseUrl: http://adapter-suite:8000/
+      Veriqa__Channels__whatsapp-baileys__Http__AllowInsecureHttp: "true"
+      Veriqa__Channels__whatsapp-baileys__Http__TransportSecret: ${STAND_TRANSPORT_SECRET}
+      Veriqa__Channels__whatsapp-baileys__Http__AdapterSettings: '{"prefill_text": "Send this message to sign in."}'
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__SupportsInChannelConfirmation: "true"
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__SupportsMessageUpdate: "false"
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__DeliversOutcomeNotice: "true"
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__ProvidesRecipientLocale: "false"
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__SupportedMessageKinds__0: plain_text
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__RendersEmoji: "true"

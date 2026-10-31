@@ -1,13 +1,16 @@
-# Veriqa sample — Claude Code · approving agent actions in a messenger
+# Veriqa sample — Claude Code · approving agent actions in a messaging app
 
-A Claude Code plugin that stops chosen actions until a person approves them in Telegram through a
-Veriqa host running on the same machine. It works out of the box for three cases:
+A Claude Code plugin that stops chosen actions until a person approves them in a messaging app through
+Veriqa. It is a **mod**: a plugin of function hooks that runs inside Claude Code itself. The hook holds
+the action, shows the QR code in a pane of its own, waits for the answer and lets the action run only
+once it is confirmed — the model takes no part in the approval. It works out of the box for three
+cases:
 
 | Demo | What is stopped | How | Action type |
 |---|---|---|---|
-| 1. A tool call | `git push` and `rm -r…` in the Bash tool | `PreToolUse` hook | `agent-tool-call` |
-| 2. The start of a long command cycle | `/cycle`, `/cycle-chain` — typed by you **or** started by the agent | `UserPromptSubmit` hook + `PreToolUse` on the `Skill` tool | `agent-command-start` |
-| 3. A costly run with an estimate | `/veriqa-approval:costly-run` — asks to approve 1 billion input and 50 million output tokens, about 6250 USD, before it starts | the command calls the gate itself | `agent-costly-run` |
+| 1. A tool call | `git push` and `rm -r…` in the Bash or PowerShell tool | `tool.call` hook | `agent-tool-call` |
+| 2. The start of a long command cycle | `/cycle`, `/cycle-chain` — typed by you **or** started by the agent | `command.run` hook + `tool.call` on the `Skill` tool | `agent-command-start` |
+| 3. A costly run with an estimate | `/veriqa-approval:costly-run` — asks to approve 1 billion input and 50 million output tokens, about 6250 USD, before it starts | the plugin's tool `approve_run` | `agent-costly-run` |
 
 The person reads a wording declared on the Veriqa host, with the values of typed slots filled in:
 "For manager: Claude Code in my-project wants to start nightly-refactor, estimated at 1000 M input
@@ -15,15 +18,20 @@ and 50 M output tokens, about 6250 USD. Start it?" Free text written by the agen
 question.
 
 Demo 3 takes **two approvers in turn**: `developer`, then `manager`. Each confirms from their own
-messenger account, enrolled once beforehand, and a confirmation from any other account refuses the
+messaging app account, enrolled once beforehand, and a confirmation from any other account refuses the
 action. Demos 1 and 2 take one approval from whoever holds the link.
+
+**Claude Code 2.1.295 or later** is needed: the sample relies on the mod API of that build.
 
 ## Why this sample exists
 
 The sample shows how Veriqa can be used inside a ready-made agent harness to have a person approve
 sensitive agent actions — not only tool calls, but also heavy, costly runs that burn time and
-tokens. Every approval, refusal and expiry is recorded in the Veriqa audit trail, so you can later
-see who allowed what and when. This matters most for teams where several developers work with
+tokens. Veriqa's audit trail can record every approval, refusal and expiry, with the time and, for an
+approval, the masked account that gave it. This sample leaves the trail off: it needs
+`Veriqa:Logging:Mode` set to `Audit` and a database for the records, see
+[Security and data handling](https://veriqa.app/docs/guides/data-handling#the-audit-trail-is-off-until-you-ask-for-it-twice).
+This matters most for teams where several developers work with
 agents at once.
 
 Claude Code and development tasks are just the example chosen here. The same approach fits another
@@ -39,14 +47,14 @@ Claude Code already asks before it runs a tool, and an agent's chat channel can 
 Approving through Veriqa adds what those buttons lack:
 
 - **A named person, not whoever is at the keyboard.** The harness button proves only that someone
-  pressed it. With an enrolled approver, the host checks which messenger account confirmed, and a
+  pressed it. With an enrolled approver, the host checks which messaging app account confirmed, and a
   confirmation from any other account refuses the action.
 - **Someone other than the developer.** A harness button can only ask the person running the agent.
   A chain can ask a second person — here a manager approves the costly run after the developer — so
   nobody signs off their own spending.
 - **A trail outside the agent's session.** The harness keeps its answers in a local transcript that
-  the same user can edit or lose. Veriqa records every approval, refusal and expiry on its own host;
-  with a shared host, that record sits outside the reach of every developer's machine and agent.
+  the same user can edit or lose. With the audit trail on, Veriqa records every approval, refusal and
+  expiry on its own host; with a shared host, that record sits outside the reach of every developer's machine and agent.
 - **A question the agent does not write.** In an agent's own chat channel the agent phrases the
   question, and can phrase it misleadingly. Here the wording is declared on the host, and the agent
   supplies only typed values the host checks against the contract.
@@ -63,32 +71,48 @@ the trail on the developer's own machine.
 ## How it works
 
 ```
-Claude Code ──hook──▶ veriqa-approval.mjs ──client credentials──▶ Veriqa (https://127.0.0.1:8443)
-     ▲                       │                                        │
-     └── Claude shows the QR ◀── link and QR image ◀────────── channel_entry
-                             │                                        │
-     the repeated call ──▶   └── polls the result ◀── confirmed / declined ◀── person, in Telegram
+Claude Code ──tool call / command / prompt──▶ plugin hook ──▶ Veriqa (https://127.0.0.1:8443)
+                                                  │  ◀── link and QR ── channel_entry
+                         pane with the QR ◀───────┤
+                                                  │  ──▶ polls the result ◀── confirmed / declined ◀── person, in the messaging app
+             the action runs, or is refused ◀─────┘
 ```
 
-1. A hook receives the tool call or the prompt and looks it up in the rules (`rules.default.json`).
-   Nothing matches — Claude Code goes on as usual.
-2. A rule matches — the script gets a token, creates a confirmation
-   (`POST /api/transaction/confirmation`) with the rule's action type and slot values, and hands
-   Claude the link and a PNG of its QR code. The action has not run.
-3. Claude shows you the QR code Veriqa returned: the plugin ships a small MCP server whose tool
-   `show_approval_qr` takes only the transaction id and returns that PNG unchanged, so the agent
-   copies nothing. Without the tool Claude sends the file, and gives the link only when neither
-   works. You scan the code and answer in Telegram. Claude repeats the call, and this time the
-   hook waits: it polls `GET /api/transaction/{id}/result`.
+1. The hook receives the tool call, the slash command or the prompt and looks it up in the rules
+   (`rules.default.json`). Nothing matches — Claude Code goes on as usual.
+2. A rule matches — the hook creates a confirmation (`POST /api/transaction/confirmation`) with the
+   rule's action type and slot values. The action is held; nothing has run.
+3. The plugin opens its pane **Veriqa approval (sample)**: what is asked, the QR code Veriqa returned,
+   the link and how long it is valid. You scan the code and answer in the messaging app.
+4. The hook polls `GET /api/transaction/{id}/result` every two seconds, longer when the host asks it
+   to slow down. It waits with a short host command between reads (`sleep`, or `Start-Sleep` in
+   PowerShell on Windows), because the time a hook spends in such a call is not taken from its
+   ten-second budget. The wait lasts as long as the transaction lives (`ttl_seconds`, up to 30
+   minutes) and 15 seconds more.
+5. `confirmed` — the action runs, or, in a chain, the next approver is asked. The model reads a note
+   after the result that a person approved the action: the wait looks to it like a slow call.
+   Anything else **refuses it**: declined, expired, refused in the pane, the turn interrupted,
+   confirmed by an account other than the enrolled approver, Veriqa unreachable, a request the host
+   rejected, the plugin not configured. The gate never lets an action through because something
+   failed: every hook has a `.catch` handler that refuses when the hook itself fails.
 
-   Claude Code's auto permission mode may refuse to show the image, taking it for data leaving the
-   machine. Allow the tools in the project's `.claude/settings.json` (`"permissions": { "allow":
-   ["mcp__plugin_veriqa-approval_veriqa__show_approval_qr", "SendUserFile"] }`); a rule you set is
-   applied before the auto mode decides.
-4. `confirmed` — the action runs, or, in a chain, the next approver is asked. Anything else
-   **refuses it**: declined, expired, confirmed by an account other than the enrolled approver,
-   Veriqa unreachable, a request the host rejected, the plugin not configured. The gate never lets an
-   action through because something failed.
+### How the approval is shown
+
+- **The pane.** One pane, `veriqa-approval`, holds every approval in progress, one under another,
+  each with a **Refuse** button. In a terminal the QR code is drawn in block characters, black on
+  white whatever the theme; in the desktop app, the IDE extension and the mobile app it is a
+  picture. The pane closes when the last approval ends.
+- **A narrow terminal.** Claude Code places a pane that opened by itself only from 144 columns (110
+  once you have opened it before). Below that the plugin's status line says what is waited for and
+  `type /veriqa-approval to show the code`; the command opens the pane at any width and runs at once,
+  while the approval holds the turn; a line in the transcript says the same. A pane narrower than the
+  code says so instead of drawing it.
+- **The status line** names the step: `Veriqa: waiting for manager (2 of 2)`.
+- **No QR.** When the host draws no code (the address does not fit) or the picture cannot be read,
+  the pane shows the link alone.
+
+The QR code is read back from the PNG the host returns, not encoded by the plugin: with hop mode the
+code carries a hop link, not the address the response names as `url`.
 
 ### Approval chains
 
@@ -100,56 +124,42 @@ An action type listed under `chains` in the rules needs every approver of its li
 }
 ```
 
+- **Every approver is checked before anything is asked.** A missing approver, or two names enrolled
+  with one account, refuses the action before the first transaction is created.
 - **Every step is a transaction of its own** that names the expected account in
-  `expected_identities` and keeps to that account's messenger (`allowed_channel_types`). The next
-  step is created only after the previous one is confirmed.
+  `expected_identities` and keeps to that account's messaging app (`allowed_channel_types`). The next
+  step is created only after the previous one is confirmed, and the pane's QR changes to it.
 - **The gate checks who confirmed.** Veriqa answers with `matched_type`, the identity type that
   matched, and it does not refuse a mismatch by itself: a step confirmed by somebody else still ends
-  `confirmed`. The script refuses unless `matched_type` is `channel_user_id`.
+  `confirmed`. The plugin refuses unless `matched_type` is `channel_user_id`.
 - **Veriqa does not deliver the question to the second person.** The link is a bearer one and goes
-  nowhere by itself. For the demo, Claude shows the step 2 code in the same conversation and says
-  so; in a real setup the link reaches that person another way — their own chat, e-mail, a ticket.
-  If somebody else opens it and confirms, the check above refuses.
-- **Every wait fits the caller's timeout.** One call waits for one step: a hook for up to 780 s (its
-  timeout is 900 s), the costly-run command for up to 570 s (it runs under the Bash tool, whose
-  limit is 600 s). A step's TTL is cut to that.
-- **One account cannot hold two places in a chain.** Two approvals from one phone are one approval.
+  nowhere by itself. For the demo, the pane shows the step 2 code too and says so; in a real setup
+  the link reaches that person another way — their own chat, e-mail, a ticket. If somebody else
+  opens it and confirms, the check above refuses.
 
 An action type without a chain keeps one approval from whoever holds the link.
 
-### Why an approval takes two calls
+## Channels
 
-A hook cannot print to the conversation while it waits: Claude Code shows what a hook returns only
-once it has finished, and until then Claude waits for it too. So the QR cannot appear while the
-hook waits for your answer. Instead the approval spans two calls:
+The sample asks in one channel, or lets the person pick one on the phone — the `channel` setting:
 
-- **A tool call (demo 1)** — the first call is refused with the link; Claude shows the QR and repeats
-  the call exactly, and the repeated call waits for the answer. A call with a changed command is a
-  new call and needs its own approval.
-- **A typed command (demo 2)** — the prompt reaches Claude together with the link. Claude shows the
-  QR, and its next tool call waits for the answer; if the answer is not `confirmed`, every tool stays
-  closed until your next prompt. Showing the QR is itself a tool call, so the tools that display
-  things are let through (`display_tools` in the rules).
-- **The costly run (demo 3)** — `ask` creates the approval and prints the link, Claude shows it, and
-  `wait` waits for the answer.
+| `channel` | Where the person answers | What the host needs |
+|---|---|---|
+| `telegram` (default) | Telegram | a bot token; the host uses long polling, so it works on `localhost` |
+| `messenger`, `whatsapp`, `instagram` | that Meta channel | the channel enabled in the fragment, and the host on a public HTTPS address: Meta delivers the answer by webhook |
+| `hop` | the channel the person picks on a page the QR opens | `HopMode.Enabled: true` in the client entry, `Veriqa:OpenIddict:Server:Issuer` set to that public HTTPS address, and at least one channel besides Telegram enabled — with only one channel the host returns its direct link |
 
-What ties the two calls together is a small file per approval in the temporary directory, readable
-by you only. Nothing goes through without `confirmed`: if Claude never repeats the call, the approval
-expires and nothing runs.
-
-`VERIQA_APPROVAL_SHOW=browser` keeps the older behaviour: the hook waits at once and opens a page
-with the QR in the browser of the machine that runs Claude Code. It needs that machine to have a
-screen in front of you, which a remote or headless session does not.
+With `hop` the phone opens the link, so the host has to be reachable from the phone as well.
 
 ## What you need
 
+- Claude Code 2.1.295 or later.
 - The Veriqa auth server installed as an OS service — see
   [Install as an OS service](https://veriqa.app/docs/quickstart/os-service). Running it from the
   repository works as well.
-- Node.js 18 or later on the machine where Claude Code runs.
-- A Telegram bot token from [@BotFather](https://t.me/BotFather). The host uses long polling, so no
-  public address is needed. If the bot has a webhook set, remove it first
-  (`https://api.telegram.org/bot<token>/deleteWebhook`), otherwise polling gets `409 Conflict`.
+- A Telegram bot token from [@BotFather](https://t.me/BotFather). If the bot has a webhook set,
+  remove it first (`https://api.telegram.org/bot<token>/deleteWebhook`), otherwise polling gets
+  `409 Conflict`.
 - `openssl` for the local certificate. Git for Windows ships it.
 
 ## 1. Give the host a local HTTPS address
@@ -168,7 +178,15 @@ openssl pkcs12 -export -inkey veriqa-local.key -in veriqa-local.crt \
 - `veriqa-local.pfx` goes to the host. On Linux, put it next to the token certificates, readable
   only by the service account:
   `sudo install -o veriqa -g veriqa -m 0600 veriqa-local.pfx /var/lib/veriqa/certs/`.
-- `veriqa-local.crt` stays with Claude Code: the plugin trusts it through `VERIQA_CA_FILE`.
+- `veriqa-local.crt` stays with Claude Code. The plugin has no setting for a certificate to trust:
+  its requests go through Claude Code, so Claude Code itself has to trust it. Start Claude Code from
+  an environment where `NODE_EXTRA_CA_CERTS` names the file:
+
+  ```bash
+  NODE_EXTRA_CA_CERTS=/home/me/.config/veriqa/veriqa-local.crt claude
+  ```
+
+  On Windows, set it as a user environment variable before you start Claude Code or the desktop app.
 - Delete `veriqa-local.key` once the `.pfx` is made.
 
 ## 2. Add the fragment to the host
@@ -176,24 +194,30 @@ openssl pkcs12 -export -inkey veriqa-local.key -in veriqa-local.crt \
 Copy [`host/appsettings.json`](host/appsettings.json) into the configuration directory of the
 service as `appsettings.json` (`/etc/veriqa/` on Linux, `%ProgramData%\Veriqa\` on Windows). Next to
 it is `appsettings.Production.json`, which the installer wrote, and the two do not overlap. Replace
-every `REPLACE_ME`:
+the `REPLACE_ME` values you need:
 
 | Key | Value |
 |---|---|
 | `Kestrel:Endpoints:Https:Certificate:Path` / `Password` | the `.pfx` from step 1 |
 | `Veriqa:Channels:Telegram:BotToken` | your bot token |
 | `Veriqa:OpenIddict:Clients:[0]:ClientSecret` | a long random string, the plugin's secret |
+| `Veriqa:Channels:Messenger`, `WhatsApp`, `Instagram` | only for those channels: their credentials, and `Enabled: true` |
+| `Veriqa:OpenIddict:Server:Issuer` | only for `hop`: the host's public HTTPS address. Left empty, the host uses its own address |
 
 What the fragment declares:
 
 - `Kestrel:Endpoints` — `https://127.0.0.1:8443` for the plugin, and `http://127.0.0.1:8080` kept for
   the health probes. The section replaces `ASPNETCORE_URLS`, so both endpoints are listed.
+- Telegram enabled on long polling; Messenger, WhatsApp (`MetaCloudApi`) and Instagram present but
+  disabled, so a host that needs only Telegram starts without their credentials.
 - the client `claude-code` with `AllowClientCredentials` and, in its `MessageTemplates`, the three
   action types with their slots and wordings, plus `agent-approver-enroll` for enrolling approvers.
-  `AllowConfirmationTokenGrant` with the scopes `openid` and `channel` lets the script learn, once
-  per enrolment, which messenger account confirmed; `IdentityMatchComparableTypes` declares
-  `channel_user_id`, the identity each step of a chain is checked against. An action type has to be declared **in the client
-  entry**; the host section `Veriqa:MessageTemplates` only holds the receipts of the outcome.
+  `AllowConfirmationTokenGrant` with the scopes `openid` and `channel` lets the plugin learn, once
+  per enrolment, which messaging app account confirmed; `IdentityMatchComparableTypes` declares
+  `channel_user_id`, the identity each step of a chain is checked against. An action type has to be
+  declared **in the client entry**; the host section `Veriqa:MessageTemplates` only holds the
+  receipts of the outcome. `HopMode` (off, `QrMode: Unified`) is what `hop` turns on: the QR then
+  leads to a page where the person picks the channel.
 - `OutcomeNotice:DisplayIntent: NewMessage` — the answer arrives as a new message and the question
   stays readable above it.
 
@@ -210,41 +234,29 @@ curl --cacert veriqa-local.crt https://127.0.0.1:8443/health/live
 
 ## 3. Install the plugin
 
-In Claude Code, from a clone of this repository:
+In a Claude Code terminal session, from a clone of this repository:
 
 ```
 /plugin marketplace add <path to the clone>/samples/claude-code
 /plugin install veriqa-approval@veriqa-samples
 ```
 
-Then give the plugin its settings. `env` in `~/.claude/settings.json` applies them to every project:
+The install asks for the plugin's settings. The client secret is kept in secure storage, the rest in
+`settings.json` under `pluginConfigs`; every setting but the secret is a row in `/config` afterwards.
 
-```json
-{
-  "env": {
-    "VERIQA_URL": "https://127.0.0.1:8443",
-    "VERIQA_CLIENT_SECRET_FILE": "/home/me/.config/veriqa/claude-code.secret",
-    "VERIQA_CA_FILE": "/home/me/.config/veriqa/veriqa-local.crt"
-  }
-}
-```
-
-| Variable | Default | Meaning |
+| Setting | Default | Meaning |
 |---|---|---|
-| `VERIQA_URL` | `https://127.0.0.1:8443` | Address of the Veriqa host |
-| `VERIQA_CLIENT_ID` | `claude-code` | `ClientId` of the entry in the fragment |
-| `VERIQA_CLIENT_SECRET_FILE` | — | File holding the client secret. Preferred: keep it out of `settings.json` |
-| `VERIQA_CLIENT_SECRET` | — | The secret itself, when a file is not an option |
-| `VERIQA_CA_FILE` | — | PEM certificate to trust, for the self-signed one from step 1 |
-| `VERIQA_APPROVAL_RULES` | see below | A rules file to use instead of the default |
-| `VERIQA_APPROVAL_TTL_SECONDS` | `300` | How long each approver has to answer, 60…1800. Each step is cut to 780 s in a hook (its timeout is 900 s, and a hook killed by its timeout would let the action through) and to 570 s in the costly-run command |
-| `VERIQA_APPROVAL_APPROVERS` | `~/.claude/veriqa-approvers.json` | The file of enrolled approvers |
-| `VERIQA_APPROVAL_LOCALE` | host default | Language of the question, a BCP 47 tag |
-| `VERIQA_APPROVAL_SHOW` | `chat` | `chat` — Claude shows the QR in the conversation. `browser` — the hook waits at once and opens a page with the QR on this machine. `none` — it waits at once and shows nothing |
-| `VERIQA_APPROVAL_PRICE_INPUT` | `5` | USD per million input tokens, for the cost in demo 3. The default is the Claude Opus 5 list price |
-| `VERIQA_APPROVAL_PRICE_OUTPUT` | `25` | USD per million output tokens, the same |
-
-Restart Claude Code once the settings are in place.
+| `mode` | `own-host` | `own-host` — your own Veriqa host. `shared-stand` — the shared stand, see [Shared stand](#shared-stand) |
+| `host_url` | `https://127.0.0.1:8443` | Address of your host (`own-host`) |
+| `client_id` | `claude-code` | `ClientId` of the entry in the fragment |
+| `client_secret` | — | The client's secret (`own-host`) |
+| `stand_url` | empty | Address of the shared stand's facade (`shared-stand`); no default |
+| `channel` | `telegram` | `telegram`, `messenger`, `whatsapp`, `instagram` or `hop` — see [Channels](#channels) |
+| `ttl_seconds` | `300` | How long each approver has to answer, 60…1800; the hook waits that long |
+| `locale` | empty | Language of the question, a BCP 47 tag; empty — the host's default |
+| `rules_file` | empty | A rules file to use instead of the default — see [Rules](#rules) |
+| `price_input` | `5` | USD per million input tokens, for the cost in demo 3. The default is the Claude Opus 5 list price |
+| `price_output` | `25` | USD per million output tokens, the same |
 
 > **The plugin refuses what it guards until it is configured.** Installed without a secret, it
 > stops `git push`, `rm -r…`, `/cycle` and `/cycle-chain` with "Veriqa is not configured". That is
@@ -252,55 +264,57 @@ Restart Claude Code once the settings are in place.
 
 ## 4. Enroll the approvers
 
-Demo 3 needs two people with two messenger accounts. Enroll each of them once, from a terminal
-where the `VERIQA_*` variables of step 3 are exported with the same values:
+Demo 3 needs two people with two messaging app accounts. Enroll each of them once, in Claude Code:
 
-```bash
-node <path to the clone>/samples/claude-code/veriqa-approval/scripts/veriqa-approval.mjs enroll developer
+```
+/veriqa-enroll developer
+/veriqa-enroll manager
 ```
 
-```bash
-node <path to the clone>/samples/claude-code/veriqa-approval/scripts/veriqa-approval.mjs enroll manager
-```
-
-The script prints its own path when an approver is missing. Each command prints the link and the
-path of a page with its QR, and opens the page with `VERIQA_APPROVAL_SHOW=browser`. The person to be enrolled scans it with their
-own phone and confirms "register this messenger account as the approver …". Whoever confirms is
-enrolled, so the link has to reach exactly that person. The accounts are stored in
-`~/.claude/veriqa-approvers.json`, readable by you only; `VERIQA_APPROVAL_APPROVERS` names another
-file. Enrolling a name again replaces its account.
+Each command opens the pane with a QR. The person to be enrolled scans it with their own phone and
+confirms "register this messenger account as the approver …"; the command then answers
+`ENROLLED: …`. Whoever confirms is enrolled, so the link has to reach exactly that person: if it
+went to someone else, interrupt the turn (Esc) or press Refuse, and nobody is enrolled. The
+accounts are kept in the plugin's own store, separately for every host or stand address: an account
+of one bot is no use to another. Enrolling a name again replaces its account.
 
 Until both are enrolled, demo 3 is refused with "the approver … is not enrolled". To try it alone,
 remove `chains` from a copy of the rules (see [Rules](#rules)).
 
 ## 5. Try the three demos
 
-1. **A tool call.** Ask Claude to push the current branch. Before `git push` runs, Claude shows a QR.
-   Scan it and answer in Telegram: confirming lets the push run, declining returns the refusal to Claude.
-2. **A command cycle.** Type `/cycle TASK-1` (or any command listed in the rules). Claude shows a QR
-   before it does anything else, and its first tool call waits for your answer. Declined, the tools
-   stay closed and the cycle does nothing. If the agent itself decides to start `/cycle` through the
-   Skill tool, the same question is asked, with `started_by: agent`.
+1. **A tool call.** Ask Claude to push the current branch. Before `git push` runs, the pane shows a
+   QR. Scan it and answer in the messaging app: confirming lets the push run, declining returns the
+   refusal to Claude.
+2. **A command cycle.** Type `/cycle TASK-1` (or any command listed in the rules). The pane shows a
+   QR before the command starts; declined, the command does not run and its output is the reason.
+   If the agent itself decides to start `/cycle` through the Skill tool, the same question is asked,
+   with `started_by: agent`.
 3. **A costly run.** Type `/veriqa-approval:costly-run nightly refactor`. The command estimates the
-   run (the demo estimate is 1 billion input and 50 million output tokens), asks you, and starts only
-   when you confirm. `input=` and `output=` in the arguments, in millions of tokens, replace the estimate.
-   The question also names the cost in whole USD, which the gate computes from the estimate and the
-   prices above: 1000 × 5 + 50 × 25 = 6250 USD. It is a list-price ceiling: prompt caching and batch
-   discounts make a real run cheaper, and the gate does not guess how much. Two approvers answer in
-   turn: Claude shows the QR for `developer`, then, once developer has confirmed, the QR for
-   `manager` in the same conversation — scan it from the manager's account.
+   run (the demo estimate is 1 billion input and 50 million output tokens) and calls the plugin's
+   tool `approve_run` once; the run starts only when the tool succeeds. `input=` and `output=` in the
+   arguments, in millions of tokens, replace the estimate. The question also names the cost in whole
+   USD, which the plugin computes from the estimate and the prices above: 1000 × 5 + 50 × 25 = 6250
+   USD. It is a list-price ceiling: prompt caching and batch discounts make a real run cheaper, and
+   the plugin does not guess how much. Two approvers answer in turn: the pane shows the QR for
+   `developer`, then, once developer has confirmed, the QR for `manager` — scan it from the
+   manager's account.
 
 ## Rules
 
-The rules are looked up in this order: the file in `VERIQA_APPROVAL_RULES`, then
+The rules are looked up in this order: the file in `rules_file`, then
 `.claude/veriqa-approval.rules.json` in the project, then `rules.default.json` of the plugin. The first
 matching rule wins.
+
+On Windows Claude Code runs commands with the PowerShell tool, not Bash, so the default rules name
+both tools, and the delete rule also catches `Remove-Item -Recurse`. A rule of your own for shell
+commands should name both too.
 
 ```json
 {
   "id": "git-push",
-  "event": "PreToolUse",
-  "tool": "^Bash$",
+  "event": "tool.call",
+  "tool": "^(Bash|PowerShell)$",
   "input": { "command": "\\bgit\\s+push\\b" },
   "action_type": "agent-tool-call",
   "slots": {
@@ -316,48 +330,80 @@ the rule, not text from the agent.
 
 | Member | Meaning |
 |---|---|
-| `event` | `PreToolUse` or `UserPromptSubmit` |
-| `tool` | `PreToolUse`: a regular expression over the tool name |
-| `input` | `PreToolUse`: regular expressions over fields of the tool input. All must match. For the `Skill` tool, `skill` and `args` are always present |
-| `prompt` | `UserPromptSubmit`: a regular expression over the typed prompt. Its groups are `{match.1}`, `{match.2}`, … |
+| `event` | `tool.call`, `command.run` or `prompt.submit` |
+| `tool` | `tool.call`: a regular expression over the tool name |
+| `input` | `tool.call`: regular expressions over fields of the tool input. All must match. For the `Skill` tool, `skill` and `args` are always present |
+| `command` | `command.run`: a regular expression over the command name, without its slash |
+| `args` | `command.run`: a regular expression over the command's arguments |
+| `prompt` | `prompt.submit`: a regular expression over a free-text prompt. Its groups are `{match.1}`, `{match.2}`, … |
 | `action_type` | An action type declared in the client entry on the host |
-| `slots` | Slot values. Placeholders: `{tool}`, `{input.<field>}`, `{match.<n>}`, `{project}` (the project directory name). An empty value is not sent, so the wording falls back to a step without that slot |
+| `slots` | Slot values. Placeholders: `{tool}`, `{input.<field>}`, `{command}`, `{args}`, `{match.<n>}`, `{project}` (the project directory name). An empty value is not sent, so the wording falls back to a step without that slot |
+
+A rule without a pattern member matches any value of it: a `prompt.submit` rule without `prompt` holds
+every prompt, a `tool.call` rule with neither `tool` nor `input` every tool call but the plugin's own
+`approve_run`.
+
+A rules file that cannot be read, is not JSON, has no `rules` array or names another `event` refuses
+every guarded action with the reason, rather than turning the gate off. The project's file gives way
+to the default only when it is not there at all: a link that leads nowhere is a file that cannot be
+read.
 
 A new action type means a new entry in the host fragment (contract and wordings) plus a rule here.
 The host checks every value against the contract: a value over `MaxLength`, a number that is not a
 number, or a line break in a string refuses the creation, and with it the action.
 
+## Shared stand
+
+`mode: shared-stand` points the plugin at a shared Veriqa stand instead of your own host, so the
+sample can be tried without installing anything. The stand is **not deployed yet**: its address is
+the `stand_url` setting, which has no default.
+
+The plugin never holds a client secret for the stand. It talks to the stand's **facade**, which keeps
+the secret on the server, and identifies itself with an **installation key** it makes itself: 32
+random bytes in base64url without padding (43 characters), created by the first call in this mode
+and kept in the plugin's store. Calls made at the same moment get the same key.
+
+The facade answers **the same paths, bodies and responses** as the host; only the authentication
+differs:
+
+| Call | Own host | Facade |
+|---|---|---|
+| client token | `POST {host_url}/connect/token`, `grant_type=client_credentials`, `Authorization: Basic` (RFC 6749 §2.3.1) | not called |
+| create | `POST /api/transaction/confirmation`, `Authorization: Bearer <token>` | the same path, header `X-Veriqa-Install-Key: <key>` |
+| outcome | `GET /api/transaction/{id}/result` → `{ outcome, matched_type }` | the same path, the same header |
+| who confirmed (enrolment) | `POST /connect/token`, `grant_type=urn:veriqa:params:oauth:grant-type:confirmation`, `transaction_id`, `scope=openid channel`, Basic | the same path and form, the key header in place of Basic |
+
+The body of a creation carries `action_type`, `slot_values`, `ttl_seconds`, `locale` (when set),
+`allowed_channel_types` (the `channel` setting; a chain step — the approver's channel) and, for a
+chain step, `expected_identities: { "channel_user_id": "<id>" }`. The facade answers errors in the
+host's formats (Problem Details, an OAuth error) and answers the outcome of another installation's
+transaction with `404`.
+
 ## What this sample does not do
 
-- **The rules are not a sandbox.** A regular expression over a Bash command catches the command as
+- **The rules are not a sandbox.** A regular expression over a shell command catches the command as
   written; a script or an alias that pushes is not caught. Use the rules to put a person in the loop
   for actions you know, not to contain a hostile agent.
 - **The costly-run gate is cooperative.** Demos 1 and 2 are enforced by Claude Code: the hook decides
   and the model cannot skip it. In demo 3 the estimate is known only to the command, so the command
-  calls the gate itself, and a model that ignored its instructions could skip the call. To enforce
-  it, put a `PreToolUse` rule on the tool that starts the costly work.
-- **The link is a bearer one.** Whoever opens it first becomes the approver. The QR image and the page
-  are written to the temporary directory, readable by you only. Do not share them.
-- **The files that tie two calls together are yours, not the gate's.** They sit in the temporary
-  directory under your user account, where Claude's own Bash tool can write too. They hold a
-  transaction id, and the gate lets a call through only after Veriqa answers `confirmed` for it; but a
-  model set on getting round the gate could swap in the id of another approval you confirmed. This is
-  the same line as the rules above: the gate puts a person in the loop, it does not contain a hostile
-  agent.
+  asks for the approval itself, and a model that ignored its instructions could skip the call. To
+  enforce it, put a `tool.call` rule on the tool that starts the costly work.
+- **The link is a bearer one.** Whoever opens it first becomes the approver. Do not share the pane's
+  code with anyone but the approver.
 - **Demos 1 and 2 have one approver and no identity check.** Whoever opens the link first approves.
   To require enrolled people there too, add `agent-tool-call` or `agent-command-start` to `chains` and
   give its contract the optional `approver` slot, as `agent-costly-run` has.
-- **Enrolment trusts the person who confirms.** The script cannot tell who scanned the enrolment
+- **Enrolment trusts the person who confirms.** The plugin cannot tell who scanned the enrolment
   QR; it enrols whoever confirmed. Hand the link to that person only.
-- **The approvers file is local.** A second computer, or a colleague's Claude Code, needs its own
-  enrolment. Anybody who can edit `~/.claude/veriqa-approvers.json` can put their own account in
-  place of the manager's — the file is only as safe as your user account.
-- **Local only.** The host runs on `localhost` for a quick demo, so Claude Code in the cloud cannot
-  reach it.
+- **The approvers are kept by this Claude Code.** They live in the plugin's store under your user
+  account: a second computer, or a colleague's Claude Code, needs its own enrolment, and anybody who
+  can edit your Claude Code configuration can put their own account in place of the manager's.
+- **No pane, no approval.** A run that draws no surface (a headless `claude -p`) shows nothing to
+  scan: a guarded action there waits until its approval expires, and is refused.
 
 ## Further reading
 
-- This sample on the documentation site — <https://veriqa.app/docs/research/claude-code-approvals>
-- Approving AI-agent actions — <https://veriqa.app/docs/research/agent-approvals>
+- This sample on the documentation site — <https://veriqa.app/docs/samples/showcase/claude-code>
+- Approving AI-agent actions — <https://veriqa.app/docs/scenarios/agent-approvals>
 - Server-to-server confirmation API — <https://veriqa.app/docs/reference/confirmation-api>
 - The same gate inside your own agent code — [`samples/dotnet/inproc/agent-approval`](../dotnet/inproc/agent-approval/README.md)

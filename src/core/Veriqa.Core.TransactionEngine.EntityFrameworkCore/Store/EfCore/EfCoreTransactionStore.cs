@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.Data.Common;
+using System.Diagnostics;
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Veriqa.Core.TransactionEngine.Domain;
@@ -49,6 +51,11 @@ internal sealed class EfCoreTransactionStore : ITransactionStore
     /// String name of the Confirmed state, used for finding stalled transactions.
     /// </summary>
     private static readonly string ConfirmedStateName = nameof(TransactionState.Confirmed);
+
+    /// <summary>
+    /// String name of the Pending state — the one state the claims completion writes go through in.
+    /// </summary>
+    private static readonly string PendingStateName = nameof(TransactionState.Pending);
 
     /// <summary>
     /// Stored names of the states the passing of a deadline ends a transaction from, read off
@@ -414,6 +421,283 @@ internal sealed class EfCoreTransactionStore : ITransactionStore
             .ToList()
             .AsReadOnly();
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One query by the fingerprint column and its index. A row written before the column existed
+    /// carries no fingerprint and is not returned: such a sign-in lives until its deadline.
+    /// </remarks>
+    public async Task<IReadOnlyList<Transaction>> GetPendingSignInsAsync(
+        SignInSubjectScope scope,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var pendingState = PendingStateName;
+        var fingerprint = scope.ToFingerprint();
+
+        var entities = await context.Transactions
+            .AsNoTracking()
+            .Where(e => e.State == pendingState && e.SignInSubjectFingerprint == fingerprint)
+            .ToListAsync(cancellationToken);
+
+        return entities
+            .Select(TransactionEntityMapper.ToDomain)
+            .ToList()
+            .AsReadOnly();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One conditional <c>UPDATE … WHERE Id = … AND &lt;column&gt; IS NULL</c>: the database decides
+    /// which of two concurrent writers gets the row, and the statement touches neither
+    /// <c>ConcurrencyToken</c> nor <c>UpdatedAt</c>, so a concurrent <see cref="UpdateAsync"/> keeps its
+    /// token. Needs a provider that translates <c>ExecuteUpdate</c> (EF InMemory does not).
+    /// </remarks>
+    public async Task<bool> TryMarkHopObservationAsync(
+        TransactionId id,
+        HopObservationMark mark,
+        DateTimeOffset markedAt,
+        CancellationToken cancellationToken = default)
+    {
+        HopObservationArguments.ThrowIfUndefined(mark);
+
+        var column = HopObservationColumn(mark);
+        var key = id.ToString();
+
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var written = await context.Transactions
+            .Where(e => e.Id == key)
+            .Where(IsNull(column))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(column, markedAt), cancellationToken);
+
+        return written == 1;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One conditional <c>UPDATE</c> on the snapshot column while it is empty — the obligations and the
+    /// provider requirement of <see cref="TryMarkHopObservationAsync"/> apply.
+    /// </remarks>
+    public async Task<bool> TryAttachScannerContextAsync(
+        TransactionId id,
+        ScannerContextSnapshot snapshot,
+        CancellationToken cancellationToken = default)
+    {
+        HopObservationArguments.ThrowIfInvalid(snapshot);
+
+        var json = TransactionEntityMapper.SerializeScannerContext(snapshot);
+        var key = id.ToString();
+
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var written = await context.Transactions
+            .Where(e => e.Id == key && e.ScannerContextSnapshotJson == null)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(e => e.ScannerContextSnapshotJson, json),
+                cancellationToken);
+
+        return written == 1;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One conditional <c>UPDATE</c> on the fingerprint column while it is empty and a snapshot is
+    /// attached — the obligations and the provider requirement of
+    /// <see cref="TryMarkHopObservationAsync"/> apply.
+    /// </remarks>
+    public async Task<bool> TryFillScannerFingerprintAsync(
+        TransactionId id,
+        string fingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        HopObservationArguments.ThrowIfInvalidFingerprint(fingerprint);
+
+        var key = id.ToString();
+
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var written = await context.Transactions
+            .Where(e => e.Id == key
+                && e.ScannerFingerprint == null
+                && e.ScannerContextSnapshotJson != null)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(e => e.ScannerFingerprint, fingerprint),
+                cancellationToken);
+
+        return written == 1;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One conditional <c>UPDATE … WHERE Id = … AND State = 'Pending' AND ClaimCompletionJson IS NOT
+    /// NULL AND ClaimCompletionSurface = expected</c>: the state, the mark and the current value are
+    /// checked by the database in the same statement that writes. The statement touches neither
+    /// <c>ConcurrencyToken</c> nor <c>UpdatedAt</c>, and <see cref="UpdateAsync"/> never includes the
+    /// column. Needs a provider that translates <c>ExecuteUpdate</c> (EF InMemory does not).
+    /// </remarks>
+    public async Task<bool> TrySetWebStepSurfaceAsync(
+        TransactionId id,
+        WebStepSurface? expected,
+        WebStepSurface surface,
+        CancellationToken cancellationToken = default)
+    {
+        ClaimCompletionWrites.ThrowIfUndefined(expected, surface);
+
+        if (!ClaimCompletionWrites.IsSurfaceMove(expected, surface))
+        {
+            return false;
+        }
+
+        var key = id.ToString();
+        var pendingState = PendingStateName;
+        var expectedName = expected?.ToString();
+        var surfaceName = surface.ToString();
+
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        // A null expectedName compares as IS NULL: EF Core's C# null semantics apply to the parameter.
+        var written = await context.Transactions
+            .Where(e => e.Id == key
+                && e.State == pendingState
+                && e.ClaimCompletionJson != null
+                && e.ClaimCompletionSurface == expectedName)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(e => e.ClaimCompletionSurface, surfaceName),
+                cancellationToken);
+
+        return written == 1;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One conditional <c>UPDATE … WHERE Id = … AND State = 'Pending' AND ClaimCompletionJson IS NOT
+    /// NULL AND ClaimCompletionFormTokenHash IS NULL</c> — the obligations and the provider requirement of
+    /// <see cref="TrySetWebStepSurfaceAsync"/> apply.
+    /// </remarks>
+    public async Task<bool> TrySetClaimFormTokenHashAsync(
+        TransactionId id,
+        string tokenHash,
+        CancellationToken cancellationToken = default)
+    {
+        ClaimCompletionWrites.ThrowIfInvalidFormTokenHash(tokenHash);
+
+        var key = id.ToString();
+        var pendingState = PendingStateName;
+
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var written = await context.Transactions
+            .Where(e => e.Id == key
+                && e.State == pendingState
+                && e.ClaimCompletionJson != null
+                && e.ClaimCompletionFormTokenHash == null)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(e => e.ClaimCompletionFormTokenHash, tokenHash),
+                cancellationToken);
+
+        return written == 1;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The outcomes are one JSON column, so the write is a compare-and-swap over it: the row is read,
+    /// the condition is checked on what was read, and one conditional <c>UPDATE</c> writes the new list
+    /// only while the state is still Pending and both the mark and the list are exactly the ones read.
+    /// Losing the swap means another write changed the row in between; the loop reads again and decides
+    /// anew. It ends: every lost swap is a write that did go through, and the writes that can change
+    /// these columns are bounded — an outcome per missing claim, the state leaving Pending.
+    /// The statement touches neither <c>ConcurrencyToken</c> nor <c>UpdatedAt</c>, and
+    /// <see cref="UpdateAsync"/> never includes the column. Needs a provider that translates
+    /// <c>ExecuteUpdate</c> (EF InMemory does not).
+    /// </remarks>
+    public async Task<bool> TryRecordClaimResultAsync(
+        TransactionId id,
+        ClaimCompletionResult result,
+        CancellationToken cancellationToken = default)
+    {
+        ClaimCompletionWrites.ThrowIfInvalid(result);
+
+        var key = id.ToString();
+        var pendingState = PendingStateName;
+
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        while (true)
+        {
+            var row = await context.Transactions
+                .AsNoTracking()
+                .Where(e => e.Id == key)
+                .Select(e => new { e.State, e.ClaimCompletionJson, e.ClaimCompletionResultsJson })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (row is null)
+            {
+                return false;
+            }
+
+            var results = TransactionEntityMapper.DeserializeClaimCompletionResults(row.ClaimCompletionResultsJson);
+
+            if (!Enum.TryParse<TransactionState>(row.State, out var state)
+                || !ClaimCompletionWrites.CanRecord(
+                    state,
+                    TransactionEntityMapper.DeserializeClaimCompletionItems(row.ClaimCompletionJson),
+                    results,
+                    result.Claim))
+            {
+                return false;
+            }
+
+            var markJson = row.ClaimCompletionJson;
+            var readResultsJson = row.ClaimCompletionResultsJson;
+            var newResultsJson = TransactionEntityMapper.SerializeClaimCompletionResults(
+                ClaimCompletionWrites.Append(results, result));
+
+            // A null readResultsJson compares as IS NULL: EF Core's C# null semantics apply to the parameter.
+            var written = await context.Transactions
+                .Where(e => e.Id == key
+                    && e.State == pendingState
+                    && e.ClaimCompletionJson == markJson
+                    && e.ClaimCompletionResultsJson == readResultsJson)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(e => e.ClaimCompletionResultsJson, newResultsJson),
+                    cancellationToken);
+
+            if (written == 1)
+            {
+                return true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Column a hop observation mark is written into.
+    /// </summary>
+    /// <param name="mark">Mark already checked by <see cref="HopObservationArguments.ThrowIfUndefined"/>.</param>
+    /// <returns>Selector of the entity column of the mark.</returns>
+    private static Expression<Func<TransactionEntity, DateTimeOffset?>> HopObservationColumn(HopObservationMark mark)
+        => mark switch
+        {
+            HopObservationMark.FirstResolve => e => e.HopFirstResolvedAt,
+            HopObservationMark.InterstitialOpened => e => e.HopInterstitialOpenedAt,
+            HopObservationMark.ChannelLaunched => e => e.HopChannelLaunchedAt,
+            HopObservationMark.RepeatResolve => e => e.HopRepeatResolvedAt,
+            _ => throw new UnreachableException()
+        };
+
+    /// <summary>
+    /// Filter "the column is empty" over a column selector, so the column is named once per mark and
+    /// the filter and the setter of the conditional write cannot drift apart.
+    /// </summary>
+    /// <param name="column">Column selector.</param>
+    /// <returns>Predicate <c>column IS NULL</c>.</returns>
+    private static Expression<Func<TransactionEntity, bool>> IsNull(Expression<Func<TransactionEntity, DateTimeOffset?>> column)
+        => Expression.Lambda<Func<TransactionEntity, bool>>(
+            Expression.Equal(column.Body, Expression.Constant(null, typeof(DateTimeOffset?))),
+            column.Parameters);
 
     /// <summary>
     /// Determines whether a DbUpdateException may be an integrity constraint violation and is worth

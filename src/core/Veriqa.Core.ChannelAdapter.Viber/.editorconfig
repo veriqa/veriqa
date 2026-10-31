@@ -1,0 +1,6 @@
+[*.cs]
+# The public surface of this assembly is declared, not implied: RS0016 fires on a public member
+# missing from PublicAPI.*.txt, RS0017 on an inventory entry with no member behind it. Both are
+# errors, so the surface cannot change without the change showing up in the diff of those files.
+dotnet_diagnostic.RS0016.severity = error
+dotnet_diagnostic.RS0017.severity = error

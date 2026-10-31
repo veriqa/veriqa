@@ -1,4 +1,4 @@
-# Veriqa with the WhatsApp channel - a local sign-in stand for the rp/ client of this repository.
+# Veriqa with the WhatsApp channel - a local sign-in stand for the clients/dotnet/ client of this repository.
 #
 # A local evaluation setup, not a production one: the Development environment keeps the OpenIddict
 # store in memory and signs tokens with development certificates, so every restart forgets the
@@ -29,7 +29,7 @@ services:
       # The issuer must be https, and the browser and the client must see the same address.
       Veriqa__OpenIddict__Server__Issuer: "https://localhost:8443"
 
-      # The client of this repository (rp/): a public client, so Veriqa requires PKCE from it.
+      # The client of this repository (clients/dotnet/): a public client, so Veriqa requires PKCE from it.
       Veriqa__OpenIddict__Clients__0__ClientId: rp
       Veriqa__OpenIddict__Clients__0__DisplayName: "Quickstart client"
       Veriqa__OpenIddict__Clients__0__AllowedRedirectUris__0: "https://localhost:7020/signin-oidc"

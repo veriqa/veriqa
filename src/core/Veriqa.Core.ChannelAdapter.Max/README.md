@@ -1,9 +1,19 @@
 # Veriqa.Core.ChannelAdapter.Max
 
-MAX channel adapter for Veriqa — a satellite package. The user confirms a desktop sign-in in a MAX
-bot, and the adapter turns that confirmation into the identity the core issues tokens for.
+**MAX login and authentication for your website or app.** Your users scan a QR code on a computer,
+TV or kiosk, or tap a button on their phone, and confirm the sign-in with one tap in the MAX
+messaging app: no password, no SMS code and no sign-up form. Your application receives standard
+OpenID Connect tokens.
 
-MAX is deliberately not part of the `Veriqa.Core.BaseChannels` metapackage: it is installed with an
+This package is the MAX channel of [Veriqa](https://veriqa.app), an open-source
+project for passwordless authentication through popular messaging apps and email, over standard
+OpenID Connect.
+Setup guide: [MAX channel](https://veriqa.app/docs/guides/channels#max).
+
+## About this package
+
+The adapter turns the user's confirmation in your MAX bot into the identity the core issues
+tokens for. MAX is not part of the `Veriqa.Core.BaseChannels` metapackage: it is installed with an
 explicit `dotnet add package` by the deployments that need it.
 
 ## Install

@@ -31,7 +31,25 @@ namespace Veriqa.Core.TransactionEngine.Migrations.PostgreSql.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("AuthorizationCodeIssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ChannelIdentitySnapshotJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimCompletionFormTokenHash")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimCompletionJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimCompletionResultsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimCompletionSurface")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimRequirementsJson")
                         .HasColumnType("text");
 
                     b.Property<string>("ClientContext")
@@ -55,6 +73,18 @@ namespace Veriqa.Core.TransactionEngine.Migrations.PostgreSql.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("HopChannelLaunchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("HopFirstResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("HopInterstitialOpenedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("HopRepeatResolvedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("IdempotencyKey")
@@ -83,11 +113,28 @@ namespace Veriqa.Core.TransactionEngine.Migrations.PostgreSql.Migrations
                     b.Property<string>("ResolvedIdentitySnapshotJson")
                         .HasColumnType("text");
 
-                    b.Property<string>("State")
-                        .IsRequired()
+                    b.Property<string>("ScannerContextSnapshotJson")
                         .HasColumnType("text");
 
+                    b.Property<string>("ScannerFingerprint")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SignInSubjectFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<string>("StateReasonCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("StoredClaimValuesJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SubjectBindingJson")
                         .HasColumnType("text");
 
                     b.Property<string>("Type")
@@ -99,8 +146,14 @@ namespace Veriqa.Core.TransactionEngine.Migrations.PostgreSql.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("SignInSubjectFingerprint");
+
                     b.HasIndex("IdempotencyScope", "IdempotencyKey")
                         .IsUnique();
+
+                    b.HasIndex("State", "ExpiresAt");
+
+                    b.HasIndex("State", "UpdatedAt");
 
                     b.ToTable("Transactions");
                 });

@@ -22,9 +22,10 @@ public enum AuthStartConfirmationOutcome
     HandledInChannel,
 
     /// <summary>
-    /// Surface <c>OnWebPage</c>: the question is asked by the core page. Nothing is sent to the
-    /// channel and the transaction is not completed; the caller only attaches the channel identity so
-    /// the waiting browser can be taken to the question.
+    /// Surface <c>OnWebPage</c>: the question is asked by the core page, not in the channel, and the
+    /// transaction is not completed. The caller attaches the channel identity so the waiting browser
+    /// can be taken to the question, and a sign-in sends the chat one notice pointing the sender to the
+    /// sign-in page (SPEC-012 §4.4.2).
     /// </summary>
     AwaitingWebConfirmation,
 

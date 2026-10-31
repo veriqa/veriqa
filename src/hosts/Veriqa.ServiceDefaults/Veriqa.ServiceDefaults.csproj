@@ -11,7 +11,7 @@
     <PackageId>Veriqa.ServiceDefaults</PackageId>
     <Authors>Veriqa</Authors>
     <Description>Veriqa service defaults — shared Aspire service wiring: OpenTelemetry, health checks, service discovery, resilience, forwarded headers and rate limiting helpers.</Description>
-    <PackageTags>veriqa;aspire;servicedefaults</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;aspire;dotnet-aspire;servicedefaults;opentelemetry;health-checks</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 

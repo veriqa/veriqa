@@ -181,6 +181,9 @@ public static class Extensions
                 // HTTP client tracing
                 tracing.AddHttpClientInstrumentation();
 
+                // A secret in a URL path must not reach the exporter added below
+                tracing.AddProcessor(new SecretUrlPathRedactionProcessor());
+
                 // Spans of the product's own components: each component owns its activity source and
                 // subscribes to nothing, so the host adds them here. By the shared constants, not by
                 // a wildcard — a wildcard cannot be checked against the source it is meant to match.

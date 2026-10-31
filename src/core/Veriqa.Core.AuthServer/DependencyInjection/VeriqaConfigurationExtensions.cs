@@ -7,7 +7,9 @@ using Microsoft.Extensions.Options;
 using Veriqa.Core.AuthServer.Configuration;
 using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Configuration.Snapshot;
+using Veriqa.Core.AuthServer.HopMode;
 using Veriqa.Core.AuthServer.UI;
+using Veriqa.Core.ChannelAdapter.MultiTenancy;
 using Veriqa.Core.Configuration;
 
 namespace Veriqa.Core.AuthServer.DependencyInjection;
@@ -43,6 +45,17 @@ internal static class VeriqaConfigurationExtensions
             provider => new VeriqaOptionsValidator(
                 provider.GetRequiredService<IAuthPageLanguageRegistry>(),
                 configuration));
+
+        // The claims catalog section bound ON ITS OWN, for the readers that judge or serve the core
+        // catalog outside the root: the rules of a client entry (SPEC-041 C30) and the core level of the
+        // catalog key. Reading it off the root would make every read of the client entries validate the
+        // whole root, whose validator needs services a composition without a channel does not have. The
+        // text is the same the root binds, and the startup validation of the root judges it; this
+        // binding is not validated a second time. Same normalization as the root post-configure.
+        services
+            .AddOptions<ScopesClaimsOptions>()
+            .Bind(configuration.GetSection(ScopesClaimsOptions.SectionName))
+            .PostConfigure(options => options.Scopes ??= []);
 
         // The QR group of the sign-in page section — the ONE part of Veriqa:AuthPageDesign still read as
         // an input record, and it is bound on the section it names itself rather than as a field of the
@@ -117,6 +130,97 @@ internal static class VeriqaConfigurationExtensions
         // supplies a subsection would otherwise be judged on a different root.
         services.AddSingleton<IValidateOptions<ConfirmationSubjectDisplayOptions>>(
             _ => new ConfirmationSubjectDisplayOptionsValidator(configuration));
+
+        // The node-wide settings of the hop mode (SPEC-025 §11.1): bound and validated at start, while
+        // their effective values are keys of the canonical resolver (HopModeConfigKeys), registered with
+        // the catalogs below — the section is the core level's source, not a second way to read them.
+        services
+            .AddOptionsWithValidateOnStart<HopModeOptions>()
+            .Bind(configuration.GetSection(HopModeOptions.SectionName));
+
+        // The single reading of the effective hop settings, which every slice of the hop mode takes its
+        // values from (SPEC-025 HOP-033a). It reads the core level of its startup values off the
+        // configuration the options are bound from — the one the integrator supplied — for the same
+        // reason the validators above do. The walk of the client entries is handed in only when the
+        // application level is served by the reader this composition ships (stated below, where the
+        // first stated reader wins): the startup predicates then read what the entries state, and under
+        // any other reader the records of the level are out of reach of startup (SPEC-025 HOP-125).
+        services.TryAddSingleton(provider => new HopModeSettings(
+            provider.GetRequiredService<IConfigurationResolver>(),
+            provider.GetRequiredService<ConfigBindingView>(),
+            provider.GetServices<CoreChannelDeclaration>(),
+            configuration,
+            provider.GetKeyedService<IConfigRecordReader<ConfigNode>>(ConfigLevel.Application) is ClientConfigNodeReader
+                ? provider.GetRequiredService<EffectiveClientEntries>()
+                : null));
+
+        // The one codec of hop tokens (SPEC-025 HOP-034): a protected binary payload over the host's
+        // Data Protection key ring, which is why the provider comes from the host, as it does for the
+        // protector of identity-match expectations.
+        services.TryAddSingleton<HopTokenCodec>();
+
+        // The one answer to the hop mode of a channel for an act: the settings of a channel that starts by
+        // a link, the declaration of a channel whose link carries no transaction. Scoped: the declaration
+        // is read off the channel adapters, whose lifetime a host may narrow to the request.
+        services.TryAddScoped<HopChannelModes>();
+
+        // The one answer to whether the unified hop QR code applies and the channel set it is judged by
+        // (SPEC-025 HOP-182), for every consumer. Scoped: it selects the set over the channel adapters,
+        // whose lifetime a host may narrow to the request.
+        services.TryAddScoped<HopUnifiedMode>();
+
+        // The one step that turns a channel's deep link into the content of its QR code (SPEC-025
+        // HOP-010) and issues the unified hop URL (HOP-183), shared by both projections of a QR code.
+        // Scoped: it asks the unified mode above whether the unified QR code applies.
+        services.TryAddScoped<HopQrContent>();
+
+        // The unified hop QR code of the sign-in window and the channel choice page of a confirmation
+        // (SPEC-025 HOP-183, HOP-187): the one decision and the one picture for both. Scoped: it issues
+        // through the step above.
+        services.TryAddScoped<HopUnifiedPageQr>();
+
+        // The replacement of the hop QR codes of a page before their tokens expire, behind the method of the
+        // authentication hub (SPEC-025 HOP-152). Scoped: it issues through the step above.
+        services.TryAddScoped<HopQrReissue>();
+
+        // The check of a presented hop token and the record of its refusals (SPEC-025 HOP-074, HOP-114),
+        // shared by every method of the resolve route. Scoped: they read the transaction service and the
+        // channel adapters, whose lifetime a host may narrow to the request.
+        services.TryAddScoped<HopPresentationCheck>();
+        services.TryAddScoped<HopRefusalJournal>();
+
+        // The pages the resolve endpoint answers with. Scoped: the branding resolver they read declares the
+        // external resources of the request it serves.
+        services.TryAddScoped<HopResolvePages>();
+
+        // The observations of a person's presentation (SPEC-025 §7.2 steps 4–5): the collector of the
+        // scanning-device context over the reading of the request shared with the initiator context
+        // (HOP-084), the one publisher of the intermediate statuses of the hop family (HOP-100) and the
+        // browser mark that tells a person's own reopening of the link from one elsewhere (SPEC-041 L93),
+        // all stateless. The steps themselves are scoped: they write through the transaction store, whose
+        // lifetime a host may narrow to the request.
+        services.TryAddSingleton<ScannerContextCollector>();
+        services.TryAddSingleton<HopChannelStatusPublisher>();
+        services.TryAddSingleton<HopBrowserMark>();
+        services.TryAddScoped<HopObservationSteps>();
+
+        // The observation of a superseded hop token on a person's presentation (SPEC-025 HOP-155): a log
+        // entry that decides nothing. Stateless.
+        services.TryAddSingleton<HopSupersededObservation>();
+
+        // The receiver of client signals of the launch page (SPEC-025 HOP-066b, HOP-190). Scoped: it reads
+        // through the check of the route and writes through the transaction store, whose lifetime a host may
+        // narrow to the request.
+        services.TryAddScoped<HopSignalReceiver>();
+
+        // What the reading of the hop settings cannot repair stops the host (SPEC-025 HOP-123). The
+        // validator judges the core-level facts of that reading and the per-channel values of the
+        // configuration the options are bound from; it does not read the bound options back, so asking
+        // it about them cannot recurse into their own validation.
+        services.AddSingleton<IValidateOptions<HopModeOptions>>(provider => new HopModeOptionsValidator(
+            provider.GetRequiredService<HopModeSettings>(),
+            provider.GetServices<CoreChannelDeclaration>(),
+            configuration));
 
         // Every key of the auth server is stated as a chain and enters the schema of the deployment
         // through the registrar of the catalogs below, which declares it and binds every level of it in
@@ -222,9 +326,18 @@ internal static class VeriqaConfigurationExtensions
         // still seen.
         services.AddVeriqaConfigKeyCatalogs(configuration, [.. VeriqaConfigKeyCatalogs.All]);
 
+        // The core level of the claims catalog (SPEC-041 C30) has no path the registrar above could bind:
+        // it is the catalog of the Veriqa:ScopesClaims section as bound, read by a getter over the section
+        // bound on its own above — the same text the startup validation of the root judged.
+        services.AddVeriqaConfigKeys<ScopesClaimsCoreConfigKeys>();
+
         // The consumer-side gathering point of the page settings: the sign-in page resolves each of its
         // level-owned values through it, once per request.
         services.TryAddSingleton<AuthPageSettingsResolver>();
+
+        // The one reading of the configured claim levels (SPEC-041 C30, L40): the writer of the requirements
+        // of a transaction and the startup report on an unobtainable phone number read the levels here.
+        services.TryAddSingleton<ClaimRequirementSettings>();
 
         return services;
     }

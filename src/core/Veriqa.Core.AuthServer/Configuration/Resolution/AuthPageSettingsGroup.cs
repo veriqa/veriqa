@@ -15,6 +15,10 @@ namespace Veriqa.Core.AuthServer.Configuration.Resolution;
 /// <param name="Design">Effective design of the page.</param>
 /// <param name="Title">Page title stated by an owning level; null — the renderer's localized default.</param>
 /// <param name="Instruction">Page instruction stated by an owning level; null — the renderer's localized default.</param>
+/// <param name="InstructionWithoutQr">Wording of the stated instruction for a page that hides the QR code;
+/// null — <paramref name="Instruction"/>.</param>
+/// <param name="InstructionWithoutButton">Wording of the stated instruction for a page that shows the QR
+/// code and hides the channel buttons; null — <paramref name="Instruction"/>.</param>
 /// <param name="Channels">Channel codes stated by an owning level; null — the global display set.</param>
 /// <param name="ChannelDisplayMode">Effective channel display mode: the mode of the <c>ui_config</c>
 /// record where it states one, otherwise the global mode of the core level. It stays nullable because
@@ -23,15 +27,60 @@ namespace Veriqa.Core.AuthServer.Configuration.Resolution;
 /// <param name="DefaultTimeZone">Time zone stated by an owning level for the moments of this
 /// transaction's messages; null — no level states one and the moments stay in UTC.</param>
 /// <param name="QrVisibility">Effective QR visibility of the page.</param>
+/// <param name="CancelEnabled">Whether the cancel button is offered — on the sign-in window and on the
+/// entry page of a confirmation. The scanner page of either type renders no such button whatever the
+/// value.</param>
+/// <param name="StatedChannelButtonVisibility">Visibility of the channel button AS THE LEVELS STATE IT.
+/// It is what the consistency rule of the group reads; a page is rendered with
+/// <see cref="AuthPageSettings.EffectiveChannelButtonVisibility"/> instead.</param>
+/// <param name="ChannelLayout">Layout of the channels where the page shows the QR code of each of
+/// them: behind tabs or all at once. Whether a given page has anything to arrange — several channels,
+/// QR codes of their own — is the renderer's to tell, not the aggregate's.</param>
 internal sealed record AuthPageSettings(
     AuthPageDesignOptions Design,
     string? Title,
     string? Instruction,
+    string? InstructionWithoutQr,
+    string? InstructionWithoutButton,
     IReadOnlyList<string>? Channels,
     ChannelDisplayMode? ChannelDisplayMode,
     int? TtlSeconds,
     string? DefaultTimeZone,
-    QrCodeVisibility QrVisibility);
+    QrCodeVisibility QrVisibility,
+    bool CancelEnabled,
+    ChannelButtonVisibility StatedChannelButtonVisibility,
+    ChannelLayout ChannelLayout)
+{
+    /// <summary>
+    /// Whether the stated pair of visibilities leaves a class of devices with NO way into a channel —
+    /// neither the QR code nor the channel button. The QR code is absent on a phone under
+    /// <see cref="QrCodeVisibility.DesktopOnly"/> and everywhere under <see cref="QrCodeVisibility.Never"/>;
+    /// the button is absent off a phone under <see cref="ChannelButtonVisibility.MobileOnly"/> and
+    /// everywhere under <see cref="ChannelButtonVisibility.Never"/>. Which channels the page carries is
+    /// not looked at: the relation is one between the two settings.
+    /// <para>
+    /// This is the ONE statement of the combinations: the consistency rule of the group reports by it,
+    /// and <see cref="EffectiveChannelButtonVisibility"/> is derived from it.
+    /// </para>
+    /// </summary>
+    public bool LeavesDeviceWithoutEntry => QrVisibility switch
+    {
+        QrCodeVisibility.DesktopOnly => StatedChannelButtonVisibility is ChannelButtonVisibility.Never,
+        QrCodeVisibility.Never => StatedChannelButtonVisibility is not ChannelButtonVisibility.Always,
+        _ => false
+    };
+
+    /// <summary>
+    /// Visibility of the channel button the page is rendered with: the stated one, except where the
+    /// stated pair leaves a device with no way in (<see cref="LeavesDeviceWithoutEntry"/>) — there the
+    /// button is shown on every device. It is computed here, over the stated value the aggregate keeps,
+    /// so that the rule of the group still sees the conflict it reports, and both builders of the page
+    /// context read one answer.
+    /// </summary>
+    public ChannelButtonVisibility EffectiveChannelButtonVisibility => LeavesDeviceWithoutEntry
+        ? ChannelButtonVisibility.Always
+        : StatedChannelButtonVisibility;
+}
 
 /// <summary>
 /// The sign-in page as a DOMAIN GROUP of the configuration mechanism (SPEC-012 §10.6, CFG-231): the
@@ -59,7 +108,7 @@ internal static class AuthPageSettingsGroup
     /// The sign-in page group: what the page's settings are made of.
     /// </summary>
     public static ConfigKeyGroup<AuthPageSettings> Group { get; } =
-        ConfigKeyGroup<AuthPageSettings>.Of(GroupName, AssembleAsync, CheckThemedBranding);
+        ConfigKeyGroup<AuthPageSettings>.Of(GroupName, AssembleAsync, CheckConsistency);
 
     /// <summary>
     /// Fills the settings of the page from the resolved values of its keys.
@@ -79,7 +128,7 @@ internal static class AuthPageSettingsGroup
         var design = new AuthPageDesignOptions
         {
             Preset = await resolution.ValueOfAsync(CorePageBrandingConfigKeys.Preset),
-            Theme = await resolution.ValueOfAsync(AuthServerConfigKeys.PageTheme),
+            Theme = await resolution.ValueOfAsync(CorePageBrandingConfigKeys.Theme),
 
             // The logo and the primary color are cut by theme, and the page mode Auto leaves the choice
             // of the theme to the browser — so both themes are resolved rather than one: at Auto the
@@ -97,14 +146,15 @@ internal static class AuthPageSettingsGroup
 
             // The brand name stands beside the logo but is asked for on its own: it is a text, cut by no
             // theme, and the page reads the two values apart (a level may state one of them alone).
-            BrandName = await resolution.ValueOfAsync(AuthServerConfigKeys.PageBrandName),
+            BrandName = await resolution.ValueOfAsync(CorePageBrandingConfigKeys.BrandName),
 
             CustomCssPath = customCss?.Path,
             CustomJsPath = customJs?.Path,
             CssSriHash = customCss?.SriHash,
             JsSriHash = customJs?.SriHash,
             SignalRClientPath = await resolution.ValueOfAsync(AuthServerConfigKeys.PageSignalRClientPath),
-            FooterHtml = await resolution.ValueOfAsync(AuthServerConfigKeys.PageFooterHtml)
+            FooterHtml = await resolution.ValueOfAsync(AuthServerConfigKeys.PageFooterHtml),
+            HopInstructionHtml = await resolution.ValueOfAsync(AuthServerConfigKeys.PageHopInstructionHtml)
 
             // The QR group of the effective design carries NEITHER of the two settings of the section
             // any more. The pixel scale is not a page-wide value: the channel is a dimension of its
@@ -118,19 +168,71 @@ internal static class AuthPageSettingsGroup
             design,
             await resolution.ValueOfAsync(AuthServerConfigKeys.PageTitle),
             await resolution.ValueOfAsync(AuthServerConfigKeys.PageInstruction),
+            await resolution.ValueOfAsync(AuthServerConfigKeys.PageInstructionWithoutQr),
+            await resolution.ValueOfAsync(AuthServerConfigKeys.PageInstructionWithoutButton),
             await resolution.ValueOfAsync(AuthServerConfigKeys.PageChannels),
             await resolution.OptionalValueOfAsync(AuthServerConfigKeys.PageChannelDisplayMode),
             await resolution.OptionalValueOfAsync(AuthServerConfigKeys.TransactionTtlSeconds),
             await resolution.ValueOfAsync(AuthServerConfigKeys.DefaultTimeZone),
-            qrVisibility);
+            qrVisibility,
+            await resolution.ValueOfAsync(AuthServerConfigKeys.CancelEnabled),
+
+            // The visibility of the channel button lands here AS STATED, conflict with the QR
+            // visibility included: replacing it at this point would hide the conflict from the rule
+            // that reports it.
+            await resolution.ValueOfAsync(AuthServerConfigKeys.ChannelButtonShowChannelButton),
+            await resolution.ValueOfAsync(AuthServerConfigKeys.PageChannelLayout));
     }
 
     /// <summary>
-    /// Consistency rule of the group: a page pinned to ONE theme must not be left without the branding
+    /// Consistency rule of the group — every check of a relation between the page's keys, reported as
+    /// one reason. A group has a single rule, and the checks are independent of each other, so a
+    /// combination that fails several of them names all of them rather than the first.
+    /// </summary>
+    /// <param name="settings">Filled settings of the page.</param>
+    /// <returns>Reasons the combination is inconsistent, or null.</returns>
+    private static string? CheckConsistency(AuthPageSettings settings)
+    {
+        string?[] reasons = [CheckThemedBranding(settings), CheckChannelEntry(settings)];
+
+        var violated = reasons.Where(static reason => reason is not null).ToList();
+
+        return violated.Count == 0 ? null : string.Join(" ", violated);
+    }
+
+    /// <summary>
+    /// Check of the two visibilities of the page: every class of devices must be left with a way into
+    /// a channel — the QR code or the channel button
+    /// (<see cref="AuthPageSettings.LeavesDeviceWithoutEntry"/>).
+    /// <para>
+    /// Each of the two keys is valid on its own, and each may come from a level of its own — a client
+    /// entry that hides the buttons over a global section that hides the QR code. The page is not
+    /// refused over it: it is rendered with the button on every device
+    /// (<see cref="AuthPageSettings.EffectiveChannelButtonVisibility"/>), and the reason names both
+    /// stated values, since either of them may be the one to correct.
+    /// </para>
+    /// </summary>
+    /// <param name="settings">Filled settings of the page.</param>
+    /// <returns>Reason the combination is inconsistent, or null.</returns>
+    private static string? CheckChannelEntry(AuthPageSettings settings)
+    {
+        if (!settings.LeavesDeviceWithoutEntry)
+        {
+            return null;
+        }
+
+        return $"'{AuthServerConfigKeys.QrCodeShowQrCode.Name}' is '{settings.QrVisibility}' while "
+            + $"'{AuthServerConfigKeys.ChannelButtonShowChannelButton.Name}' is "
+            + $"'{settings.StatedChannelButtonVisibility}': a device is left with neither the QR code nor the "
+            + $"channel button, so the page shows the button as '{settings.EffectiveChannelButtonVisibility}'.";
+    }
+
+    /// <summary>
+    /// Check of the themed branding: a page pinned to ONE theme must not be left without the branding
     /// values stated for the neighbouring theme alone.
     /// <para>
     /// This is a relation BETWEEN keys and therefore cannot live on any of them: the theme is one key
-    /// (<see cref="AuthServerConfigKeys.PageTheme"/>) and the themed branding is two others, each of
+    /// (<see cref="CorePageBrandingConfigKeys.Theme"/>) and the themed branding is two others, each of
     /// them perfectly valid on its own. The combination is what renders a page with no logo and no
     /// accent color while the deployment did configure both — silently, because a chain that ends
     /// without a value is the ordinary "no override" answer.

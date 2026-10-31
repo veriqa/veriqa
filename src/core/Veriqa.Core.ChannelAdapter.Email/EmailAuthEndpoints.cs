@@ -1,8 +1,9 @@
 ﻿// Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Net.Mail;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.Text.Json.Serialization;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -12,9 +13,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Veriqa.Core.ChannelAdapter.Abstractions;
+using Veriqa.Core.ChannelAdapter.ClaimCompletion;
 using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.ChannelAdapter.Email.Abstractions;
+using Veriqa.Core.ChannelAdapter.Email.ClaimCompletion;
 using Veriqa.Core.ChannelAdapter.Email.Configuration;
 using Veriqa.Core.ChannelAdapter.Email.Constants;
 using Veriqa.Core.ChannelAdapter.Email.Domain;
@@ -25,12 +28,12 @@ using Veriqa.Core.ChannelAdapter.Pipeline;
 using Veriqa.Core.ChannelAdapter.UI;
 using Veriqa.Core.Contracts;
 using Veriqa.Core.Configuration;
+using Veriqa.Core.TransactionEngine.Common;
 using Veriqa.Core.TransactionEngine.Domain;
 using Veriqa.Core.TransactionEngine.Events;
 using Veriqa.Core.TransactionEngine.Identity;
 using Veriqa.Core.TransactionEngine.MessageTemplates;
 using Veriqa.Core.TransactionEngine.Services;
-using Veriqa.Core.TransactionEngine.Store;
 
 namespace Veriqa.Core.ChannelAdapter.Email;
 
@@ -39,10 +42,12 @@ namespace Veriqa.Core.ChannelAdapter.Email;
 /// Registers:
 /// <list type="bullet">
 ///   <item><description>GET  /auth/email/start — standalone pull form page (enter email → magic link).</description></item>
-///   <item><description>POST /auth/email/start — accepts the email from the user, generates and sends the magic link.</description></item>
+///   <item><description>POST /auth/email/start — accepts the email from the user, generates and sends the sign-in mail (link, code or both).</description></item>
+///   <item><description>POST /auth/email/code — accepts the code of a sign-in mail and decides its letter as its link would.</description></item>
 ///   <item><description>GET  /auth/email/confirm — magic link confirmation page (does not change state).</description></item>
 ///   <item><description>POST /auth/email/confirm — actual transaction confirmation.</description></item>
-///   <item><description>GET  /auth/email/push/compose — compose-helper page of Push mode (mailto + "Sign in via email link" link).</description></item>
+///   <item><description>GET  /auth/email/claim — page of a link of the claims-completion mail (does not change state).</description></item>
+///   <item><description>POST /auth/email/claim — confirmation of the address that link was sent to.</description></item>
 ///   <item><description>POST /api/channels/email/inbound — accepts an incoming email from the inbound provider.</description></item>
 ///   <item><description>POST /api/channels/email/inbound/{tenant} — the same, with the tenant stated by the route segment (tenant demux).</description></item>
 /// </list>
@@ -73,18 +78,24 @@ public static partial class EmailAuthEndpoints
             startEndpoint.RequireRateLimiting(rateLimitPolicyName);
         }
 
+        // The entry of the code of a sign-in mail is limited as the start is: its attempts are counted per
+        // code, and the policy keeps a client from walking codes across transactions.
+        var codeEndpoint = endpoints.MapPost(EmailAdapterConstants.PullCodePath, (Delegate)HandleEmailCodeAsync);
+        if (!string.IsNullOrEmpty(rateLimitPolicyName))
+        {
+            codeEndpoint.RequireRateLimiting(rateLimitPolicyName);
+        }
+
         endpoints.MapGet(EmailAdapterConstants.PullConfirmPath, (Delegate)HandleEmailConfirmGetAsync);
         endpoints.MapPost(EmailAdapterConstants.PullConfirmPath, (Delegate)HandleEmailConfirmPostEndpointAsync);
 
-        // Push mode: compose-helper page (with rate limiting, as it is user-facing) and inbound webhook.
-        // The inbound webhook is NOT limited by the user-facing rate limiting policy —
-        // it is called by the inbound provider and is protected by a secret header.
-        var composeEndpoint = endpoints.MapGet(EmailAdapterConstants.PushComposePath, (Delegate)HandleEmailPushComposeAsync);
-        if (!string.IsNullOrEmpty(rateLimitPolicyName))
-        {
-            composeEndpoint.RequireRateLimiting(rateLimitPolicyName);
-        }
+        // The page a link of the claims-completion mail opens (SPEC-041 L50) — mapped as the magic-link page
+        // is: its token is a secret of the link, not something a request rate would guess.
+        endpoints.MapGet(EmailAdapterConstants.ClaimEmailConfirmPath, (Delegate)HandleClaimLinkGetAsync);
+        endpoints.MapPost(EmailAdapterConstants.ClaimEmailConfirmPath, (Delegate)HandleClaimLinkPostAsync);
 
+        // Push mode: the inbound webhook. It is NOT limited by the user-facing rate limiting policy —
+        // it is called by the inbound provider and is protected by a secret header.
         // The inbound route is mapped twice from ONE call: the base path (default tenant, behaviour
         // unchanged) and the path with the optional {tenant} segment — the tenant demux every channel
         // webhook route of the product goes through (CA-167/CA-168). The mapping and the extraction
@@ -144,8 +155,29 @@ public static partial class EmailAuthEndpoints
     }
 
     /// <summary>
+    /// Kind of the mail counter that holds two sign-in mails of one transaction apart. A kind of its own:
+    /// the mails of the claims completion are counted under other kinds, so neither holds the other back.
+    /// </summary>
+    private const string SignInIntervalCounterKind = "signin-interval";
+
+    /// <summary>
+    /// The interval between two mails as the whole seconds a client is told to wait: rounded up, so the
+    /// figure is never shorter than what is left of the interval and is the interval itself whenever that
+    /// is a whole number of seconds. Zero — the interval is switched off.
+    /// </summary>
+    /// <param name="interval">Interval between two mails (<see cref="EmailOptions.MailResendInterval"/>).</param>
+    /// <returns>Seconds to wait.</returns>
+    private static int ResendIntervalSeconds(TimeSpan interval) =>
+        interval <= TimeSpan.Zero
+            ? 0
+            : (int)Math.Min(int.MaxValue, Math.Ceiling(interval.TotalSeconds));
+
+    /// <summary>
     /// Handles the Pull flow start request:
-    /// accepts email and session_id, generates an action token, sends the magic link.
+    /// accepts email and session_id, generates an action token and sends one sign-in mail — the magic link,
+    /// a code, or both, as the pull methods of the transaction say (<see cref="EmailConfigKeys.PullMethods"/>).
+    /// A second mail for the same transaction is not sent sooner than
+    /// <see cref="EmailOptions.MailResendInterval"/> after the first: the request is refused with 429.
     /// </summary>
     private static async Task<IResult> HandleEmailStartAsync(HttpContext httpContext)
     {
@@ -173,18 +205,10 @@ public static partial class EmailAuthEndpoints
         }
         else if (httpContext.Request.ContentType?.Contains("application/json", StringComparison.OrdinalIgnoreCase) is true)
         {
-            using var body = await System.Text.Json.JsonDocument.ParseAsync(
-                httpContext.Request.Body, cancellationToken: cancellationToken);
+            var body = await ReadJsonBodyAsync(httpContext.Request, cancellationToken);
 
-            rawEmail = body.RootElement.TryGetProperty(EmailStartFormFields.Email, out var emailEl)
-                && emailEl.ValueKind is System.Text.Json.JsonValueKind.String
-                ? emailEl.GetString()
-                : null;
-
-            sessionId = body.RootElement.TryGetProperty(EmailAdapterConstants.SessionIdQueryParam, out var sidEl)
-                && sidEl.ValueKind is System.Text.Json.JsonValueKind.String
-                ? sidEl.GetString()
-                : null;
+            rawEmail = JsonStringOf(body, EmailStartFormFields.Email);
+            sessionId = JsonStringOf(body, EmailAdapterConstants.SessionIdQueryParam);
         }
         else
         {
@@ -193,8 +217,11 @@ public static partial class EmailAuthEndpoints
                 statusCode: StatusCodes.Status415UnsupportedMediaType);
         }
 
-        // Validate the email
-        if (string.IsNullOrWhiteSpace(rawEmail) || !IsValidEmail(rawEmail))
+        // Only a bare address (addr-spec) is taken — the rule the email block of the web step applies to an
+        // entered address (SPEC-041 N70). A display name, angle brackets or a domain literal is refused
+        // rather than reduced to a mailbox: the address becomes the recipient of the link and the
+        // identity the sign-in ends with.
+        if (string.IsNullOrWhiteSpace(rawEmail) || ClaimEmailAddress.TakeBare(rawEmail) is not { } bareEmail)
         {
             return Results.Json(
                 new { success = false, error = ResolveServedText(pageLocalizer, EmailAdapterMailStrings.ApiErrorInvalidEmail, servedLocale) },
@@ -219,8 +246,10 @@ public static partial class EmailAuthEndpoints
         }
 
         // Check the Email adapter configuration.
-        // Enabled — the channels_enabled axis (SPEC-003 §17.7, CA-169/CA-170), PullEnabled and
-        // Normalization — core-transport (CFG-230): both stay global by ownership, not by omission.
+        // Enabled — the channels_enabled axis (SPEC-003 §17.7, CA-169/CA-170), Normalization —
+        // core-transport (CFG-230): both stay global by ownership, not by omission. PullEnabled is the
+        // ceiling of the core level; the choice of the tenant and the application within it is judged
+        // below, once the transaction that names them is read.
         // The read goes through the adapter's guarded entry point, which turns an unreadable section
         // into the channel-unavailable answer instead of an exception (see TryReadEmailOptions).
         var emailOptions = TryReadEmailOptions(services, logger, transactionId);
@@ -270,7 +299,7 @@ public static partial class EmailAuthEndpoints
             normalization = emailOptions.Normalization;
         }
 
-        var normalizedEmail = EmailAddressHelper.Normalize(rawEmail, normalization);
+        var normalizedEmail = EmailAddressHelper.Normalize(bareEmail, normalization);
 
         // Check that the transaction exists
         var transactionService = services.GetRequiredService<ITransactionService>();
@@ -294,6 +323,22 @@ public static partial class EmailAuthEndpoints
         // that states no tenant opens it for the default implicit one, which is the self-hosted N=1
         // behaviour unchanged.
         using var tenantScope = ChannelTenantContext.BeginScope(transaction.GetTenantId());
+
+        // The guard above is the ceiling of the core level; the choice of the sign-in modes belongs to the
+        // tenant and the application of THIS transaction, so it is judged once the transaction is read and
+        // before its state is. Pull left out by the choice is answered as Pull switched off in the core.
+        var signInModes = await services.GetRequiredService<IEmailSignInModes>()
+            .ResolveAsync(TransactionResolutionContext.For(transaction), cancellationToken);
+        if (!signInModes.Pull)
+        {
+            logger.LogWarning(
+                "Email Pull flow requested but Pull mode is not offered to the transaction by its sign-in modes. "
+                + "TransactionId: {TransactionId}",
+                transactionId);
+            return Results.Json(
+                new { success = false, error = ResolveServedText(pageLocalizer, EmailAdapterMailStrings.ApiErrorChannelUnavailable, servedLocale) },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
 
         // Check that the transaction is in the Pending state
         if (transaction.State is not TransactionState.Pending)
@@ -337,12 +382,64 @@ public static partial class EmailAuthEndpoints
 
         var credentials = credentialsResult.Value;
 
-        // Generate an action token (the adapter's shared URL-safe token generator)
-        var token = GenerateUrlSafeToken();
+        // The interval between two sign-in mails of one transaction. The mail is reserved before a token
+        // is issued and before anything is sent — a refused request leaves no token behind — by the
+        // mechanism that counts the mails of the claims completion: a counter of one mail whose window
+        // is the interval itself. The key is the transaction, not the address, so another address typed
+        // within the interval is refused the same way. The figure handed to the client is the whole
+        // interval: the store does not tell what is left of the window, and the interval is the least
+        // number that is never short of it.
+        var resendInterval = emailOptions.MailResendInterval;
+        var retryAfterSeconds = ResendIntervalSeconds(resendInterval);
+
+        if (EmailClaimMailCounter.OfResendInterval(SignInIntervalCounterKind, transaction.Id, resendInterval) is { } intervalCounter)
+        {
+            var mailCounters = services.GetRequiredService<IEmailClaimCompletionStore>();
+            var refusedBy = await mailCounters.TryReserveMailAsync([intervalCounter], cancellationToken);
+
+            if (refusedBy is not null)
+            {
+                httpContext.Response.Headers.RetryAfter =
+                    retryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                return Results.Json(
+                    new
+                    {
+                        success = false,
+                        error = ResolveServedText(pageLocalizer, EmailAdapterMailStrings.ApiErrorResendTooSoon, servedLocale),
+                        retryAfterSeconds
+                    },
+                    statusCode: StatusCodes.Status429TooManyRequests);
+            }
+        }
+
+        // Generate an action token (the adapter's shared URL-safe token generator). Every sign-in mail has
+        // one, the mail of a code alone too, where it is not shown: the token identifies the letter to the gate
+        // of a sign-in (SPEC-016 EM-208), so the code and the link of one mail are one letter.
+        var token = EmailPushTokenGenerator.GenerateUrlSafeToken();
 
         // TokenTtl — tenant level with the core default as fallback (SPEC-003 §17.3, CFG-220 semantics)
         var tokenExpiresAt = services.GetRequiredService<TimeProvider>().GetUtcNow().Add(
             EmailCredentialsResolver.ResolveTokenTtl(credentials, emailOptions.TokenTtl));
+
+        // The code of a sign-in mail follows the norms of the code of the claims completion (SPEC-041 R12):
+        // six digits from the cryptographic generator, kept only as a fingerprint bound to the transaction, and
+        // alive no longer than the transaction is. The code and the link of one mail share that lifetime — the
+        // moment the mail names as "valid until".
+        var code = signInModes.PullCarriesCode ? EmailClaimSecrets.GenerateCode() : null;
+        var codeAttempts = 0;
+
+        if (code is not null)
+        {
+            tokenExpiresAt = EmailClaimCompletion.EarlierOf(tokenExpiresAt, transaction.ExpiresAt);
+
+            using var attemptsScope = new ConfigResolutionScope(TransactionResolutionContext.For(transaction));
+            codeAttempts = (await configurationResolver.ResolveAsync(
+                EmailConfigKeys.SignInCodeAttempts,
+                attemptsScope,
+                ConfigDimensionValues.None,
+                cancellationToken)).Value;
+        }
 
         // Store the token in the store
         var tokenStore = services.GetRequiredService<IEmailActionTokenStore>();
@@ -357,8 +454,10 @@ public static partial class EmailAuthEndpoints
         var sender = services.GetRequiredService<IEmailOutboundSender>();
 
         // The client application name in the email (SPEC-017, ICC-010): DisplayName from the
-        // transaction initiator context; fallback — the product name if context capture is disabled
+        // transaction initiator context, else the one the transaction took at creation; fallback — the
+        // product name
         var clientName = transaction.InitiatorContextSnapshot?.ClientApplicationName
+            ?? transaction.GetApplicationName()
             ?? EmailAdapterConfigDefaults.DefaultClientName;
 
         // Recipient locale for the email = the language of the request that started the Pull flow
@@ -382,15 +481,19 @@ public static partial class EmailAuthEndpoints
         // context without details leaves them unfilled. The detected locale is handed to the factory,
         // which puts it on the context — the single carrier from there on.
         var promptContextFactory = services.GetRequiredService<IConfirmationPromptContextFactory>();
+        // The mail is a text of the channel itself and names no account, whatever the type of the
+        // transaction: no snapshot of the mailbox exists before the link is opened, and a snapshot the
+        // transaction may already carry need not be of the address the mail goes to — that address is
+        // whatever the holder of the window typed, so the mail may not name that account either.
         var promptContext = await promptContextFactory.CreateAsync(
             transaction,
-            ChannelTypes.Email,
-            normalizedEmail,
+            new ConfirmationPromptRecipient(ChannelTypes.Email, normalizedEmail, Identity: null),
             recipientLocale,
+            MessageSurfaces.InChannel,
             cancellationToken);
 
         var message = new EmailLoginMessage(
-            ToAddress: rawEmail.Trim(),
+            ToAddress: bareEmail,
             ClientName: clientName,
             ActionToken: token,
             ExpiresAt: tokenExpiresAt,
@@ -402,15 +505,19 @@ public static partial class EmailAuthEndpoints
             // resolved at (SPEC-036 TPL-116).
             Ownership = promptContext.Ownership,
             InitiatorContext = promptContext,
-            TimeZone = recipientTimeZone
+            TimeZone = recipientTimeZone,
+            TransactionType = transaction.Type,
+            Code = code,
+            CarriesLink = signInModes.PullCarriesLink
         };
 
         var sendResult = await sender.SendLoginEmailAsync(message, cancellationToken);
 
         if (!sendResult.Success)
         {
+            // The code of this mail is not written: a code sent before stays live, as in the claims completion.
             logger.LogError(
-                "Failed to send the magic link email. TransactionId: {TransactionId}, ErrorCode: {ErrorCode}",
+                "Failed to send the sign-in email. TransactionId: {TransactionId}, ErrorCode: {ErrorCode}",
                 transactionId,
                 sendResult.ErrorCode);
 
@@ -419,14 +526,41 @@ public static partial class EmailAuthEndpoints
                 statusCode: StatusCodes.Status500InternalServerError);
         }
 
+        // The new code takes effect only now that its mail is out, and the code before it no longer does;
+        // until this write the one before it is the live one. CancellationToken.None: the mail has gone, and a
+        // request that goes away must not leave the recipient with a code nothing accepts. A write that fails
+        // fails the request although the mail has gone, as the claims completion answers the same failure:
+        // the page says the mail was not sent, the code of that mail is not accepted, and the next mail's is.
+        if (code is not null)
+        {
+            var codeTransactionId = transactionId.Value.ToString();
+
+            await services.GetRequiredService<IEmailClaimCompletionStore>().SetSignInCodeAsync(
+                codeTransactionId,
+                new EmailSignInCode(
+                    EmailClaimSecrets.HashOfCode(codeTransactionId, code),
+                    token,
+                    tokenExpiresAt,
+                    codeAttempts),
+                transaction.ExpiresAt,
+                CancellationToken.None);
+        }
+
         // Publish the email-specific intermediate "sent" status (SPEC-016 §10.1) —
         // additively, without changing the transaction lifecycle state
         await PublishEmailChannelStatusAsync(
             services, transactionId.Value, EmailChannelStatuses.PullSent, logger);
 
-        var maskedEmail = EmailAddressHelper.Mask(normalizedEmail);
+        var maskedEmail = ChannelIdentityMask.MaskEmail(normalizedEmail);
 
-        return Results.Json(new { success = true, maskedEmail });
+        // The answer names the wait before the next mail, so the page can hold its "send again" button
+        // for exactly as long as the server would refuse; zero — the interval is switched off. It says whether
+        // the mail carries a code, so the page asks for it.
+        return Results.Json(new EmailStartAccepted(
+            Success: true,
+            MaskedEmail: maskedEmail,
+            RetryAfterSeconds: retryAfterSeconds,
+            CodeExpected: code is not null));
     }
 
     /// <summary>
@@ -505,114 +639,234 @@ public static partial class EmailAuthEndpoints
     }
 
     /// <summary>
-    /// Renders the magic link confirmation page (GET — does not change transaction state).
-    /// When the effective confirmation surface is <see cref="ConfirmationSurface.None"/>
-    /// (SPEC-012 §4.4.2), it automatically completes the transaction when the link
-    /// is followed, without an additional user action (fast link).
+    /// Reads the action token of the request; a request without one names no letter.
+    /// </summary>
+    /// <param name="services">The request service provider.</param>
+    /// <param name="token">The action token as it arrived in the request.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The data of the token; null — no token, or one the store does not know.</returns>
+    private static async Task<EmailActionToken?> ReadActionTokenAsync(
+        IServiceProvider services,
+        string? token,
+        CancellationToken cancellationToken) =>
+        string.IsNullOrWhiteSpace(token)
+            ? null
+            : await services.GetRequiredService<IEmailActionTokenStore>().GetTokenAsync(token, cancellationToken);
+
+    /// <summary>
+    /// Reads the one record of the transaction the letter names and what the pages of the letter are rendered
+    /// with (<see cref="EmailLetterPage"/>). A token that names no transaction, and a transaction that cannot be
+    /// read, leave the page without one: the levels that do not depend on it brand it (SPEC-007 UI-090) and
+    /// the request language speaks it.
+    /// </summary>
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="tokenData">The data of the action token; null — the request names no letter.</param>
+    /// <returns>What the pages of this request are rendered from.</returns>
+    private static async Task<EmailLetterPage> ReadLetterPageAsync(HttpContext httpContext, EmailActionToken? tokenData)
+    {
+        var services = httpContext.RequestServices;
+        var transaction = await TryLoadTransactionAsync(services, tokenData?.TransactionId, httpContext.RequestAborted);
+
+        // Branded for the transaction the action token names (SPEC-007 UI-101), and spoken in the language
+        // the sign-in page of that transaction was rendered in rather than in the language of the mail
+        // client's browser (see PreferStoredLocale).
+        var (branding, texts) = await ResolvePageCustomizationAsync(
+            services, TransactionResolutionContext.For(transaction), httpContext.RequestAborted);
+        var requestLocale = ChannelRequestLocale.Detect(httpContext.Request.Headers.AcceptLanguage.ToString());
+
+        return new EmailLetterPage(
+            transaction,
+            branding,
+            texts,
+            transaction is null ? requestLocale : PreferStoredLocale(transaction, requestLocale));
+    }
+
+    /// <summary>
+    /// Whether the action token of the request is live — present, known, not used and not past its
+    /// deadline: one reading of the token for the GET and the POST of a sign-in and of a confirmation alike.
+    /// </summary>
+    /// <param name="token">The action token as it arrived in the request.</param>
+    /// <param name="tokenData">The data of the token; null — the store does not know it.</param>
+    /// <param name="now">The server's current moment.</param>
+    /// <returns>true — the token is live; false — the link is answered by its refusal
+    /// (<see cref="TokenRefusalPage"/>).</returns>
+    private static bool IsLiveToken(
+        [NotNullWhen(true)] string? token,
+        [NotNullWhen(true)] EmailActionToken? tokenData,
+        DateTimeOffset now) =>
+        !string.IsNullOrWhiteSpace(token)
+        && tokenData is not null
+        && !tokenData.IsUsed
+        && !tokenData.IsExpired(now);
+
+    /// <summary>
+    /// The refusal of a link whose token is not live (<see cref="IsLiveToken"/>), titled by the type of its
+    /// transaction: an unknown link, a used one, an expired one. The GET answers it with a page and no
+    /// error status, the POST with the status of the refusal.
+    /// </summary>
+    /// <param name="localizer">Localizer of the page texts.</param>
+    /// <param name="letter">What the page is rendered from.</param>
+    /// <param name="tokenData">The data of the token; null — the request names no known token.</param>
+    /// <param name="withErrorStatus">Whether the answer carries the status of the refusal (the POST).</param>
+    /// <returns>The error page.</returns>
+    private static IResult TokenRefusalPage(
+        IConfirmationPromptLocalizer localizer,
+        EmailLetterPage letter,
+        EmailActionToken? tokenData,
+        bool withErrorStatus) =>
+        // One reading of the token state: each arm pairs the text of the refusal with its status. The key is
+        // passed as a constant in each arm, so the locale audit sees every one of them.
+        tokenData switch
+        {
+            null => LetterErrorPage(
+                localizer, letter, EmailAdapterMailStrings.ConfirmPageTokenNotFound,
+                withErrorStatus ? StatusCodes.Status400BadRequest : StatusCodes.Status200OK),
+            { IsUsed: true } => LetterErrorPage(
+                localizer, letter, EmailAdapterMailStrings.ConfirmPageTokenUsed,
+                withErrorStatus ? StatusCodes.Status409Conflict : StatusCodes.Status200OK),
+            _ => LetterErrorPage(
+                localizer, letter, EmailAdapterMailStrings.ConfirmPageTokenExpired,
+                withErrorStatus ? StatusCodes.Status410Gone : StatusCodes.Status200OK)
+        };
+
+    /// <summary>
+    /// The error page of a letter: titled as the request of its transaction is — a confirmation as one,
+    /// because the sign-in title would name a sign-in the user was not asked for.
+    /// </summary>
+    /// <param name="localizer">Localizer of the page texts.</param>
+    /// <param name="letter">What the page is rendered from.</param>
+    /// <param name="errorKey">The error text (a Natural Key).</param>
+    /// <param name="statusCode">The status of the answer.</param>
+    /// <returns>The error page.</returns>
+    private static IResult LetterErrorPage(
+        IConfirmationPromptLocalizer localizer,
+        EmailLetterPage letter,
+        string errorKey,
+        int statusCode) =>
+        Results.Content(
+            BuildConfirmPageHtml(localizer, letter.Locale, letter.Branding, letter.Texts,
+                isError: true,
+                errorMessage: errorKey,
+                isConfirmationLetter: letter.IsConfirmation),
+            "text/html",
+            Encoding.UTF8,
+            statusCode);
+
+    /// <summary>
+    /// The Email channel adapter of the composition; null — it is not registered.
+    /// </summary>
+    /// <param name="services">The service provider of the request or of the mail's scope.</param>
+    /// <returns>The adapter, or null.</returns>
+    private static IChannelAdapter? EmailAdapterOf(IServiceProvider services) =>
+        services.GetRequiredService<IEnumerable<IChannelAdapter>>()
+            .FirstOrDefault(a => string.Equals(a.ChannelType, ChannelTypes.Email, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Renders the magic link confirmation page (GET — does not change transaction state). The link of a
+    /// sign-in and the link of a confirmation transaction get the same request page: it asks nothing, names
+    /// the application and offers the continue button and "Cancel", which only closes the tab; opened by the
+    /// browser that took part in the transaction, it continues by itself (<see cref="EmailLinkSameBrowser"/>).
+    /// Only the words naming the action and what the continue button leads to differ by type: the POST of a
+    /// sign-in attaches the mailbox without completing it — the sign-in window asks the one question of the
+    /// sign-in and decides it — and the POST of a confirmation hands the user over to the core page that asks
+    /// what is being confirmed (<see cref="HandOverConfirmationAsync"/>). When the effective confirmation
+    /// surface of a sign-in is <see cref="ConfirmationSurface.None"/> (SPEC-012 §4.4.2), it automatically
+    /// completes the transaction when the link is followed, without an additional user action (fast link). A
+    /// sign-in that the fast link leaves waiting for missing claims with the form on this device is not spent
+    /// by the GET: the page offers one "Continue" button instead (SPEC-041 N78,
+    /// <see cref="AnswerClaimCompletionAsync"/>).
     /// </summary>
     private static async Task<IResult> HandleEmailConfirmGetAsync(
         HttpContext httpContext,
         string? token)
     {
-        // Served page localization (ICC-050): the confirmation page and its status/error texts render
-        // in the request language (Accept-Language); a missing translation degrades to English (the key).
-        var pageLocalizer = httpContext.RequestServices.GetRequiredService<IConfirmationPromptLocalizer>();
-        var servedLocale = ChannelRequestLocale.Detect(httpContext.Request.Headers.AcceptLanguage.ToString());
+        // Served page localization (ICC-050): the confirmation page and its status/error texts render in the
+        // language of the transaction, else of the request; a missing translation degrades to English (the key).
+        var services = httpContext.RequestServices;
+        var pageLocalizer = services.GetRequiredService<IConfirmationPromptLocalizer>();
+        var tokenData = await ReadActionTokenAsync(services, token, httpContext.RequestAborted);
+        var letter = await ReadLetterPageAsync(httpContext, tokenData);
+        var now = services.GetRequiredService<TimeProvider>().GetUtcNow();
 
-        if (string.IsNullOrWhiteSpace(token))
+        // An unknown, used or expired link is answered by its refusal, titled by the type of its transaction;
+        // the GET answers it with a page and no error status.
+        if (!IsLiveToken(token, tokenData, now))
         {
-            // No token — no transaction to name an ownership context, so the page is branded by the
-            // core level alone (SPEC-007 UI-090).
-            var noTokenBranding = await ResolvePageBrandingAsync(
-                httpContext.RequestServices, transactionIdValue: null, httpContext.RequestAborted);
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, noTokenBranding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenNotFound);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8);
+            return TokenRefusalPage(pageLocalizer, letter, tokenData, withErrorStatus: false);
         }
 
-        var tokenStore = httpContext.RequestServices.GetRequiredService<IEmailActionTokenStore>();
-        var tokenData = await tokenStore.GetTokenAsync(token, httpContext.RequestAborted);
+        // Whether the transaction can still be answered decides only what the page offers beyond the request:
+        // the fast link and the page sending itself. The request page is the same either way, and its button
+        // is answered by the refusal of the write.
+        var live = letter.Transaction is { } stored && !stored.HasRunOutOfTime(now) ? stored : null;
 
-        // The action token carries the transaction, so every page below — the confirmation itself and
-        // each of its error states — is branded for that transaction's application and ui_config
-        // record (SPEC-007 UI-101). A token that names none leaves the core level alone (UI-090).
-        var branding = await ResolvePageBrandingAsync(
-            httpContext.RequestServices, tokenData?.TransactionId, httpContext.RequestAborted);
-
-        string html;
-
-        if (tokenData is null)
-        {
-            html = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenNotFound);
-        }
-        else if (tokenData.IsUsed)
-        {
-            html = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenUsed);
-        }
-        else if (tokenData.IsExpired(httpContext.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow()))
-        {
-            html = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenExpired);
-        }
-        else if (await TryHandOverConfirmationAsync(
-            httpContext, tokenData, pageLocalizer, servedLocale, branding) is { } handedOver)
-        {
-            // A confirmation transaction is handed over to the core page BEFORE the fast link is
-            // considered: a confirmation whose effective surface resolves to None would otherwise end
-            // right here, on a GET, with its subject never shown (SPEC-039 E29).
-            return handedOver;
-        }
-        else if (await IsEmailAutoConfirmAsync(httpContext, tokenData))
+        // A confirmation transaction never takes the fast link: a confirmation whose effective surface
+        // resolves to None would otherwise end right here, on a GET, with its subject never shown
+        // (SPEC-039 E29). An unreadable transaction does not take it either — the safe default is the
+        // request page, so that a GET does not implicitly complete the sign-in.
+        if (!letter.IsConfirmation
+            && live is not null
+            && EmailAdapterOf(services) is { } adapter
+            && await ShouldAutoConfirmAsync(services, live, httpContext.RequestAborted))
         {
             // Effective Email surface = None: GET automatically completes the transaction
             // (fast link, SPEC-012 §4.4.2 / SPEC-016 §4.4). The usage stays in the operational log
             // and is not published as a channel audit event: that event type carries no outcome of
             // its own, so the audit journal records the whole class as a failure — an informational
-            // fact would read as one (SPEC-016 EM-176, SPEC-011 N37). We delegate to the POST
-            // handler — the single completion point.
-            var autoConfirmLogger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
-                .CreateLogger(typeof(EmailAuthEndpoints));
-            autoConfirmLogger.LogInformation(
+            // fact would read as one (SPEC-016 EM-176, SPEC-011 N37). We delegate to the handler of the
+            // POST of a sign-in — the single completion point.
+            services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(EmailAuthEndpoints)).LogInformation(
                 "Email confirm: effective surface is None — GET completes the transaction without a confirming action. TransactionId: {TransactionId}",
                 tokenData.TransactionId);
 
-            return await HandleEmailConfirmPostAsync(httpContext, token);
+            return await RenderLetterPageAsync(
+                httpContext,
+                token,
+                letter,
+                await ConfirmSignInLetterAsync(httpContext, token, tokenData, letter, adapter, fromFastLink: true));
         }
-        else
+
+        // The user opened the email and followed the link — publish the "opened" status
+        // (SPEC-016 §10.1) only on the first open: repeat views and prefetch by
+        // mail scanners do not duplicate the signal. The token is not consumed here (EM-010).
+        var openedFirstTime = await services.GetRequiredService<IEmailActionTokenStore>()
+            .TryMarkOpenedAsync(token, httpContext.RequestAborted);
+        if (openedFirstTime
+            && TransactionId.TryParse(tokenData.TransactionId, out var openedTransactionId))
         {
-            // Continue in the language the sign-in page was rendered in, not in the language of the
-            // mail client's browser (see ResolveStoredLocaleAsync).
-            servedLocale = await ResolveStoredLocaleAsync(httpContext, tokenData, servedLocale);
-
-            // The user opened the email and followed the link — publish the "opened" status
-            // (SPEC-016 §10.1) only on the first open: repeat views and prefetch by
-            // mail scanners do not duplicate the signal. The token is not consumed here (EM-010).
-            var openedFirstTime = await tokenStore.TryMarkOpenedAsync(token, httpContext.RequestAborted);
-            if (openedFirstTime
-                && TransactionId.TryParse(tokenData.TransactionId, out var openedTransactionId))
-            {
-                var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
-                    .CreateLogger(typeof(EmailAuthEndpoints));
-                await PublishEmailChannelStatusAsync(
-                    httpContext.RequestServices,
-                    openedTransactionId,
-                    EmailChannelStatuses.PullOpened,
-                    logger);
-            }
-
-            html = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: false,
-                token: token);
+            var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(EmailAuthEndpoints));
+            await PublishEmailChannelStatusAsync(
+                services,
+                openedTransactionId,
+                EmailChannelStatuses.PullOpened,
+                logger);
         }
+
+        // The request page — one for both types; the GET writes nothing to the transaction (SPEC-016
+        // EM-011): a mail scanner following links must not attach the identity, nor become the browser
+        // the answer of a confirmation is bound to. The browser that took part in the transaction is not
+        // asked to press the button: where the transaction holds its fingerprint and address, the page
+        // sends the form by itself (EmailLinkSameBrowser).
+        var html = BuildConfirmPageHtml(pageLocalizer, letter.Locale, letter.Branding, letter.Texts,
+            token: token,
+            isConfirmationRequest: letter.IsConfirmation,
+            appName: ApplicationNameOf(letter.Transaction),
+            continuesInSameBrowser: EmailLinkSameBrowser.IsOffered(live),
+            cspNonce: httpContext.Items[HttpContextItemKeys.CspNonce] as string);
 
         return Results.Content(html, "text/html", Encoding.UTF8);
     }
+
+    /// <summary>
+    /// The name of the application a transaction is signed in to, as the pages a link of a letter name it;
+    /// the configured default name when the transaction states none or is unknown.
+    /// </summary>
+    /// <param name="transaction">The transaction of the letter; null — none is known.</param>
+    /// <returns>The name of the application.</returns>
+    private static string ApplicationNameOf(Transaction? transaction) =>
+        transaction?.InitiatorContextSnapshot?.ClientApplicationName
+            ?? transaction?.GetApplicationName()
+            ?? EmailAdapterConfigDefaults.DefaultClientName;
 
     /// <summary>
     /// Prefers the language the sign-in page was rendered in — stored on the transaction as
@@ -623,307 +877,288 @@ public static partial class EmailAuthEndpoints
     /// than the browser that started the sign-in; detecting from the header alone then renders this page
     /// in another language than the sign-in window. The stored locale also carries an explicit
     /// <c>ui_locales</c> choice made on the RP side, which no header reflects. The action token has no
-    /// locale of its own but does carry the transaction id, so the stored locale is reachable. An
-    /// unreadable transaction is not an error here — the page degrades to the header detection, the same
-    /// fallback as a request without Accept-Language.
+    /// locale of its own but does carry the transaction id, so the stored locale is reachable.
     /// </remarks>
-    /// <param name="httpContext">The request HTTP context.</param>
-    /// <param name="tokenData">The data of a valid action token.</param>
+    /// <param name="transaction">The transaction the action token names.</param>
     /// <param name="acceptLanguageLocale">Locale detected from Accept-Language (the fallback).</param>
     /// <returns>The locale to render the page in, or null for the base language.</returns>
-    private static async Task<string?> ResolveStoredLocaleAsync(
-        HttpContext httpContext,
-        EmailActionToken tokenData,
-        string? acceptLanguageLocale)
+    private static string? PreferStoredLocale(Transaction transaction, string? acceptLanguageLocale)
     {
-        if (!TransactionId.TryParse(tokenData.TransactionId, out var transactionId))
-        {
-            return acceptLanguageLocale;
-        }
-
-        var transactionService = httpContext.RequestServices.GetRequiredService<ITransactionService>();
-        var txResult = await transactionService.GetTransactionAsync(
-            transactionId, httpContext.RequestAborted);
-
-        if (txResult.IsFailure)
-        {
-            return acceptLanguageLocale;
-        }
-
-        var uiLocale = txResult.Value.GetUiLocale();
+        var uiLocale = transaction.GetUiLocale();
         return string.IsNullOrWhiteSpace(uiLocale) ? acceptLanguageLocale : uiLocale;
     }
 
     /// <summary>
-    /// Loads the transaction by the action token and determines whether auto-confirmation (fast link)
-    /// is needed based on the effective confirmation surface. If the transaction is
-    /// unavailable — the safe default is <c>false</c> (confirmation page), so that GET does not
-    /// implicitly complete the sign-in.
-    /// </summary>
-    /// <param name="httpContext">The request HTTP context.</param>
-    /// <param name="tokenData">The data of a valid action token.</param>
-    /// <returns><c>true</c> — auto-confirmation; <c>false</c> — confirmation page.</returns>
-    private static async Task<bool> IsEmailAutoConfirmAsync(HttpContext httpContext, EmailActionToken tokenData)
-    {
-        if (!TransactionId.TryParse(tokenData.TransactionId, out var transactionId))
-        {
-            return false;
-        }
-
-        var transactionService = httpContext.RequestServices.GetRequiredService<ITransactionService>();
-        var txResult = await transactionService.GetTransactionAsync(
-            transactionId, httpContext.RequestAborted);
-
-        if (txResult.IsFailure)
-        {
-            return false;
-        }
-
-        return await ShouldAutoConfirmAsync(
-            httpContext.RequestServices, txResult.Value, httpContext.RequestAborted);
-    }
-
-    /// <summary>
-    /// Determines whether a GET on the magic link should auto-confirm the transaction (fast link).
-    /// Derived from the effective confirmation surface (SPEC-012 §4.4.2):
-    /// <c>None</c> → auto-confirmation (fast link); otherwise (<c>OnWebPage</c> — the Email default,
-    /// or a clamped <c>InChannel</c>) → confirm page (GET does not consume the token, EM-010/011).
+    /// Determines whether the letter of a sign-in completes it — the GET of the magic link (fast link) and
+    /// the inbound mail of the Push mode alike — or only attaches the mailbox and leaves the decision to the
+    /// sign-in window. Derived from the effective confirmation surface (SPEC-012 §4.4.2):
+    /// <c>None</c> → the letter completes the sign-in; otherwise (<c>OnWebPage</c> — the Email default,
+    /// or a clamped <c>InChannel</c>) → the letter attaches the mailbox and the window asks the question
+    /// (the GET shows the request page and does not consume the token, EM-010/011).
     /// Returns <c>true</c> ⇔ the effective Email surface = <c>None</c>.
     /// </summary>
-    /// <param name="services">The request service provider.</param>
+    /// <param name="services">The service provider of the request or of the mail's scope.</param>
     /// <param name="transaction">The transaction (the resolution context source).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns><c>true</c> — auto-confirmation via fast link; <c>false</c> — confirmation page.</returns>
-    private static async ValueTask<bool> ShouldAutoConfirmAsync(
+    /// <returns><c>true</c> — the letter completes the sign-in; <c>false</c> — the window decides it.</returns>
+    internal static async ValueTask<bool> ShouldAutoConfirmAsync(
         IServiceProvider services,
         Transaction transaction,
         CancellationToken cancellationToken)
     {
-        var surfaceResolver = services.GetRequiredService<IEffectiveConfirmationSurfaceResolver>();
-        var emailAdapter = services.GetRequiredService<IEnumerable<IChannelAdapter>>()
-            .FirstOrDefault(a => string.Equals(a.ChannelType, ChannelTypes.Email, StringComparison.Ordinal));
-
         // The Email adapter is not registered — safe default: do NOT auto-confirm
         // (show the confirmation page, in the spirit of the method's safe default when unavailable).
-        if (emailAdapter is null)
+        if (EmailAdapterOf(services) is not { } emailAdapter)
         {
             return false;
         }
 
-        var surface = await surfaceResolver.ResolveEffectiveSurfaceAsync(
-            transaction, emailAdapter, cancellationToken);
+        var surface = await services.GetRequiredService<IEffectiveConfirmationSurfaceResolver>()
+            .ResolveEffectiveSurfaceAsync(transaction, emailAdapter, cancellationToken);
         return surface is ConfirmationSurface.None;
     }
 
     /// <summary>
-    /// Handles the answer posted from the served confirmation page: "Yes" confirms the transaction,
-    /// "No" declines it. Both answers arrive on the same path and are told apart by the answer field.
+    /// Handles the POST of the served confirmation page — the continue button of its request (SPEC-016
+    /// EM-011). The request is read once: the token, and the transaction the token names as the store
+    /// holds it (<see cref="ReadLetterPageAsync"/>), whose type routes the letter whatever its deadline. An
+    /// unknown, used or expired link is answered by its refusal, titled by that type. A POST the request page
+    /// sent by itself goes on as the button only from the browser of the transaction, whatever its type
+    /// (<see cref="AnswerUnrecognisedBrowserAsync"/>). For a sign-in the letter attaches the mailbox without
+    /// completing the transaction, and the sign-in is decided on the sign-in window — the page offers no
+    /// refusal, the window does (<see cref="ConfirmSignInLetterAsync"/>). For a confirmation transaction the
+    /// letter hands the user over to the core page (<see cref="HandOverConfirmationAsync"/>). The request is one
+    /// action of the channel: the admission of the sender is decided once for the gate of the letter and the
+    /// write that follows it (<see cref="ChannelInboundProcessor.OpenAction"/>).
     /// </summary>
     private static async Task<IResult> HandleEmailConfirmPostEndpointAsync(HttpContext httpContext)
     {
+        using var action = ChannelInboundProcessor.OpenAction();
+
+        var services = httpContext.RequestServices;
+        var pageLocalizer = services.GetRequiredService<IConfirmationPromptLocalizer>();
         var token = await ExtractTokenAsync(httpContext);
+        var tokenData = await ReadActionTokenAsync(services, token, httpContext.RequestAborted);
+        var letter = await ReadLetterPageAsync(httpContext, tokenData);
 
-        // A confirmation is decided on the core page and nowhere else (SPEC-039 R36): this route
-        // answers for sign-ins. Neither the transaction nor the token is touched — the request is
-        // refused with the page's existing error wording, and no new text is introduced for it.
-        if (await IsConfirmationTransactionTokenAsync(httpContext, token))
+        if (!IsLiveToken(token, tokenData, services.GetRequiredService<TimeProvider>().GetUtcNow()))
         {
-            var services = httpContext.RequestServices;
-            services.GetRequiredService<ILoggerFactory>()
-                .CreateLogger(typeof(EmailAuthEndpoints))
-                .LogWarning(
-                    "Email confirm POST addresses a confirmation transaction; the answer is refused — "
-                    + "a confirmation is decided on the core page, where its subject is shown.");
-
-            var pageLocalizer = services.GetRequiredService<IConfirmationPromptLocalizer>();
-            var servedLocale = ChannelRequestLocale.Detect(
-                httpContext.Request.Headers.AcceptLanguage.ToString());
-
-            // The core level alone brands it: naming the transaction of the token would make the look
-            // of a refusal a readable state of somebody else's transaction.
-            var branding = await ResolvePageBrandingAsync(
-                services, transactionIdValue: null, httpContext.RequestAborted);
-
-            var refusedHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageError);
-
-            return Results.Content(refusedHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status400BadRequest);
+            return TokenRefusalPage(pageLocalizer, letter, tokenData, withErrorStatus: true);
         }
 
-        if (await IsDeclineAnswerAsync(httpContext))
+        if (await AnswerUnrecognisedBrowserAsync(httpContext, token, tokenData, letter) is { } requestPage)
         {
-            return await HandleEmailDeclineAsync(httpContext, token);
+            return requestPage;
         }
 
-        return await HandleEmailConfirmPostAsync(httpContext, token);
+        if (EmailAdapterOf(services) is not { } adapter)
+        {
+            services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(EmailAuthEndpoints)).LogError(
+                "Email adapter not found in DI while handling confirm. TransactionId: {TransactionId}",
+                tokenData.TransactionId);
+
+            return LetterErrorPage(
+                pageLocalizer, letter, EmailAdapterMailStrings.ConfirmPageError, StatusCodes.Status500InternalServerError);
+        }
+
+        return await RenderLetterPageAsync(
+            httpContext,
+            token,
+            letter,
+            await DecideLetterAsync(httpContext, token, tokenData, letter, adapter));
     }
 
     /// <summary>
-    /// Reads the answer field and reports whether the user declined. Anything other than the decline
-    /// value — including no field at all — is a confirmation, so the fast link (which posts only the
-    /// token) is unaffected.
+    /// Decides a live letter once it is taken as the action of the user — the continue button of the page of
+    /// its link, or its code entered on the page the address was typed into (SPEC-016 EM-205, EM-206): the one
+    /// set of branches both ways go through, so a code does what the link of the same letter does.
     /// </summary>
-    private static async Task<bool> IsDeclineAnswerAsync(HttpContext httpContext)
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="token">The action token of the letter, live.</param>
+    /// <param name="tokenData">The data of the action token.</param>
+    /// <param name="letter">What the pages of the letter are rendered from, its transaction among them.</param>
+    /// <param name="adapter">The Email channel adapter.</param>
+    /// <returns>What the letter came to.</returns>
+    private static async Task<EmailLetterOutcome> DecideLetterAsync(
+        HttpContext httpContext,
+        string token,
+        EmailActionToken tokenData,
+        EmailLetterPage letter,
+        IChannelAdapter adapter) =>
+        // A confirmation is decided on the core page and nowhere else (SPEC-039 R36): whatever the request
+        // says, it only hands the user over — past the deadline of the transaction too, where the hand-over
+        // refuses it.
+        letter.IsConfirmation
+            ? await HandOverConfirmationAsync(httpContext, token, tokenData, letter.Transaction, adapter)
+            : await ConfirmSignInLetterAsync(httpContext, token, tokenData, letter, adapter, fromFastLink: false);
+
+    /// <summary>
+    /// Answers the page of the link of a letter with what the letter came to: the error page of a refusal, the
+    /// line sending the user back to the sign-in window, the receipt of a completed sign-in, the "Continue" page
+    /// of the fast link, the page of the claims completion, or the redirect to the question of a confirmation.
+    /// </summary>
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="token">The action token of the letter — posted by the "Continue" page of the fast link.</param>
+    /// <param name="letter">What the pages of the letter are rendered from.</param>
+    /// <param name="outcome">What the letter came to.</param>
+    /// <returns>The answer of the page.</returns>
+    private static async Task<IResult> RenderLetterPageAsync(
+        HttpContext httpContext,
+        string token,
+        EmailLetterPage letter,
+        EmailLetterOutcome outcome)
     {
+        var services = httpContext.RequestServices;
+        var pageLocalizer = services.GetRequiredService<IConfirmationPromptLocalizer>();
+        var cspNonce = httpContext.Items[HttpContextItemKeys.CspNonce] as string;
+
+        return outcome switch
+        {
+            EmailLetterOutcome.Refused refused => LetterErrorPage(
+                pageLocalizer,
+                letter,
+                refused.LetterUsed ? EmailAdapterMailStrings.ConfirmPageTokenUsed : EmailAdapterMailStrings.ConfirmPageError,
+                refused.StatusCode),
+            EmailLetterOutcome.SignInContinued => Results.Content(
+                BuildConfirmPageHtml(pageLocalizer, letter.Locale, letter.Branding, letter.Texts,
+                    isSignInContinued: true,
+                    cspNonce: cspNonce),
+                "text/html",
+                Encoding.UTF8),
+            EmailLetterOutcome.Completed completed => Results.Content(
+                BuildConfirmPageHtml(pageLocalizer, letter.Locale, letter.Branding, letter.Texts,
+                    isSuccess: true,
+                    outcomeText: completed.ReceiptText),
+                "text/html",
+                Encoding.UTF8),
+            EmailLetterOutcome.ClaimFormContinue => Results.Content(
+                BuildConfirmPageHtml(pageLocalizer, letter.Locale, letter.Branding, letter.Texts,
+                    token: token,
+                    isClaimFormContinue: true),
+                "text/html",
+                Encoding.UTF8),
+
+            // CancellationToken.None: the letter is spent — the form must be opened even if the browser goes
+            // away, the way the confirmation itself is finished.
+            EmailLetterOutcome.ClaimFormOnThisDevice form =>
+                (services.GetService<IClaimCompletionCrossDevicePage>() is { } crossDevicePage
+                    ? await crossDevicePage.TryOpenAsync(httpContext, form.TransactionId, CancellationToken.None)
+                    : null)
+                ?? StartDevicePage(pageLocalizer, letter),
+            EmailLetterOutcome.ContinueOnStartDevice => StartDevicePage(pageLocalizer, letter),
+            EmailLetterOutcome.HandedOverToQuestion handedOver => SeeOtherToQuestion(httpContext, handedOver.TransactionId),
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Not an outcome of a letter.")
+        };
+    }
+
+    /// <summary>
+    /// The page sending the user of a sign-in confirmed into the claims completion to the device the sign-in
+    /// was started on.
+    /// </summary>
+    /// <param name="pageLocalizer">Localizer of the page texts.</param>
+    /// <param name="letter">What the pages of the letter are rendered from.</param>
+    /// <returns>The page.</returns>
+    private static IResult StartDevicePage(IConfirmationPromptLocalizer pageLocalizer, EmailLetterPage letter) =>
+        Results.Content(
+            BuildConfirmPageHtml(pageLocalizer, letter.Locale, letter.Branding, letter.Texts,
+                isSuccess: true,
+                outcomeText: StartDeviceText(pageLocalizer, letter)),
+            "text/html",
+            Encoding.UTF8);
+
+    /// <summary>
+    /// The line sending the user to the device the sign-in was started on. It is the page's own text, not a
+    /// receipt of the outcome: an entry overrides it here, where the page picks it, while the page builder
+    /// renders it as it is given.
+    /// </summary>
+    /// <param name="pageLocalizer">Localizer of the page texts.</param>
+    /// <param name="letter">What the pages of the letter are rendered from.</param>
+    /// <returns>The line.</returns>
+    private static string StartDeviceText(IConfirmationPromptLocalizer pageLocalizer, EmailLetterPage letter) =>
+        letter.Texts.Localize(
+            pageLocalizer,
+            EmailAdapterMailStrings.ConfirmPageContinueOnStartDevice,
+            ResolveServedHtmlLang(pageLocalizer, letter.Locale));
+
+    /// <summary>
+    /// The path of the core page that asks what a confirmation is about, for the confirmation of this request
+    /// — the page lives in this same application, so the path carries its path base.
+    /// </summary>
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="transactionId">The confirmation transaction.</param>
+    /// <returns>The path of the question.</returns>
+    private static string QuestionPath(HttpContext httpContext, TransactionId transactionId) =>
+        $"{httpContext.Request.PathBase}{CoreConfirmPageAnswerMark.PagePath}"
+        + $"?{EmailAdapterConstants.SessionIdQueryParam}={Uri.EscapeDataString(transactionId.ToString())}";
+
+    /// <summary>
+    /// Sends the browser that handed a confirmation over to its question: 303, the POST of the letter is
+    /// answered by a GET of the question.
+    /// </summary>
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="transactionId">The confirmation transaction.</param>
+    /// <returns>The redirect.</returns>
+    private static IResult SeeOtherToQuestion(HttpContext httpContext, TransactionId transactionId)
+    {
+        httpContext.Response.Headers.Location = QuestionPath(httpContext, transactionId);
+
+        return Results.StatusCode(StatusCodes.Status303SeeOther);
+    }
+
+    /// <summary>
+    /// Answers the POST the request page sent by itself (<see cref="EmailLinkSameBrowser"/>) when the browser
+    /// is not the one that took part in the transaction: the request page again, with its button and without
+    /// the script that sends it, and nothing written — for a sign-in and a confirmation alike. A POST without
+    /// the mark of that sending is a press of the button, and so is one whose browser is recognised: both go
+    /// on as the button does.
+    /// </summary>
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="token">The action token of the request, live.</param>
+    /// <param name="tokenData">The data of the action token.</param>
+    /// <param name="letter">What the pages of the letter are rendered from.</param>
+    /// <returns>The request page; null — the POST goes on as the press of the button.</returns>
+    private static async Task<IResult?> AnswerUnrecognisedBrowserAsync(
+        HttpContext httpContext,
+        string token,
+        EmailActionToken tokenData,
+        EmailLetterPage letter)
+    {
+        var services = httpContext.RequestServices;
+
         if (!httpContext.Request.HasFormContentType)
         {
-            return false;
+            return null;
         }
 
         var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
-        var answer = form[EmailAdapterConstants.AnswerFormField].FirstOrDefault();
-
-        return string.Equals(answer, EmailAdapterConstants.AnswerDecline, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Handles the "No" answer on the served confirmation page: validates the action token, moves the
-    /// transaction to its terminal declined state and consumes the token.
-    /// </summary>
-    /// <remarks>
-    /// The refusal uses the same reason code as an in-channel decline
-    /// (<c>TransactionErrorCodes.DeclinedByUser</c> in <c>ChannelWebhookPipeline.HandleAuthDeclineAsync</c>):
-    /// one meaning, one code, one audit trail. Unlike the confirmation there is nothing to report back to
-    /// the client from here — this page is opened from a mail client, not from the browser that started
-    /// the sign-in; that browser learns the outcome from the transaction state it is already watching.
-    /// The token is consumed either way: a declined link must not be replayable.
-    /// </remarks>
-    private static async Task<IResult> HandleEmailDeclineAsync(HttpContext httpContext, string? token)
-    {
-        var services = httpContext.RequestServices;
-        var logger = services.GetRequiredService<ILoggerFactory>()
-            .CreateLogger(typeof(EmailAuthEndpoints));
-
-        var pageLocalizer = services.GetRequiredService<IConfirmationPromptLocalizer>();
-        var servedLocale = ChannelRequestLocale.Detect(httpContext.Request.Headers.AcceptLanguage.ToString());
-
-        if (string.IsNullOrWhiteSpace(token))
+        if (string.IsNullOrEmpty(form[EmailAdapterConstants.SameBrowserMarkField]))
         {
-            // No token — no transaction to name an ownership context (SPEC-007 UI-090).
-            var noTokenBranding = await ResolvePageBrandingAsync(
-                services, transactionIdValue: null, httpContext.RequestAborted);
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, noTokenBranding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenNotFound);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status400BadRequest);
+            return null;
         }
 
-        var tokenStore = services.GetRequiredService<IEmailActionTokenStore>();
-        var tokenData = await tokenStore.GetTokenAsync(token, httpContext.RequestAborted);
+        var matched = EmailLinkSameBrowser.Matches(
+            letter.Transaction,
+            form[EmailAdapterConstants.SameBrowserFingerprintField],
+            httpContext.Connection.RemoteIpAddress);
 
-        // Branded for the transaction the action token names (SPEC-007 UI-101); a token that names
-        // none leaves the core level alone (UI-090).
-        var branding = await ResolvePageBrandingAsync(
-            services, tokenData?.TransactionId, httpContext.RequestAborted);
+        // Only whether the browser was recognised: the fingerprint is neither logged nor kept (SPEC-025 HOP-092).
+        services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(EmailAuthEndpoints)).LogInformation(
+            "Email confirm: the request page of the letter continued by itself. TransactionId: {TransactionId}, BrowserRecognised: {BrowserRecognised}",
+            tokenData.TransactionId,
+            matched);
 
-        if (tokenData is null
-            || tokenData.IsUsed
-            || tokenData.IsExpired(services.GetRequiredService<TimeProvider>().GetUtcNow()))
+        if (matched)
         {
-            var errorMessage = tokenData switch
-            {
-                null => EmailAdapterMailStrings.ConfirmPageTokenNotFound,
-                { IsUsed: true } => EmailAdapterMailStrings.ConfirmPageTokenUsed,
-                _ => EmailAdapterMailStrings.ConfirmPageTokenExpired
-            };
-
-            var statusCode = tokenData switch
-            {
-                null => StatusCodes.Status400BadRequest,
-                { IsUsed: true } => StatusCodes.Status409Conflict,
-                _ => StatusCodes.Status410Gone
-            };
-
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: errorMessage);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8, statusCode);
+            return null;
         }
 
-        servedLocale = await ResolveStoredLocaleAsync(httpContext, tokenData, servedLocale);
-
-        if (!TransactionId.TryParse(tokenData.TransactionId, out var transactionId))
-        {
-            logger.LogWarning(
-                "Email decline: invalid TransactionId in the action token: {TransactionId}",
-                tokenData.TransactionId);
-
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageError);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status400BadRequest);
-        }
-
-        // CancellationToken.None: the refusal must be recorded even if the client goes away mid-request.
-        var transactionService = services.GetRequiredService<ITransactionService>();
-        var txResult = await transactionService.GetTransactionAsync(transactionId, CancellationToken.None);
-
-        if (txResult.IsFailure)
-        {
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenExpired);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status410Gone);
-        }
-
-        var failResult = await transactionService.FailTransactionAsync(
-            transactionId,
-            TransactionErrorCodes.DeclinedByUser,
-            txResult.Value.ConcurrencyToken,
-            CancellationToken.None);
-
-        if (failResult.IsFailure)
-        {
-            logger.LogWarning(
-                "Email decline: failed to move the transaction to Failed. TransactionId: {TransactionId}, ErrorCode: {ErrorCode}",
-                tokenData.TransactionId,
-                failResult.Error.Code);
-
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageError);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status409Conflict);
-        }
-
-        // The link is spent regardless of the answer — a "No" must not leave a replayable magic link.
-        await tokenStore.MarkUsedAsync(token, CancellationToken.None);
-
-        logger.LogInformation(
-            "Email sign-in declined by the user on the confirmation page. TransactionId: {TransactionId}",
-            tokenData.TransactionId);
-
-        // Same inversion as on the confirmation branch: the wording is resolved first, the page
-        // renders it. The transaction type comes from the transaction read before the refusal.
-        var declinedText = await services.GetRequiredService<IOutcomeReceiptText>().RenderAsync(
-            new OutcomeReceiptAddress(
-                TransactionOutcome.Declined,
-                OutcomeReceiptSurfaces.EmailConfirmPage,
-                txResult.Value.Type,
-                txResult.Value.ConfirmationSnapshot?.ActionType,
-                ChannelTypes.Email),
-            servedLocale,
-            // The zone the transaction states, beside the locale the page is served in. The moment of
-            // the outcome is the one the refusal was written down at, read off the instance that write
-            // returned.
-            txResult.Value.GetUiTimeZone(),
-            failResult.Value.UpdatedAt,
-            // The values of the transaction, as every surface that words a receipt passes them
-            // (SPEC-036 TPL-123, TPL-124). In today's delivery its caller values are empty: a
-            // confirmation is refused on this page and decided on the core page (SPEC-039 R36), and a
-            // sign-in states no caller values.
-            TransactionSlotSource.From(txResult.Value),
-            TransactionResolutionContext.For(txResult.Value),
-            CancellationToken.None);
-
-        var declinedHtml = BuildConfirmPageHtml(
-            pageLocalizer, servedLocale, branding, isDeclined: true, outcomeText: declinedText);
-        return Results.Content(declinedHtml, "text/html", Encoding.UTF8);
+        var html = BuildConfirmPageHtml(
+            services.GetRequiredService<IConfirmationPromptLocalizer>(), letter.Locale, letter.Branding, letter.Texts,
+            token: token,
+            isConfirmationRequest: letter.IsConfirmation,
+            appName: ApplicationNameOf(letter.Transaction),
+            cspNonce: httpContext.Items[HttpContextItemKeys.CspNonce] as string);
+        return Results.Content(html, "text/html", Encoding.UTF8);
     }
 
     /// <summary>
@@ -985,136 +1220,194 @@ public static partial class EmailAuthEndpoints
     }
 
     /// <summary>
-    /// Hands a CONFIRMATION transaction over to the core page that asks its subject (SPEC-039 E29),
-    /// attaching the mailbox identity on the way. Returns null when the token names no such
-    /// transaction — every other kind goes on through the remaining branches of the caller.
+    /// Hands a CONFIRMATION transaction over to the core page that asks its subject (SPEC-039 E29): the
+    /// continue button of the request page of the letter — pressed, or sent by the page itself from the
+    /// browser of the transaction — attaches the mailbox identity, binds the answer to this browser and
+    /// sends it to the question.
     /// </summary>
     /// <remarks>
     /// This adapter asks no question of its own about a confirmation: it carries no in-channel
     /// confirmation surface, and its own page words a sign-in (E28). Following the magic link is
     /// therefore the user ARRIVING and not deciding — the decision is taken on the one surface that
-    /// shows what is being decided.
+    /// shows what is being decided, and only in the browser that arrived by the letter: the attachment
+    /// binds the answer to the browser (<c>bindAnswerToBrowser</c>) and this browser alone is handed the
+    /// mark the core page asks for. A browser that holds the sign-in window without the letter is not
+    /// the one that proved the mailbox.
     /// <para>
-    /// The token is deliberately NOT spent here: it carries no decision any more (the second point of
-    /// consent on its POST is closed by the type guard, not by the state of the token), and spending
-    /// it would cost the user the way back to the question after closing the tab.
+    /// The token is deliberately NOT spent here: it carries no decision, and spending it would cost the
+    /// user the way back to the question after closing the tab.
     /// </para>
     /// </remarks>
     /// <param name="httpContext">The request HTTP context.</param>
-    /// <param name="tokenData">The data of a valid action token.</param>
-    /// <param name="pageLocalizer">Served page localizer.</param>
-    /// <param name="servedLocale">Locale the served page renders in.</param>
-    /// <param name="branding">Branding of the served page.</param>
-    /// <returns>The response handing the user over, or null when this is not a confirmation.</returns>
-    private static async Task<IResult?> TryHandOverConfirmationAsync(
+    /// <param name="token">The action token of the letter, live.</param>
+    /// <param name="tokenData">The data of the live action token.</param>
+    /// <param name="transaction">The confirmation transaction the token names, as the store holds it — past
+    /// its deadline too, which the hand-over refuses.</param>
+    /// <param name="adapter">The Email channel adapter.</param>
+    /// <returns>The hand-over to the core page, or the refusal of the letter.</returns>
+    private static async Task<EmailLetterOutcome> HandOverConfirmationAsync(
         HttpContext httpContext,
+        string token,
         EmailActionToken tokenData,
-        IConfirmationPromptLocalizer pageLocalizer,
-        string? servedLocale,
-        CorePageBranding? branding)
+        Transaction transaction,
+        IChannelAdapter adapter)
     {
         var services = httpContext.RequestServices;
-
-        if (!TransactionId.TryParse(tokenData.TransactionId, out var transactionId))
-        {
-            return null;
-        }
-
-        var transactionService = services.GetRequiredService<ITransactionService>();
-        var txResult = await transactionService.GetTransactionAsync(
-            transactionId, httpContext.RequestAborted);
-
-        if (txResult.IsFailure
-            || !string.Equals(txResult.Value.Type, TransactionTypes.Confirmation, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var transaction = txResult.Value;
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(EmailAuthEndpoints));
 
-        // The identity the answer on the core page will be signed by. Attached only when there is none
-        // yet: a second open of the same letter (or a prefetch by a mail scanner) finds it in place and
-        // simply arrives at the same question.
-        if (transaction.ChannelIdentitySnapshot is null)
+        // The identity below reads the tenant's Email credentials, and the tenant of this confirmation is
+        // the one the transaction states — the scope opens for the snapshot and closes with it (CA-164).
+        using var tenantScope = ChannelTenantContext.BeginScope(transaction.GetTenantId());
+
+        var handOver = await HandOverToQuestionAsync(services, token, tokenData, transaction, adapter, logger);
+
+        if (handOver.IsFailure)
         {
-            // The identity below reads the tenant's Email credentials, and the tenant of this
-            // confirmation is the one the transaction states — the scope opens for the snapshot and
-            // closes with it (CA-164).
-            using var tenantScope = ChannelTenantContext.BeginScope(transaction.GetTenantId());
+            // A transaction that no longer accepts this event — decided, past its TTL, bound to another
+            // mailbox, a sender not admitted, a parallel write of another sender — is an expected
+            // refusal here, hence Warning and not Error for all of them alike; its class is already in the
+            // journal. The page keeps its existing error wording: no new text and no detail of the
+            // refusal, which is not this user's business.
+            logger.LogWarning(
+                "Email confirm: the channel identity was not attached for the core confirmation page. TransactionId: {TransactionId}, ErrorCode: {ErrorCode}",
+                transaction.Id.ToString(),
+                handOver.Error.Code);
 
-            var snapshot = await BuildPullIdentitySnapshotAsync(
-                services, tokenData, transaction.GetTenantId(), logger);
-
-            // CancellationToken.None: the identity must be attached even if the browser goes away —
-            // otherwise the user comes back to a question that has nobody to answer it.
-            var attachResult = await transactionService.AttachChannelIdentityAsync(
-                transaction.Id, snapshot, transaction.ConcurrencyToken, CancellationToken.None);
-
-            if (attachResult.IsFailure)
-            {
-                // A transaction that no longer accepts this event — decided, past its TTL, a sender
-                // not admitted, a parallel write — is an expected refusal here, hence Warning and not
-                // Error for all of them alike. The page keeps its existing error wording: no new text
-                // and no detail of the refusal, which is not this user's business.
-                logger.LogWarning(
-                    "Email confirm: the channel identity was not attached for the core confirmation page. TransactionId: {TransactionId}, ErrorCode: {ErrorCode}",
-                    transaction.Id.ToString(),
-                    attachResult.Error.Code);
-
-                var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                    isError: true,
-                    errorMessage: EmailAdapterMailStrings.ConfirmPageError);
-                return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                    StatusCodes.Status409Conflict);
-            }
+            return new EmailLetterOutcome.Refused(StatusCodes.Status409Conflict);
         }
 
-        // The page lives in this same application, so the redirect carries the path base of it.
-        var questionUrl =
-            $"{httpContext.Request.PathBase}{EmailAdapterConstants.CoreConfirmPagePath}"
-            + $"?{EmailAdapterConstants.SessionIdQueryParam}={Uri.EscapeDataString(transaction.Id.ToString())}";
+        // The mark is handed to this browser alone — the one the letter was answered in.
+        services.GetRequiredService<CoreConfirmPageAnswerMark>()
+            .Issue(httpContext, handOver.Value, services.GetRequiredService<TimeProvider>().GetUtcNow());
 
-        return Results.Redirect(questionUrl);
+        return new EmailLetterOutcome.HandedOverToQuestion(transaction.Id);
     }
 
     /// <summary>
-    /// Answers whether this POST addresses a CONFIRMATION transaction, which this route does not
-    /// decide the fate of (SPEC-039 R36, E29).
+    /// Attaches the mailbox of the letter to the confirmation transaction with the answer bound to the browser
+    /// of the letter, unless it is attached that way already. The letter passes the gate of the letter of a
+    /// sign-in, its budget included, and every refusal reaches the journal under its class (SPEC-039 E48) by
+    /// the same mechanism (<see cref="ChannelWebhookPipeline.RefuseLetterOutOfTimeAsync"/>,
+    /// <see cref="ChannelWebhookPipeline.RefuseLetterAttachAsync"/>,
+    /// <see cref="ChannelWebhookPipeline.RecordLetterRefusalAsync"/>).
     /// </summary>
     /// <remarks>
-    /// The route takes its token from the form OR from the query string, so a bare
-    /// <c>POST …/confirm?token=…</c> is a complete request — and a holder of the letter (a forwarded
-    /// mail, a shared mailbox, the log of a mail gateway) would confirm or DECLINE a confirmation
-    /// without ever seeing what it was about. The guard stands at the branching point, before the
-    /// answer is read, so it closes both answers with one decision; the sign-in path passes it
-    /// untouched, which is why the shared handler below is not the place for it.
+    /// A second press of the same letter — in this browser or another — arrives at the same question with
+    /// the mark of its own, while a letter to another address is refused by the subject binding
+    /// (SPEC-039 N34). The attachment is written only while the transaction is not yet handed over to the
+    /// mailbox of this letter (<see cref="IsHandedOverByLetter"/>): a repeated press writes nothing and
+    /// only hands the mark out, and takes no budget. A transaction out of time is refused by its record,
+    /// before the identity of the mailbox is built. A press that lost the write to a parallel press of the
+    /// same letter reads the transaction again and is answered the same way; one that lost it to a write of
+    /// the same mailbox that did not bind the answer to a browser attaches once more with the fresh
+    /// concurrency token.
     /// </remarks>
-    /// <param name="httpContext">The request HTTP context.</param>
-    /// <param name="token">The action token of the request.</param>
-    /// <returns><c>true</c> — the token names a confirmation and this route must not answer for it.</returns>
-    private static async Task<bool> IsConfirmationTransactionTokenAsync(HttpContext httpContext, string? token)
+    /// <param name="services">The request service provider.</param>
+    /// <param name="token">The action token of the letter, live — what identifies the letter to its budget.</param>
+    /// <param name="tokenData">The data of the live action token.</param>
+    /// <param name="transaction">The confirmation transaction, as the store holds it.</param>
+    /// <param name="adapter">The Email channel adapter.</param>
+    /// <param name="logger">The logger.</param>
+    /// <returns>The transaction handed over to the mailbox of the letter; a failure — the code of the refusal,
+    /// already journaled.</returns>
+    private static async Task<Result<Transaction>> HandOverToQuestionAsync(
+        IServiceProvider services,
+        string token,
+        EmailActionToken tokenData,
+        Transaction transaction,
+        IChannelAdapter adapter,
+        ILogger logger)
     {
-        if (string.IsNullOrWhiteSpace(token))
+        var timeProvider = services.GetRequiredService<TimeProvider>();
+
+        if (IsHandedOverByLetter(transaction, tokenData, timeProvider.GetUtcNow()))
         {
-            return false;
+            return Result<Transaction>.Success(transaction);
         }
 
-        var services = httpContext.RequestServices;
-        var tokenData = await services.GetRequiredService<IEmailActionTokenStore>()
-            .GetTokenAsync(token, httpContext.RequestAborted);
+        var processor = services.GetRequiredService<ChannelInboundProcessor>();
 
-        if (tokenData is null || !TransactionId.TryParse(tokenData.TransactionId, out var transactionId))
+        if (await ChannelWebhookPipeline.RefuseLetterOutOfTimeAsync(processor, transaction, adapter) is { } outOfTime)
         {
-            return false;
+            return outOfTime;
         }
 
-        var txResult = await services.GetRequiredService<ITransactionService>()
-            .GetTransactionAsync(transactionId, httpContext.RequestAborted);
+        var transactionService = services.GetRequiredService<ITransactionService>();
+        var snapshot = await BuildPullIdentitySnapshotAsync(services, tokenData, transaction.GetTenantId(), logger);
 
-        return txResult.IsSuccess
-            && string.Equals(txResult.Value.Type, TransactionTypes.Confirmation, StringComparison.Ordinal);
+        // The gate and the budget of the letter of a sign-in, in the same order (SPEC-016 EM-206): one
+        // attempt per letter, however many presses of it reach the gate.
+        if (await ChannelWebhookPipeline.RefuseLetterAttachAsync(
+                processor, transaction, snapshot, adapter, token, CancellationToken.None) is { } refusal)
+        {
+            return refusal;
+        }
+
+        // CancellationToken.None: the identity must be attached even if the browser goes away —
+        // otherwise the user comes back to a question that has nobody to answer it.
+        var attachResult = await transactionService.AttachChannelIdentityAsync(
+            transaction.Id,
+            snapshot,
+            transaction.ConcurrencyToken,
+            bindAnswerToBrowser: true,
+            cancellationToken: CancellationToken.None);
+
+        if (attachResult.IsSuccess)
+        {
+            return attachResult;
+        }
+
+        if (attachResult.Error.Code is TransactionErrorCodes.ConcurrencyConflict)
+        {
+            // The write was lost to a parallel press: when that press handed the transaction over to
+            // this same mailbox, this press arrives at the question all the same.
+            var rereadResult = await transactionService.GetTransactionAsync(transaction.Id, CancellationToken.None);
+            if (rereadResult.IsSuccess
+                && IsHandedOverByLetter(rereadResult.Value, tokenData, timeProvider.GetUtcNow()))
+            {
+                return rereadResult;
+            }
+
+            if (rereadResult.IsSuccess
+                && rereadResult.Value.IsAwaitingWebConfirmation()
+                && IsSubjectOfLetter(rereadResult.Value, tokenData)
+                && rereadResult.Value.SubjectBinding is not { AnswerBrowserBound: true })
+            {
+                // The parallel write attached this same mailbox without handing the answer to a browser
+                // (an Email Push of the same letter): one more attempt with the fresh token.
+                attachResult = await transactionService.AttachChannelIdentityAsync(
+                    transaction.Id,
+                    snapshot,
+                    rereadResult.Value.ConcurrencyToken,
+                    bindAnswerToBrowser: true,
+                    cancellationToken: CancellationToken.None);
+                if (attachResult.IsSuccess)
+                {
+                    return attachResult;
+                }
+            }
+        }
+
+        await ChannelWebhookPipeline.RecordLetterRefusalAsync(
+            processor, transaction.Id, attachResult.Error.Code, adapter);
+
+        return attachResult;
     }
+
+    /// <summary>
+    /// Whether the confirmation transaction is already handed over to the mailbox of the letter: it waits
+    /// for the web answer, has time left, and the identity of this mailbox is attached with the answer
+    /// bound to the browser of a letter. Nothing is left to write then — only the mark to hand out.
+    /// </summary>
+    /// <param name="transaction">The confirmation transaction the token names.</param>
+    /// <param name="tokenData">The action token of the letter.</param>
+    /// <param name="now">The server's current moment.</param>
+    /// <returns>true — a press of the letter hands out the mark without a write.</returns>
+    private static bool IsHandedOverByLetter(Transaction transaction, EmailActionToken tokenData, DateTimeOffset now) =>
+        transaction.IsAwaitingWebConfirmation()
+        && !transaction.HasRunOutOfTime(now)
+        && transaction.SubjectBinding is { AnswerBrowserBound: true }
+        && IsSubjectOfLetter(transaction, tokenData);
 
     /// <summary>
     /// Extracts the action token from the request (form body → query string fallback).
@@ -1131,70 +1424,33 @@ public static partial class EmailAuthEndpoints
     }
 
     /// <summary>
-    /// Handles the magic link confirmation with the given token.
-    /// Called both from the POST endpoint (form) and from GET when the effective surface is None
-    /// (fast link).
+    /// Handles the live magic link of a sign-in.
+    /// Called both from the POST endpoint (the "Continue signing in" of the request of a sign-in) and from
+    /// GET when the effective surface is None (fast link). On an effective surface other than None the POST
+    /// only attaches the mailbox and the sign-in window decides the sign-in
+    /// (<see cref="ContinueSignInAsync"/>). The fast link, and a POST whose surface has turned to None since
+    /// the page was served, confirm the transaction: a sign-in the confirmation leaves waiting for missing
+    /// claims is answered by the page of the claims completion (<see cref="AnswerClaimCompletionAsync"/>), a
+    /// completed one — by the receipt of the outcome.
     /// </summary>
-    private static async Task<IResult> HandleEmailConfirmPostAsync(HttpContext httpContext, string? token)
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="token">The action token of the request, live.</param>
+    /// <param name="tokenData">The data of the action token.</param>
+    /// <param name="letter">What the pages of the letter are rendered from, its transaction among them.</param>
+    /// <param name="adapter">The Email channel adapter.</param>
+    /// <param name="fromFastLink">The request is the GET of the fast link, not a POST of the page.</param>
+    /// <returns>What the letter came to.</returns>
+    private static async Task<EmailLetterOutcome> ConfirmSignInLetterAsync(
+        HttpContext httpContext,
+        string token,
+        EmailActionToken tokenData,
+        EmailLetterPage letter,
+        IChannelAdapter adapter,
+        bool fromFastLink)
     {
         var services = httpContext.RequestServices;
         var logger = services.GetRequiredService<ILoggerFactory>()
             .CreateLogger(typeof(EmailAuthEndpoints));
-
-        // Served page localization (ICC-050): confirm-result page renders in the request language.
-        var pageLocalizer = services.GetRequiredService<IConfirmationPromptLocalizer>();
-        var servedLocale = ChannelRequestLocale.Detect(httpContext.Request.Headers.AcceptLanguage.ToString());
-
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            // No token — no transaction to name an ownership context (SPEC-007 UI-090).
-            var noTokenBranding = await ResolvePageBrandingAsync(
-                services, transactionIdValue: null, httpContext.RequestAborted);
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, noTokenBranding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenNotFound);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status400BadRequest);
-        }
-
-        var tokenStore = services.GetRequiredService<IEmailActionTokenStore>();
-        var tokenData = await tokenStore.GetTokenAsync(token, httpContext.RequestAborted);
-
-        // Branded for the transaction the action token names (SPEC-007 UI-101); a token that names
-        // none leaves the core level alone (UI-090).
-        var branding = await ResolvePageBrandingAsync(
-            services, tokenData?.TransactionId, httpContext.RequestAborted);
-
-        if (tokenData is null)
-        {
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenNotFound);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status400BadRequest);
-        }
-
-        if (tokenData.IsUsed)
-        {
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenUsed);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status409Conflict);
-        }
-
-        if (tokenData.IsExpired(services.GetRequiredService<TimeProvider>().GetUtcNow()))
-        {
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenExpired);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status410Gone);
-        }
-
-        // The token is valid — from here on the page speaks the language the sign-in page was
-        // rendered in, not the language of the mail client's browser (see ResolveStoredLocaleAsync).
-        servedLocale = await ResolveStoredLocaleAsync(httpContext, tokenData, servedLocale);
 
         // The identifier is read out of the mail action token — an external input, so it is parsed
         // here and handed to the pipeline already typed.
@@ -1204,11 +1460,7 @@ public static partial class EmailAuthEndpoints
                 "Email confirm: invalid TransactionId in the action token: {TransactionId}",
                 tokenData.TransactionId);
 
-            var invalidIdHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageError);
-            return Results.Content(invalidIdHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status400BadRequest);
+            return new EmailLetterOutcome.Refused(StatusCodes.Status400BadRequest);
         }
 
         // Important: mark the token used AFTER the pipeline completes successfully.
@@ -1219,22 +1471,44 @@ public static partial class EmailAuthEndpoints
         // because the transaction is already in a terminal state (Completed) and ConfirmTransactionAsync
         // returns an error on a repeated confirmation.
 
-        // Tenant of the transaction this page is about to confirm: the transaction is what states it
-        // on a web path, where no route segment and no inbound secret can (CA-164). The scope opens
-        // here, before the identity snapshot below resolves the tenant's Email credentials, and holds
-        // for the rest of the request.
-        // A failed read degrades to the default tenant rather than refusing: the pipeline below reads
-        // the transaction again and reports the real outcome, and the tenant only separates identity
-        // records and rate-limit budgets — it is not an access boundary.
-        var transactionService = services.GetRequiredService<ITransactionService>();
-        var tenantTxResult = await transactionService.GetTransactionAsync(
-            confirmTransactionId,
-            CancellationToken.None);
-        var confirmTenantId = tenantTxResult.IsSuccess ? tenantTxResult.Value.GetTenantId() : null;
+        // Without the record of the letter there is nothing to read the surface or the tenant off, and the
+        // letter is not taken as a decision. The fast link reaches this point only with a live record.
+        var transaction = letter.Transaction;
+        if (transaction is null)
+        {
+            logger.LogWarning(
+                "Email confirm: the transaction of the letter could not be read. TransactionId: {TransactionId}",
+                tokenData.TransactionId);
 
-        using var tenantScope = ChannelTenantContext.BeginScope(confirmTenantId);
+            return new EmailLetterOutcome.Refused(StatusCodes.Status409Conflict);
+        }
 
-        var snapshot = await BuildPullIdentitySnapshotAsync(services, tokenData, confirmTenantId, logger);
+        // Tenant of the transaction this page is about to confirm: the record of the letter states it on a web
+        // path, where no route segment and no inbound secret can (CA-164). The scope opens here, before the
+        // identity snapshot below resolves the tenant's Email credentials, and holds for the rest of the
+        // request.
+        using var tenantScope = ChannelTenantContext.BeginScope(transaction.GetTenantId());
+
+        // A sign-in already confirmed into the claims completion by this letter — by its fast link, which
+        // showed the page with "Continue", or by a parallel request — is not confirmed a second time: it is
+        // answered by the page of the completion straight away (SPEC-041 N78). A sign-in confirmed otherwise
+        // goes on below, as the letter of any sign-in that is no longer pending: its write is refused, and the
+        // letter is answered by the state the sign-in is in.
+        if (!transaction.HasRunOutOfTime(services.GetRequiredService<TimeProvider>().GetUtcNow())
+            && IsClaimCompletionOfLetter(transaction, tokenData))
+        {
+            return await AnswerClaimCompletionAsync(httpContext, token, transaction, fromFastLink);
+        }
+
+        // The "Continue signing in" of the request of a sign-in. Whether the letter completes the sign-in is
+        // read off the surface again here, not taken from the page: on any surface but None the window asks
+        // the one question of the sign-in (SPEC-012 §4.4.2), so the letter only attaches the mailbox.
+        if (!fromFastLink && !await ShouldAutoConfirmAsync(services, transaction, CancellationToken.None))
+        {
+            return await ContinueSignInAsync(httpContext, token, tokenData, transaction, adapter, logger);
+        }
+
+        var snapshot = await BuildPullIdentitySnapshotAsync(services, tokenData, transaction.GetTenantId(), logger);
 
         // Build the inbound result to pass into the pipeline
         var inboundResult = new ChannelAuthConfirmResult
@@ -1243,28 +1517,7 @@ public static partial class EmailAuthEndpoints
             Identity = snapshot
         };
 
-        // Get the Email adapter
-        var adapters = services.GetRequiredService<IEnumerable<IChannelAdapter>>();
-        var adapter = adapters.FirstOrDefault(a => a.ChannelType is ChannelTypes.Email);
-
-        if (adapter is null)
-        {
-            logger.LogError(
-                "Email adapter not found in DI while handling confirm. TransactionId: {TransactionId}",
-                tokenData.TransactionId);
-
-            var errorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageError);
-            return Results.Content(errorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status500InternalServerError);
-        }
-
-        var identityResolutionService = services.GetRequiredService<IIdentityResolutionService>();
-        var userAuthRateLimiter = services.GetService<IUserAuthRateLimiter>();
-        // Required, unlike the rate limiter above: the pipeline counts every failed user notification,
-        // and an absent instrument would leave this path silently uncounted.
-        var metrics = services.GetRequiredService<ChannelAdapterMetrics>();
+        var processor = services.GetRequiredService<ChannelInboundProcessor>();
 
         // Process through the pipeline (transaction confirmation and completion)
         // CancellationToken.None: transaction completion must happen even if the client cancelled the request.
@@ -1273,25 +1526,14 @@ public static partial class EmailAuthEndpoints
         try
         {
             // Email sends no in-channel prompt, so the outcome reaches the user only through the
-            // sign-in page — hence no prompt store is passed either. The terminal wording comes from
-            // the core through the receipt port; the error text stays the channel's own.
-            await ChannelWebhookPipeline.ProcessInboundResultAsync(
+            // sign-in page — the letter's path asks no question in the chat. The terminal wording comes
+            // from the core through the receipt port; the error text stays the channel's own. The token of
+            // the link identifies the letter: a second request of the same link costs no second attempt.
+            await processor.ProcessLetterAsync(
                 inboundResult,
                 adapter,
-                transactionService,
-                services.GetRequiredService<ITransactionStore>(),
-                services.GetRequiredService<TimeProvider>(),
-                identityResolutionService,
-                logger,
-                metrics,
-                userAuthRateLimiter,
-                confirmationPromptOrchestrator: null,
-                promptLocalizer: null,
-                promptMessageStore: null,
-                services.GetRequiredService<IOutcomeReceiptText>(),
-                services.GetRequiredService<IOutcomeNoticeDisplayIntentSource>(),
-                services.GetService<ITransactionEventPublisher>(),
                 new ChannelReplyTexts(MessageTemplateNaturalKeys.OutcomeErrorInChannel),
+                token,
                 CancellationToken.None);
         }
         catch (Exception ex)
@@ -1300,55 +1542,52 @@ public static partial class EmailAuthEndpoints
                 "Error handling Email confirm through the pipeline. TransactionId: {TransactionId}",
                 tokenData.TransactionId);
 
-            var pipelineErrorHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageError);
-            return Results.Content(pipelineErrorHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status500InternalServerError);
+            return new EmailLetterOutcome.Refused(StatusCodes.Status500InternalServerError);
         }
 
-        // The pipeline (ProcessInboundResultAsync) does not return a success flag — we check the actual
+        // The processing (ChannelInboundProcessor) does not return a success flag — we check the actual
         // result by reading the transaction state from the store (SPEC-016 §4.3).
         // The magic-link token is marked used ONLY when the transaction has actually
         // completed (Completed). On any failure (expired transaction, rate-limit,
         // concurrency conflict, completion error) the token remains available for a retry
         // within the link's TTL.
-        var verifyTxResult = await transactionService.GetTransactionAsync(
+        var verifyTxResult = await services.GetRequiredService<ITransactionService>().GetTransactionAsync(
             confirmTransactionId,
             CancellationToken.None);
 
+        // The confirmation went through and left the sign-in waiting for missing claims (SPEC-041 L91): a
+        // success of this page, answered by the page of the completion. A sign-in a concurrent confirmation
+        // took into the completion is no success of this letter and is refused below, the letter unspent.
+        if (verifyTxResult.IsSuccess && IsClaimCompletionOfLetter(verifyTxResult.Value, tokenData))
+        {
+            return await AnswerClaimCompletionAsync(httpContext, token, verifyTxResult.Value, fromFastLink);
+        }
+
+        // Completed is a success of THIS letter only when the letter's mailbox is who completed it: a
+        // sign-in completed by another subject — another letter, a chat — refused this confirmation
+        // (SPEC-039 N34), and its receipt is not this page's to show. The letter stays unspent.
         var isCompleted = verifyTxResult.IsSuccess
-            && verifyTxResult.Value.State is TransactionState.Completed;
+            && verifyTxResult.Value.State is TransactionState.Completed
+            && IsSubjectOfLetter(verifyTxResult.Value, tokenData);
 
         if (!isCompleted)
         {
             logger.LogWarning(
-                "Email confirm pipeline did not finish the transaction in Completed. TransactionId: {TransactionId}, FinalState: {FinalState}",
+                "Email confirm pipeline did not finish the transaction in Completed for the mailbox of the letter. TransactionId: {TransactionId}, FinalState: {FinalState}",
                 tokenData.TransactionId,
                 verifyTxResult.IsSuccess ? verifyTxResult.Value.State.ToString() : "Unknown");
-        }
 
-        if (!isCompleted)
-        {
-            var failHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageError);
-            return Results.Content(failHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status409Conflict);
+            return new EmailLetterOutcome.Refused(StatusCodes.Status409Conflict);
         }
 
         // Mark the token as used only after the transaction completes successfully (SPEC-016 §4.3).
         // If MarkUsedAsync returned false — the token was removed or concurrently marked by another thread;
         // the transaction is already Completed, but a repeated confirmation with the same magic link must be shown
         // as "the link is already used", so the UI and logs reflect the real outcome.
-        var marked = await tokenStore.MarkUsedAsync(token, CancellationToken.None);
+        var marked = await services.GetRequiredService<IEmailActionTokenStore>().MarkUsedAsync(token, CancellationToken.None);
         if (!marked)
         {
-            var usedHtml = BuildConfirmPageHtml(pageLocalizer, servedLocale, branding,
-                isError: true,
-                errorMessage: EmailAdapterMailStrings.ConfirmPageTokenUsed);
-            return Results.Content(usedHtml, "text/html", Encoding.UTF8,
-                StatusCodes.Status409Conflict);
+            return new EmailLetterOutcome.Refused(StatusCodes.Status409Conflict, LetterUsed: true);
         }
 
         // The terminal wording is resolved BEFORE the synchronous page builder is called: the receipt
@@ -1360,8 +1599,9 @@ public static partial class EmailAuthEndpoints
                 OutcomeReceiptSurfaces.EmailConfirmPage,
                 verifyTxResult.Value.Type,
                 verifyTxResult.Value.ConfirmationSnapshot?.ActionType,
-                ChannelTypes.Email),
-            servedLocale,
+                ChannelTypes.Email,
+                verifyTxResult.Value.InitiatorContextSnapshot?.DeviceType),
+            letter.Locale,
             // The zone the transaction states, beside the locale the page is served in. The moment of
             // the outcome is the one the completion wrote down: the transaction was re-read after the
             // pipeline finished, so this instance carries it.
@@ -1375,9 +1615,149 @@ public static partial class EmailAuthEndpoints
             TransactionResolutionContext.For(verifyTxResult.Value),
             CancellationToken.None);
 
-        var successHtml = BuildConfirmPageHtml(
-            pageLocalizer, servedLocale, branding, isSuccess: true, outcomeText: confirmedText);
-        return Results.Content(successHtml, "text/html", Encoding.UTF8);
+        return new EmailLetterOutcome.Completed(confirmedText);
+    }
+
+    /// <summary>
+    /// Answers the "Continue signing in" of a sign-in the sign-in window decides — an effective surface other
+    /// than None (SPEC-012 §4.4.2): the mailbox of the letter is attached and the sign-in keeps waiting for
+    /// the answer of the window (<see cref="ChannelWebhookPipeline.AttachSignInLetterIdentityAsync"/>).
+    /// </summary>
+    /// <remarks>
+    /// The letter has done its work once the mailbox is attached — it proved the mailbox, and the question
+    /// is asked in the window, not here — so it is spent then, and the page sends the user back to the
+    /// window. A letter a parallel request spent first is answered as used. A sign-in out of time is refused
+    /// by its record before the identity of the mailbox is built, as the letter of a confirmation is
+    /// (<see cref="ChannelWebhookPipeline.RefuseLetterOutOfTimeAsync"/>). A refusal leaves the letter unspent
+    /// and is answered by the error of the page, with no detail of the refusal, which is not this user's
+    /// business.
+    /// </remarks>
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="token">The action token of the letter, valid and not yet used.</param>
+    /// <param name="tokenData">The data of the action token.</param>
+    /// <param name="transaction">The sign-in the letter names, as the store holds it.</param>
+    /// <param name="adapter">The Email channel adapter.</param>
+    /// <param name="logger">The logger.</param>
+    /// <returns>The sign-in passed on to the sign-in window, or the refusal of the letter — used or not attached.</returns>
+    private static async Task<EmailLetterOutcome> ContinueSignInAsync(
+        HttpContext httpContext,
+        string token,
+        EmailActionToken tokenData,
+        Transaction transaction,
+        IChannelAdapter adapter,
+        ILogger logger)
+    {
+        var services = httpContext.RequestServices;
+        var processor = services.GetRequiredService<ChannelInboundProcessor>();
+
+        // CancellationToken.None: the user has acted, and the mailbox must be attached even if the browser
+        // goes away — the window waits for it.
+        var attachResult = await ChannelWebhookPipeline.RefuseLetterOutOfTimeAsync(processor, transaction, adapter)
+            ?? await ChannelWebhookPipeline.AttachSignInLetterIdentityAsync(
+                processor,
+                transaction,
+                await BuildPullIdentitySnapshotAsync(services, tokenData, transaction.GetTenantId(), logger),
+                adapter,
+                token,
+                CancellationToken.None);
+
+        if (attachResult.IsFailure)
+        {
+            logger.LogWarning(
+                "Email confirm: the mailbox of the letter was not attached to the sign-in. TransactionId: {TransactionId}, ErrorCode: {ErrorCode}",
+                transaction.Id.ToString(),
+                attachResult.Error.Code);
+
+            return new EmailLetterOutcome.Refused(StatusCodes.Status409Conflict);
+        }
+
+        if (!await services.GetRequiredService<IEmailActionTokenStore>().MarkUsedAsync(token, CancellationToken.None))
+        {
+            return new EmailLetterOutcome.Refused(StatusCodes.Status409Conflict, LetterUsed: true);
+        }
+
+        return new EmailLetterOutcome.SignInContinued();
+    }
+
+    /// <summary>
+    /// Whether the sign-in was confirmed into the claims completion by this letter: it waits for missing
+    /// claims, or the last of them came in and it is being finished (SPEC-041 L91), and its channel snapshot
+    /// is the Pull confirmation of the address the letter was sent to.
+    /// </summary>
+    /// <remarks>
+    /// Letters go out to any address while the sign-in is pending, and the form token goes to the device that
+    /// confirmed the sign-in (SPEC-041 N78). The holder of another letter — to another address, or of a
+    /// sign-in confirmed in a chat — confirmed nothing, so the page of the completion is not theirs.
+    /// </remarks>
+    /// <param name="transaction">The transaction of the letter.</param>
+    /// <param name="tokenData">The action token of the letter.</param>
+    /// <returns>true — the answer of the page is the one of the claims completion.</returns>
+    private static bool IsClaimCompletionOfLetter(Transaction transaction, EmailActionToken tokenData) =>
+        (transaction.IsCompletingClaims()
+            || (transaction.State is TransactionState.Confirmed && transaction.ClaimCompletion is not null))
+        && IsSubjectOfLetter(transaction, tokenData)
+        && transaction.ChannelIdentitySnapshot is { AdditionalClaims: { } claims }
+        && claims.TryGetValue(EmailAdapterConstants.ClaimVeriqaEmailMode, out var mode)
+        && string.Equals(mode, EmailAdapterConstants.ModePull, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether the channel snapshot of the transaction names the mailbox the letter was sent to — the
+    /// subject (channel type and user identifier) the engine binds a transaction to (SPEC-039 N34).
+    /// </summary>
+    /// <param name="transaction">The transaction of the letter.</param>
+    /// <param name="tokenData">The action token of the letter.</param>
+    /// <returns>true — the transaction was answered by the mailbox of this letter.</returns>
+    private static bool IsSubjectOfLetter(Transaction transaction, EmailActionToken tokenData) =>
+        transaction.ChannelIdentitySnapshot is { } snapshot
+        && string.Equals(snapshot.ChannelType, ChannelTypes.Email, StringComparison.Ordinal)
+        && string.Equals(snapshot.ChannelUserId, tokenData.NormalizedEmail, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Answers the confirmation page of a sign-in confirmed into the claims completion (SPEC-041 L52, N78).
+    /// The form of the web step is shown here when its surface is the device that confirmed the sign-in;
+    /// otherwise the page sends the user back to the device the sign-in was started on.
+    /// </summary>
+    /// <remarks>
+    /// The confirmation is a success of the letter, so the letter is spent — except on the GET of the fast
+    /// link while the form waits here: a mail gateway that follows links would otherwise spend the letter and
+    /// be given the form token. That GET gets one "Continue" button instead, which posts the letter to this
+    /// page; the letter is spent and the token issued on that POST only. A letter a parallel request spent
+    /// first is answered as used, so of two requests only one gets the form.
+    /// </remarks>
+    /// <param name="httpContext">The request HTTP context.</param>
+    /// <param name="token">The action token of the letter, valid and not yet used.</param>
+    /// <param name="transaction">The transaction confirmed into the claims completion by this letter
+    /// (<see cref="IsClaimCompletionOfLetter"/>) — the only one the page of the completion may be opened for.</param>
+    /// <param name="fromFastLink">The request is the GET of the fast link.</param>
+    /// <returns>The form on this device, the "Continue" page of the fast link, the refusal of a used letter or
+    /// the way to the device the sign-in was started on.</returns>
+    private static async Task<EmailLetterOutcome> AnswerClaimCompletionAsync(
+        HttpContext httpContext,
+        string token,
+        Transaction transaction,
+        bool fromFastLink)
+    {
+        var services = httpContext.RequestServices;
+
+        var formOnThisDevice = transaction.GetCurrentClaimCompletionStep() is ClaimCompletionStep.WebStep
+            && transaction.ClaimCompletion is { Surface: WebStepSurface.CrossDevicePage };
+
+        if (fromFastLink && formOnThisDevice)
+        {
+            return new EmailLetterOutcome.ClaimFormContinue();
+        }
+
+        var tokenStore = services.GetRequiredService<IEmailActionTokenStore>();
+        if (!await tokenStore.MarkUsedAsync(token, CancellationToken.None))
+        {
+            return new EmailLetterOutcome.Refused(StatusCodes.Status409Conflict, LetterUsed: true);
+        }
+
+        // The form is opened where the letter is answered, and the way to the device the sign-in was started
+        // on is the answer when it cannot be (RenderLetterPageAsync and the entry of the code).
+        return formOnThisDevice
+            ? new EmailLetterOutcome.ClaimFormOnThisDevice(transaction.Id)
+            : new EmailLetterOutcome.ContinueOnStartDevice();
     }
 
     /// <summary>
@@ -1424,34 +1804,88 @@ public static partial class EmailAuthEndpoints
     /// <param name="localizer">Channel message localizer (served strings → request language, ICC-050).</param>
     /// <param name="servedLocale">Detected request locale (IETF tag; null — base language).</param>
     /// <param name="branding">Effective branding of the generated page (null — neutral canon).</param>
+    /// <param name="texts">Overrides of the page's built-in texts, resolved for its transaction.</param>
     /// <param name="isError">Flag of an error page.</param>
     /// <param name="isSuccess">Flag of a successful confirmation.</param>
     /// <param name="errorMessage">The error message (a Natural Key; localized here).</param>
-    /// <param name="token">The action token (for the confirmation form).</param>
-    /// <param name="isDeclined">Flag of a declined confirmation.</param>
+    /// <param name="token">The action token (for the form of the page).</param>
     /// <param name="outcomeText">
     /// Terminal receipt of the transaction, ALREADY resolved and localized by the core
     /// (SPEC-036 TPL-123): the page states where the outcome is shown and renders what it is given.
-    /// Required by the two outcome branches and unused by the others.
+    /// Required by the success branch and unused by the others; that branch also shows the line of a
+    /// sign-in confirmed into the claims completion, resolved by the caller.
+    /// </param>
+    /// <param name="isClaimFormContinue">
+    /// Flag of the page of the fast link while the form of the claims completion waits on this device: one
+    /// "Continue" button posting the action token, nothing else (SPEC-041 N78).
+    /// </param>
+    /// <param name="isConfirmationRequest">
+    /// Flag of the request page when the link is of a confirmation transaction: the same page as the request
+    /// of a sign-in, worded for a confirmation — its title, line and continue button — with no subject and
+    /// no sign-in wording (SPEC-039 E28).
+    /// </param>
+    /// <param name="isConfirmationLetter">
+    /// Flag of a page answering the letter of a confirmation transaction with anything other than its
+    /// request page — a refusal of its link or of the hand-over: the body is the one the other flags pick, and the title
+    /// is the one of the request page of a confirmation, because the sign-in title would name a sign-in the
+    /// user was not asked for.
+    /// </param>
+    /// <param name="isSignInContinued">
+    /// Flag of the page a sign-in request turns into once "Continue signing in" passed the sign-in on: the
+    /// line sending the user back to the sign-in window and a "Close" button.
+    /// </param>
+    /// <param name="appName">
+    /// Name of the application the transaction is requested in — the request page only, which is the page
+    /// no flag but <paramref name="isConfirmationRequest"/> names: a live link of a transaction.
+    /// </param>
+    /// <param name="continuesInSameBrowser">
+    /// Flag of the request page whose transaction holds what the browser of the transaction is recognised
+    /// by: the page carries the script that hides the button and sends the form by itself
+    /// (<see cref="EmailLinkSameBrowser"/>). Ignored on any other page.
+    /// </param>
+    /// <param name="cspNonce">
+    /// CSP nonce of the request, for the scripts of the request page and of
+    /// <paramref name="isSignInContinued"/>; without one the scripts go out without the attribute.
     /// </param>
     /// <returns>The HTML string of the page.</returns>
     private static string BuildConfirmPageHtml(
         IConfirmationPromptLocalizer localizer,
         string? servedLocale,
         CorePageBranding? branding,
+        CorePageTexts texts,
         bool isError = false,
         bool isSuccess = false,
         string? errorMessage = null,
         string? token = null,
-        bool isDeclined = false,
-        string? outcomeText = null)
+        string? outcomeText = null,
+        bool isClaimFormContinue = false,
+        bool isConfirmationRequest = false,
+        bool isConfirmationLetter = false,
+        bool isSignInContinued = false,
+        string? appName = null,
+        bool continuesInSameBrowser = false,
+        string? cspNonce = null)
     {
         // The method builds the magic link confirmation page, localized into the request language
 
         var htmlLang = ResolveServedHtmlLang(localizer, servedLocale);
 
+        // The page no other flag names is the request of a transaction — a sign-in or, under
+        // isConfirmationRequest, a confirmation; it and the page a sign-in request turns into after
+        // "Continue signing in" carry the button that closes the tab.
+        var closesTab = isSignInContinued
+            || !(isSuccess || isError || isClaimFormContinue);
+
+        var titleKey = isConfirmationRequest || isConfirmationLetter
+            ? EmailAdapterMailStrings.ConfirmationContinueTitle
+            : closesTab
+                ? EmailAdapterMailStrings.SignInRequestTitle
+                : EmailAdapterMailStrings.ConfirmPageTitle;
+        var titleText = texts.Localize(localizer, titleKey, htmlLang);
+
         string statusBlock;
         string buttonBlock;
+        var sameBrowserScript = string.Empty;
 
         if (isSuccess)
         {
@@ -1460,17 +1894,34 @@ public static partial class EmailAuthEndpoints
                 """;
             buttonBlock = string.Empty;
         }
-        else if (isDeclined)
+        else if (isSignInContinued)
         {
-            // Neutral styling, not the error one: the user chose this outcome, nothing went wrong.
             statusBlock = $"""
-                <div class="veriqa-status">{System.Net.WebUtility.HtmlEncode(outcomeText)}</div>
+                <p class="veriqa-instruction">{System.Net.WebUtility.HtmlEncode(texts.Localize(localizer, EmailAdapterMailStrings.SignInRequestContinued, htmlLang))}</p>
                 """;
-            buttonBlock = string.Empty;
+            buttonBlock = CorePageCloseAction.Row(
+                texts.Localize(localizer, CorePageCloseAction.CloseText, htmlLang),
+                texts.Localize(localizer, CorePageCloseAction.CloseHint, htmlLang));
+        }
+        else if (isClaimFormContinue)
+        {
+            // The claims completion: the confirmation is already given, and the button only spends the letter
+            // and opens the form. It is a POST for the reason the request page below is: a scanner following
+            // links must not do it.
+            statusBlock = string.Empty;
+            var encodedContinueToken = System.Net.WebUtility.HtmlEncode(token ?? string.Empty);
+            buttonBlock = $"""
+                <div class="veriqa-actions">
+                  <form method="post">
+                    <input type="hidden" name="{EmailAdapterConstants.TokenQueryParam}" value="{encodedContinueToken}" />
+                    <button type="submit" class="veriqa-btn">{System.Net.WebUtility.HtmlEncode(texts.Localize(localizer, EmailAdapterMailStrings.ConfirmPageContinue, htmlLang))}</button>
+                  </form>
+                </div>
+                """;
         }
         else if (isError)
         {
-            var errorText = ResolveServedText(localizer, errorMessage ?? EmailAdapterMailStrings.ConfirmPageError, servedLocale);
+            var errorText = texts.Localize(localizer, errorMessage ?? EmailAdapterMailStrings.ConfirmPageError, htmlLang);
             statusBlock = $"""
                 <div class="veriqa-status error">{System.Net.WebUtility.HtmlEncode(errorText)}</div>
                 """;
@@ -1478,45 +1929,61 @@ public static partial class EmailAuthEndpoints
         }
         else
         {
+            // The request of a transaction, one page for a sign-in and a confirmation: the page asks
+            // nothing — the one question is the sign-in window's, or the core page's for a confirmation. The
+            // line of a sign-in names the application, so that a recipient who did not request it knows the
+            // page is to be closed; the line of a confirmation names none — the relying party words it for
+            // its application through AuthPage.Texts (SPEC-016 EM-206). Otherwise only the words naming the
+            // action differ by type. The continue button posts
+            // to the current URL (GET and POST are mapped to a single path) — no action attribute, which
+            // also works when the application is hosted under a sub-path (PathBase), where a root-relative
+            // action would send the POST past the application. It is a POST, never a GET link, so a mail
+            // scanner following links cannot pass the transaction on. "Cancel" only closes the tab and
+            // changes nothing.
+            var requestTextKey = isConfirmationRequest
+                ? EmailAdapterMailStrings.ConfirmationRequestText
+                : EmailAdapterMailStrings.SignInRequestText;
+            var continueKey = isConfirmationRequest
+                ? EmailAdapterMailStrings.ConfirmationRequestContinue
+                : EmailAdapterMailStrings.SignInRequestContinue;
+            var requestText = texts.Localize(localizer, requestTextKey, htmlLang)
+                .Replace(ClaimLinkAppSlot, appName ?? EmailAdapterConfigDefaults.DefaultClientName, StringComparison.Ordinal);
             statusBlock = $"""
-                <p class="veriqa-instruction">{System.Net.WebUtility.HtmlEncode(ResolveServedText(localizer, EmailAdapterMailStrings.ConfirmPageQuestion, servedLocale))}</p>
+                <p class="veriqa-instruction">{System.Net.WebUtility.HtmlEncode(requestText)}</p>
                 """;
-            // Both answers post to the current URL (GET and POST are mapped to a single path) — no action
-            // attribute, which also works when the application is hosted under a sub-path (PathBase), where
-            // a root-relative action would send the POST past the application. The answer itself travels in
-            // a hidden field: "No" is a POST too, never a GET link, so a mail scanner following links
-            // cannot decline a sign-in on the user's behalf.
             var encodedFormToken = System.Net.WebUtility.HtmlEncode(token ?? string.Empty);
+            var cancel = CorePageCloseAction.BesideForm(
+                texts.Localize(localizer, EmailAdapterMailStrings.CancelButton, htmlLang),
+                texts.Localize(localizer, CorePageCloseAction.CloseHint, htmlLang));
             buttonBlock = $"""
                 <div class="veriqa-actions">
-                  <form method="post">
+                  <form method="post" id="{EmailLinkSameBrowser.FormId}">
                     <input type="hidden" name="{EmailAdapterConstants.TokenQueryParam}" value="{encodedFormToken}" />
-                    <button type="submit" class="veriqa-btn">{System.Net.WebUtility.HtmlEncode(ResolveServedText(localizer, EmailAdapterMailStrings.ConfirmPageAnswerYes, servedLocale))}</button>
+                    <button type="submit" class="veriqa-btn" id="{EmailLinkSameBrowser.ButtonId}">{System.Net.WebUtility.HtmlEncode(texts.Localize(localizer, continueKey, htmlLang))}</button>
                   </form>
-                  <form method="post">
-                    <input type="hidden" name="{EmailAdapterConstants.TokenQueryParam}" value="{encodedFormToken}" />
-                    <input type="hidden" name="{EmailAdapterConstants.AnswerFormField}" value="{EmailAdapterConstants.AnswerDecline}" />
-                    <button type="submit" class="veriqa-btn veriqa-btn-decline">{System.Net.WebUtility.HtmlEncode(ResolveServedText(localizer, EmailAdapterMailStrings.ConfirmPageAnswerNo, servedLocale))}</button>
-                  </form>
+                  {cancel}
                 </div>
                 """;
+            sameBrowserScript = continuesInSameBrowser ? EmailLinkSameBrowser.Script(cspNonce) : string.Empty;
         }
 
         return $$"""
             <!DOCTYPE html>
-            <html lang="{{htmlLang}}">
+            <html lang="{{htmlLang}}" {{CorePageHead.BuildThemeAttribute(branding)}}>
             <head>
               <meta charset="utf-8" />
               <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <title>{{System.Net.WebUtility.HtmlEncode(ResolveServedText(localizer, EmailAdapterMailStrings.ConfirmPageTitle, servedLocale))}}</title>
-              {{CorePageHead.BuildServicePageHead(branding)}}
+              <title>{{System.Net.WebUtility.HtmlEncode(titleText)}}</title>
+              {{CorePageHead.BuildServicePageHead(branding, closesTab ? CorePageCloseAction.Css : null)}}
             </head>
             <body>
               <main class="veriqa-card">
-                <h1 class="veriqa-title">{{System.Net.WebUtility.HtmlEncode(ResolveServedText(localizer, EmailAdapterMailStrings.ConfirmPageTitle, servedLocale))}}</h1>
+                <h1 class="veriqa-title">{{System.Net.WebUtility.HtmlEncode(titleText)}}</h1>
                 {{statusBlock}}
                 {{buttonBlock}}
               </main>
+              {{(closesTab ? CorePageCloseAction.Script(cspNonce) : string.Empty)}}
+              {{sameBrowserScript}}
               {{CorePageAttribution.BuildLine(htmlLang)}}
             </body>
             </html>
@@ -1538,25 +2005,6 @@ public static partial class EmailAuthEndpoints
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Validates the correctness of an email address.
-    /// </summary>
-    /// <param name="email">The email address to validate.</param>
-    /// <returns>true if the address is valid.</returns>
-    private static bool IsValidEmail(string email)
-    {
-        // The method uses .NET MailAddress to validate the email format
-        try
-        {
-            _ = new MailAddress(email.Trim());
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     /// <summary>
@@ -1594,6 +2042,19 @@ public static partial class EmailAuthEndpoints
 
         return System.Text.Json.JsonSerializer.SerializeToElement(metadata);
     }
+
+    /// <summary>
+    /// The answer of an accepted Pull start.
+    /// </summary>
+    /// <param name="Success">Always <c>true</c>.</param>
+    /// <param name="MaskedEmail">The address the mail went to, masked.</param>
+    /// <param name="RetryAfterSeconds">Seconds before the next mail is accepted; zero — no interval.</param>
+    /// <param name="CodeExpected">The mail carries a code, and the page asks for it.</param>
+    private sealed record EmailStartAccepted(
+        [property: JsonPropertyName(EmailPullJsonFields.Success)] bool Success,
+        [property: JsonPropertyName(EmailPullJsonFields.MaskedEmail)] string MaskedEmail,
+        [property: JsonPropertyName(EmailPullJsonFields.RetryAfterSeconds)] int RetryAfterSeconds,
+        [property: JsonPropertyName(EmailPullJsonFields.CodeExpected)] bool CodeExpected);
 
 }
 

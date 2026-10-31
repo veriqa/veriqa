@@ -31,7 +31,25 @@ namespace Veriqa.Core.TransactionEngine.Migrations.SqlServer.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTimeOffset?>("AuthorizationCodeIssuedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("ChannelIdentitySnapshotJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClaimCompletionFormTokenHash")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClaimCompletionJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClaimCompletionResultsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClaimCompletionSurface")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClaimRequirementsJson")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ClientContext")
@@ -55,6 +73,18 @@ namespace Veriqa.Core.TransactionEngine.Migrations.SqlServer.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("HopChannelLaunchedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("HopFirstResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("HopInterstitialOpenedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("HopRepeatResolvedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("IdempotencyKey")
@@ -83,11 +113,28 @@ namespace Veriqa.Core.TransactionEngine.Migrations.SqlServer.Migrations
                     b.Property<string>("ResolvedIdentitySnapshotJson")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("State")
-                        .IsRequired()
+                    b.Property<string>("ScannerContextSnapshotJson")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ScannerFingerprint")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SignInSubjectFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<string>("StateReasonCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StoredClaimValuesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SubjectBindingJson")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Type")
@@ -99,9 +146,15 @@ namespace Veriqa.Core.TransactionEngine.Migrations.SqlServer.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("SignInSubjectFingerprint");
+
                     b.HasIndex("IdempotencyScope", "IdempotencyKey")
                         .IsUnique()
                         .HasFilter("[IdempotencyScope] IS NOT NULL AND [IdempotencyKey] IS NOT NULL");
+
+                    b.HasIndex("State", "ExpiresAt");
+
+                    b.HasIndex("State", "UpdatedAt");
 
                     b.ToTable("Transactions");
                 });

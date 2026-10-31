@@ -59,7 +59,9 @@ public static class ChannelTenantContext
     /// whoever legitimately knows it — from the transport or from an object already on hand. Inside
     /// this tree those are the webhook pipeline (tenant route segment / per-tenant secret), the
     /// polling supervisors (iteration over tenants), the prompt expiry handler (the reference's own
-    /// tenant) and the web paths of a channel (the transaction they have just loaded). A channel
+    /// tenant), the delivery of a claim completion message and the starter of its phone step (the
+    /// channel identity snapshot of the transaction they act for) and the web paths of a channel (the
+    /// transaction they have just loaded). A channel
     /// living outside this tree opens the scope on the very same terms, on its own path OUTSIDE a
     /// request: its supervisor or polling loop, around the processing of one tenant taken from
     /// <see cref="IPollingTenantSource"/>, and its health probe, which states the default implicit

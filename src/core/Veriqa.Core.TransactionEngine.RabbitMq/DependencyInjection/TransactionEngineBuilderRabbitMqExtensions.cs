@@ -21,10 +21,11 @@ public static class TransactionEngineBuilderRabbitMqExtensions
     /// process is the reliability of the broker and of nothing else — the engine builds no
     /// guarantee of its own on top of the transport.
     /// <para>
-    /// Supported extension point (B14.2): the implementation is complete, but no host in this
-    /// repository wires it, so its behaviour against a live broker is not tracked by CI — validate
-    /// the connection in the consuming host when you enable it. What CI does cover is the
-    /// composition: the in-process subscribers keep their events with this transport in place.
+    /// Supported extension point: the shipped standalone host wires it by configuration —
+    /// a connection string in <c>Veriqa:Events:RabbitMq:ConnectionString</c>. CI does not run that
+    /// host against a live broker — validate the connection in the consuming host when you enable
+    /// it. What CI does cover is the composition: the in-process subscribers keep their events with
+    /// this transport in place.
     /// </para>
     /// <para>
     /// A host writing a transport of its own can copy the shape below, and then owes what the shape

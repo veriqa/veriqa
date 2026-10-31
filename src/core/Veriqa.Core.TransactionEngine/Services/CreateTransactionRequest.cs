@@ -93,4 +93,16 @@ public sealed class CreateTransactionRequest
     /// Stored as the transaction's InitiatorContextSnapshot. Null — the context was not collected.
     /// </summary>
     public InitiatorContextSnapshot? InitiatorContext { get; init; }
+
+    /// <summary>
+    /// Requirement set of the transaction (SPEC-041 C35), built by the caller where the
+    /// scopes-and-claims catalog and the request are known; stored as
+    /// <see cref="Transaction.ClaimRequirements"/> and never changed after creation. At most one
+    /// element per claim name. Empty — the request states no requirements.
+    /// </summary>
+    /// <remarks>
+    /// Not a creation parameter compared on an idempotent repeat: the set is built only by the
+    /// authorization endpoint, and that entry point carries no idempotency key.
+    /// </remarks>
+    public IReadOnlyList<ClaimRequirement> ClaimRequirements { get; init; } = [];
 }

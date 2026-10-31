@@ -17,8 +17,11 @@ Veriqa.Core.Configuration.ConfigCachePolicy.LocalOnly.get -> bool
 Veriqa.Core.Configuration.ConfigCachePolicy.LocalOnly.init -> void
 Veriqa.Core.Configuration.ConfigCachePolicy.Ttl.get -> System.TimeSpan?
 Veriqa.Core.Configuration.ConfigCachePolicy.Ttl.init -> void
+Veriqa.Core.Configuration.ConfigBindingView
+Veriqa.Core.Configuration.ConfigBindingView.BoundLevels.get -> System.Collections.Frozen.FrozenDictionary<string!, System.Collections.Immutable.ImmutableArray<Veriqa.Core.Configuration.ConfigLevel>>!
 Veriqa.Core.Configuration.ConfigCoreValues
 Veriqa.Core.Configuration.ConfigCoreValues.Read<T>(Veriqa.Core.Configuration.ConfigKey<T>! key) -> T
+Veriqa.Core.Configuration.ConfigCoreValues.Read<T>(Veriqa.Core.Configuration.ConfigKey<T>! key, Veriqa.Core.Configuration.ConfigDimensionValues dimensions) -> T
 Veriqa.Core.Configuration.ConfigDeclaredDefault
 Veriqa.Core.Configuration.ConfigDeclaredDefault.<Clone>$() -> Veriqa.Core.Configuration.ConfigDeclaredDefault!
 Veriqa.Core.Configuration.ConfigDeclaredDefault.ConfigDeclaredDefault(string? Text) -> void
@@ -247,6 +250,7 @@ Veriqa.Core.Configuration.IConfigCoreBindings
 Veriqa.Core.Configuration.IConfigCoreBindings.RegisterCore<T>(Veriqa.Core.Configuration.ConfigKey<T>! key, System.Func<T>! extract) -> void
 Veriqa.Core.Configuration.IConfigCoreBindings.RegisterCore<T>(Veriqa.Core.Configuration.ConfigKey<T>! key, System.Func<T>! extract, System.Func<bool>! gate) -> void
 Veriqa.Core.Configuration.IConfigCoreBindings.RegisterCore<T>(Veriqa.Core.Configuration.ConfigKey<T>! key, System.Func<Veriqa.Core.Configuration.ConfigDimensionValues, Veriqa.Core.Configuration.LayerValue<T>>! extract, System.Func<bool>? gate = null) -> void
+Veriqa.Core.Configuration.IConfigCoreBindings.RegisterCore<T>(Veriqa.Core.Configuration.ConfigKey<T>! key, System.Func<Veriqa.Core.Configuration.ConfigDimensionValues, Veriqa.Core.Configuration.LayerValue<T>>! extract, System.Func<Veriqa.Core.Configuration.ConfigDimensionValues, Veriqa.Core.Configuration.LayerValue<T>>! overSilentRecord) -> void
 Veriqa.Core.Configuration.IConfigKeyDeclarationVisitor
 Veriqa.Core.Configuration.IConfigKeyDeclarationVisitor.Visit<T>(Veriqa.Core.Configuration.DeclaredConfigKey<T>! declared) -> void
 Veriqa.Core.Configuration.IConfigKeyDeclarations
@@ -407,10 +411,10 @@ static Veriqa.Core.Configuration.ConfigurationResolverServiceCollectionExtension
 static Veriqa.Core.Configuration.ConfigurationResolverServiceCollectionExtensions.AddVeriqaDeclaredConfigSnapshotCatalogs(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.Extensions.Configuration.IConfiguration! configuration, Veriqa.Core.Configuration.ConfigKeyCatalog! catalog) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Veriqa.Core.Configuration.ConfigurationResolverServiceCollectionExtensions.AddVeriqaOptionsConfigLevels(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, params Veriqa.Core.Configuration.ConfigLevel[]! levels) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Veriqa.Core.Configuration.ConfigurationResolverServiceCollectionExtensions.AddVeriqaPathConfigKeyRegistrar(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.Extensions.Configuration.IConfiguration! configuration) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
-static Veriqa.Core.Configuration.DimensionedConfigValue.Layer(Veriqa.Core.Configuration.ConfigDimensionValues point, System.Collections.Generic.IReadOnlyList<string!>! dimensionNames, System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string!, string!>>? valuesByDimension, string? commonValue) -> Veriqa.Core.Configuration.LayerValue<string?>
-static Veriqa.Core.Configuration.DimensionedConfigValue.Layer<T>(Veriqa.Core.Configuration.ConfigDimensionValues point, System.Collections.Generic.IReadOnlyList<string!>! dimensionNames, System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string!, T>>? valuesByDimension, T? commonValue) -> Veriqa.Core.Configuration.LayerValue<T>
+static Veriqa.Core.Configuration.DimensionedConfigValue.Layer(Veriqa.Core.Configuration.ConfigNode! node, Veriqa.Core.Configuration.ConfigDimensionValues point, string! dimensionName, string! mapAddress, string! commonAddress) -> Veriqa.Core.Configuration.LayerValue<string?>
+static Veriqa.Core.Configuration.DimensionedConfigValue.Layer<T>(Veriqa.Core.Configuration.ConfigNode! node, Veriqa.Core.Configuration.ConfigDimensionValues point, string! dimensionName, string! mapAddress, string! commonAddress) -> Veriqa.Core.Configuration.LayerValue<T>
 static Veriqa.Core.Configuration.DimensionedConfigValue.TextFor(System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string!, string!>>? valuesByDimension, string! dimensionValue) -> string?
-static Veriqa.Core.Configuration.DimensionedConfigValue.TryValueFor<TValue>(Veriqa.Core.Configuration.ConfigDimensionValues point, string! dimensionName, System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string!, TValue>>? valuesByDimension, out TValue value) -> bool
+static Veriqa.Core.Configuration.DimensionedConfigValue.TryReadFor<TValue>(Veriqa.Core.Configuration.ConfigNode! node, Veriqa.Core.Configuration.ConfigDimensionValues point, string! dimensionName, string! mapAddress, out TValue value) -> bool
 static Veriqa.Core.Configuration.LayerValue<T>.None.get -> Veriqa.Core.Configuration.LayerValue<T>
 static Veriqa.Core.Configuration.LayerValue<T>.Set(T value) -> Veriqa.Core.Configuration.LayerValue<T>
 static Veriqa.Core.Configuration.LayerValue<T>.Set(T value, bool allowLowerOverride) -> Veriqa.Core.Configuration.LayerValue<T>

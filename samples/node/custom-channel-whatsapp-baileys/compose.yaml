@@ -1,0 +1,70 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# Veriqa and the reference WhatsApp adapter through Baileys side by side, the adapter plugged in as the HTTP
+# channel whatsapp-baileys. A demonstration setup: Baileys is an unofficial WhatsApp Web
+# client and the number it is linked to may be banned (see the README); Veriqa runs in the Development
+# environment with an in-memory OpenIddict store and development certificates, which is not a production
+# configuration.
+#
+#   cp .env.example .env    # then fill it in
+#   docker compose up
+#
+# Veriqa listens on http://127.0.0.1:8080; the state of the channel is at /health/channels. The adapter
+# publishes no port: WhatsApp is reached over its outbound sessions, and only Veriqa calls it.
+
+name: veriqa-whatsapp-baileys
+
+services:
+
+  # ── Veriqa ─────────────────────────────────────────────────────────────────
+  veriqa:
+    build:
+      context: ../../..
+      dockerfile: build/docker/Dockerfile
+    image: veriqa-authserver:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Development: OpenIddict makes its own development certificates, and the in-memory store below
+      # is accepted. Nothing survives a restart.
+      ASPNETCORE_ENVIRONMENT: Development
+      Veriqa__OpenIddict__Database__Provider: InMemory
+
+      # The HTTP channel whatsapp-baileys: the adapter is reached by its name in the network of this file.
+      # The network is private to the two services, hence plain HTTP (Veriqa writes a warning at start).
+      # No request of the platform comes in: the adapter fetches the messages over its own outbound
+      # WhatsApp Web sessions, hence outbound_fetch.
+      Veriqa__Channels__whatsapp-baileys__InboundVerification: outbound_fetch
+      Veriqa__Channels__whatsapp-baileys__Http__BaseUrl: http://adapter:8000/
+      Veriqa__Channels__whatsapp-baileys__Http__AllowInsecureHttp: "true"
+      Veriqa__Channels__whatsapp-baileys__Http__TransportSecret: ${VERIQA_TRANSPORT_SECRET}
+      Veriqa__Channels__whatsapp-baileys__Http__DisplayName: WhatsApp (Baileys)
+      # The own setting of the adapter, forwarded verbatim with every call (see the README).
+      Veriqa__Channels__whatsapp-baileys__Http__AdapterSettings: '{"prefill_text": "Send this message to sign in."}'
+
+      # The facts of the channel: the same ones the built-in WhatsApp channel declares, so both channels
+      # word the prompt and the receipt alike.
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__SupportsInChannelConfirmation: "true"
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__SupportsMessageUpdate: "false"
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__DeliversOutcomeNotice: "true"
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__ProvidesRecipientLocale: "false"
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__SupportedMessageKinds__0: plain_text
+      Veriqa__Channels__whatsapp-baileys__Http__Capabilities__RendersEmoji: "true"
+
+  # ── The adapter ────────────────────────────────────────────────────────────
+  adapter:
+    build: .
+    image: veriqa-sample-whatsapp-baileys-adapter:latest
+    environment:
+      VERIQA_URL: http://veriqa:8080
+      VERIQA_CHANNEL_TYPE: whatsapp-baileys
+      VERIQA_TRANSPORT_SECRET: ${VERIQA_TRANSPORT_SECRET}
+      WHATSAPP_NUMBER: ${WHATSAPP_NUMBER}
+    volumes:
+      # The store and, under /data/sessions, the WhatsApp Web session of the number: it survives a restart
+      # of the container and goes with `docker compose down -v`.
+      - adapter-data:/data
+
+volumes:
+  adapter-data:

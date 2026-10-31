@@ -7,6 +7,8 @@ using Veriqa.Core.ChannelAdapter.Abstractions;
 using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
 using Veriqa.Core.TransactionEngine.Domain;
+using Veriqa.Core.TransactionEngine.MessageTemplates;
+using Veriqa.Core.TransactionEngine.Services;
 
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
@@ -27,8 +29,8 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
     private readonly IConfirmationPromptContextFactory _promptContextFactory;
 
     /// <summary>
-    /// Store of sent-prompt coordinates keyed by transaction (SPEC-003 §4.5). The core writes it:
-    /// the adapter only reports the reference it got back from the platform.
+    /// Store of the chat a transaction was started from, keyed by transaction (SPEC-003 §4.5). The
+    /// core writes it: the adapter only reports the reference it got back from the platform.
     /// </summary>
     private readonly IChannelPromptMessageStore _promptMessageStore;
 
@@ -47,7 +49,7 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
     /// </summary>
     /// <param name="surfaceResolver">Resolver of the effective confirmation surface.</param>
     /// <param name="promptContextFactory">Confirmation context factory.</param>
-    /// <param name="promptMessageStore">Store of sent-prompt coordinates.</param>
+    /// <param name="promptMessageStore">Store of the chat a transaction was started from.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="metrics">Component metrics.</param>
     public ConfirmationPromptOrchestrator(
@@ -68,10 +70,14 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
     public async Task<AuthStartConfirmationOutcome> HandleAuthStartConfirmationAsync(
         Transaction transaction,
         IChannelAdapter adapter,
-        string channelUserId,
+        ChannelIdentitySnapshot sender,
         string? recipientLocale,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(sender);
+
+        var channelUserId = sender.ChannelUserId;
+
         // The method applies the prompt flow only when the effective surface is InChannel; the other
         // two surfaces are decisions of the core and are handed back to the caller as an outcome.
         // The surface is resolved by a single resolver (SPEC-012 §4.4.2): the levels resolver →
@@ -80,6 +86,21 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
 
         if (surface is not ConfirmationSurface.InChannel)
         {
+            // No question goes into the chat, but the chat is still where the transaction was started
+            // from: its record is what a later expiry is reported by. A transaction whose decision is
+            // already recorded has nothing left to report.
+            if (!transaction.IsTerminal())
+            {
+                await StoreChatRecordAsync(
+                    transaction,
+                    adapter,
+                    channelUserId,
+                    promptMessage: null,
+                    promptShown: false,
+                    recipientLocale,
+                    transaction.GetUiTimeZone());
+            }
+
             return surface is ConfirmationSurface.OnWebPage
                 ? AuthStartConfirmationOutcome.AwaitingWebConfirmation
                 : AuthStartConfirmationOutcome.AutoConfirm;
@@ -102,11 +123,13 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
             return AuthStartConfirmationOutcome.HandledInChannel;
         }
 
+        // The question is asked of the sender of the event: at this moment the transaction carries only the
+        // binding of the subject, the snapshot of the account is not written to it yet.
         var promptContext = await _promptContextFactory.CreateAsync(
             transaction,
-            adapter.ChannelType,
-            channelUserId,
+            new ConfirmationPromptRecipient(adapter.ChannelType, channelUserId, sender),
             recipientLocale,
+            MessageSurfaces.InChannel,
             cancellationToken);
 
         LogContextDiagnostics(adapter, promptContext);
@@ -151,7 +174,14 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
                 : AuthStartConfirmationOutcome.HandledInChannel;
         }
 
-        await StorePromptReferenceAsync(transaction, adapter, channelUserId, promptContext, sendResult.Value);
+        await StoreChatRecordAsync(
+            transaction,
+            adapter,
+            channelUserId,
+            PromptReferenceToKeep(transaction, adapter, sendResult.Value),
+            promptShown: true,
+            promptContext.RecipientLocale,
+            promptContext.RecipientTimeZone);
 
         return AuthStartConfirmationOutcome.HandledInChannel;
     }
@@ -193,42 +223,68 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
     }
 
     /// <summary>
-    /// Records the sent-prompt coordinates so a later lifecycle event (TTL expiry) can address that
-    /// exact message. Only channels that declared they can update their own message are stored —
-    /// for the rest the record would never be usable.
+    /// Picks the reference to the sent prompt the record of the chat keeps: only a channel that
+    /// declared it can update its own message has one worth keeping.
     /// </summary>
-    /// <remarks>
-    /// Best-effort with <see cref="CancellationToken.None"/>: the prompt is already delivered, so a
-    /// cancelling request must not skip the record (there would be no expiry notice otherwise), and
-    /// a store failure never turns a delivered prompt into a failure.
-    /// </remarks>
     /// <param name="transaction">Transaction the prompt belongs to.</param>
     /// <param name="adapter">Channel adapter that sent the prompt.</param>
-    /// <param name="channelUserId">Recipient within the channel.</param>
-    /// <param name="promptContext">Confirmation context (carries the recipient locale and zone).</param>
     /// <param name="messageRef">Reference reported by the adapter (null — nothing addressable).</param>
-    private async Task StorePromptReferenceAsync(
+    /// <returns>The reference to keep; null — the record is written without one.</returns>
+    private ChannelMessageRef? PromptReferenceToKeep(
         Transaction transaction,
         IChannelAdapter adapter,
-        string channelUserId,
-        ConfirmationPromptContext promptContext,
         ChannelMessageRef? messageRef)
     {
         if (!adapter.Capabilities.SupportsMessageUpdate)
         {
             // A channel that cannot update its own message may still return a reference — the core
             // simply does not keep it. That is not a refusal.
-            return;
+            return null;
         }
 
         if (messageRef is null)
         {
-            // The contract invariant used to rest on the adapter promising to call the store itself;
-            // now it rests on the signature, and a breach is visible instead of silent.
+            // The contract invariant rests on the signature, so a breach is visible instead of
+            // silent. The record is still written: the chat is known even when the message is not.
             _logger.LogWarning(
                 "Channel declares message updates but returned no prompt reference. ChannelType: {ChannelType}, TransactionId: {TransactionId}",
                 adapter.ChannelType,
                 transaction.Id.ToString());
+        }
+
+        return messageRef;
+    }
+
+    /// <summary>
+    /// Records the chat the transaction was started from, so a later end of the transaction outside the
+    /// chat — TTL expiry, or the cancel button of the sign-in window or of the entry page of a confirmation
+    /// while the question stood there —
+    /// can tell the user about it and address the messages it has to. Written only for a channel that
+    /// reports outcomes or can update its own message — for the rest the record would never be used.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort with <see cref="CancellationToken.None"/>: the start in the channel is already
+    /// decided, so a cancelling request must not skip the record (there would be no expiry or cancel
+    /// notice otherwise), and a store failure never turns a delivered prompt into a failure.
+    /// </remarks>
+    /// <param name="transaction">Transaction the record belongs to.</param>
+    /// <param name="adapter">Channel adapter the transaction was started through.</param>
+    /// <param name="channelUserId">Recipient within the channel.</param>
+    /// <param name="promptMessage">Reference to the sent prompt (null — none to address).</param>
+    /// <param name="promptShown">Whether the question was shown in this channel.</param>
+    /// <param name="recipientLocale">Locale the recipient reads a later notice in.</param>
+    /// <param name="recipientTimeZone">Time zone the recipient reads a later notice in.</param>
+    private async Task StoreChatRecordAsync(
+        Transaction transaction,
+        IChannelAdapter adapter,
+        string channelUserId,
+        ChannelMessageRef? promptMessage,
+        bool promptShown,
+        string? recipientLocale,
+        string? recipientTimeZone)
+    {
+        if (!adapter.Capabilities.DeliversOutcomeNotice && !adapter.Capabilities.SupportsMessageUpdate)
+        {
             return;
         }
 
@@ -239,11 +295,12 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
                 new ChannelPromptMessageRef
                 {
                     ChannelType = adapter.ChannelType,
-                    Message = messageRef,
+                    Message = promptMessage,
+                    PromptShown = promptShown,
                     ChannelUserId = channelUserId,
                     TenantId = ChannelTenantContext.CurrentTenantId,
-                    RecipientLocale = promptContext.RecipientLocale,
-                    RecipientTimeZone = promptContext.RecipientTimeZone
+                    RecipientLocale = recipientLocale,
+                    RecipientTimeZone = recipientTimeZone
                 },
                 CancellationToken.None);
         }
@@ -251,7 +308,7 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
         {
             _logger.LogWarning(
                 ex,
-                "Failed to record the sent prompt coordinates. ChannelType: {ChannelType}, TransactionId: {TransactionId}",
+                "Failed to record the chat of the transaction. ChannelType: {ChannelType}, TransactionId: {TransactionId}",
                 adapter.ChannelType,
                 transaction.Id.ToString());
         }

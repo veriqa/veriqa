@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Veriqa.Core.ChannelAdapter.Http</RootNamespace>
+    <!-- Satellite package — the HTTP channel wrapper. A channel whose adapter runs as a separate
+         service, written in any language, is registered from configuration and served through this
+         one wrapper. It is not part of the Veriqa.Core.BaseChannels metapackage: the standard host
+         references it directly, an embedded host adds it explicitly. -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Veriqa.Core.ChannelAdapter.Http</PackageId>
+    <Authors>Veriqa</Authors>
+    <Title>Custom messenger login over HTTP: channel adapter in any language</Title>
+    <Description>Login and authentication through any messaging app or bot for Veriqa: a channel whose adapter runs as a separate service in any language, registered from configuration and reached over a signed HTTP wire contract (satellite package).</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;channels;channel-adapter;custom-channel;http-channel;webhooks;standard-webhooks;chatbot</PackageTags>
+    <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
+         MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
+         file has to travel inside the package. -->
+    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <!-- Shared package metadata: XML docs, repository metadata, embedded symbols, readme, validation. -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\..\build\Packaging.props" />
+
+  <!-- Declared inventory of the public surface (PublicAPI.*.txt + RS0016/RS0017 as errors). -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\..\build\PublicApi.props" />
+
+  <ItemGroup>
+    <!-- Retries and timeouts of the outbound calls (Polly), and the removal of the resilience handler a
+         host puts on every HttpClient: the calls to the external adapter retry by the wire rules alone.
+         The version is the one Veriqa.ServiceDefaults references, so the standard host resolves one. -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter\Veriqa.Core.ChannelAdapter.csproj" />
+  </ItemGroup>
+
+</Project>

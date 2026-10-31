@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 
 using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.Configuration;
+using Veriqa.Core.TransactionEngine.Domain;
 
 namespace Veriqa.Core.ChannelAdapter.Domain;
 
@@ -37,9 +38,10 @@ public abstract record ConfirmationPromptContext
 
     /// <summary>
     /// Ownership levels of the transaction the prompt is asked about — the tenant, the application
-    /// and the <c>ui_config</c> record selector it states (SPEC-036 TPL-116). The adapter passes it
-    /// back when it asks for the wording of the prompt, so a text declared by an application or a
-    /// record actually reaches the message instead of being answered from the core level.
+    /// and the <c>ui_config</c> record selector it states (SPEC-036 TPL-116). The template of a
+    /// channel message is resolved by the core over the ownership of the transaction itself
+    /// (<c>IChannelMessageTemplates</c>), so a text declared by an application or a record actually
+    /// reaches the message instead of being answered from the core level; these are the same levels.
     /// </summary>
     /// <remarks>
     /// Every variant of the context carries it, the suppressed one included: what ICC-042 suppresses
@@ -67,6 +69,18 @@ public abstract record ConfirmationPromptContext
     /// recipient read a moment" — the conventions of the date and the zone it is stated in.
     /// </summary>
     public string? RecipientTimeZone { get; init; }
+
+    /// <summary>
+    /// Brand name the levels of the transaction stated at its creation (<c>AuthPageDesign.BrandName</c>),
+    /// as configured — a Natural Key the text translates into the language of the recipient, as the brand
+    /// row of the sign-in page does; null when no level states one. The value of the <c>brand_name</c>
+    /// slot of the texts.
+    /// </summary>
+    /// <remarks>
+    /// Every variant carries it, the suppressed one included: the brand is not an initiator detail, and a
+    /// text an adapter falls back on may name it all the same.
+    /// </remarks>
+    public string? BrandName { get; init; }
 
     /// <summary>
     /// Builds the minimal context — "no details" with the given reason, locale and time zone.
@@ -137,6 +151,15 @@ public sealed record DetailedConfirmationPromptContext : ConfirmationPromptConte
     public DateTimeOffset InitiatedAt { get; init; }
 
     /// <summary>
+    /// Moment the transaction was created (UTC) — the time of the request the question shows; null when
+    /// the producer of the context states none. Every step of the shipped ladder that names the browser,
+    /// the OS or the region names the time as well, so without it the shipped question degrades onto the
+    /// application alone. Not <see cref="InitiatedAt"/>: that one is a member of the initiator context,
+    /// this one is the transaction's own.
+    /// </summary>
+    public DateTimeOffset? RequestedAt { get; init; }
+
+    /// <summary>
     /// Anomaly flag (SPEC-017 §9): an informative warning for the user,
     /// does not block confirmation (ICC-054).
     /// </summary>
@@ -146,6 +169,29 @@ public sealed record DetailedConfirmationPromptContext : ConfirmationPromptConte
     /// Natural Key of the localizable anomaly reason (null — a generic flag).
     /// </summary>
     public string? AnomalyReasonKey { get; init; }
+
+    /// <summary>
+    /// Channel snapshot of the account the question is asked of — the source of the masked identity slots
+    /// of the confirmation text (SPEC-036 TPL-102); null when no account is known.
+    /// </summary>
+    /// <remarks>
+    /// The snapshot is carried whole and masked by the core where the slot values are assembled: the
+    /// rule of a mask is the core's, so a renderer never decides what of the account to show.
+    /// </remarks>
+    public ChannelIdentitySnapshot? ChannelIdentity { get; init; }
+
+    /// <summary>
+    /// Name of the channel the question is asked in, in the language of the text — the value of the
+    /// <c>channel_name</c> slot of the confirmation text; null when the channel is not known.
+    /// </summary>
+    public string? ChannelName { get; init; }
+
+    /// <summary>
+    /// Name under which the person sees the chat of the channel the question is asked in, ready to show
+    /// (for example <c>@acme_bot</c>) — the value of the <c>bot_name</c> slot of the confirmation text;
+    /// null when the channel states no name for its chat, or the name could not be obtained.
+    /// </summary>
+    public string? BotName { get; init; }
 }
 
 /// <summary>

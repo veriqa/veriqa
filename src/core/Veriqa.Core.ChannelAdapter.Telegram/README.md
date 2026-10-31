@@ -1,11 +1,20 @@
 # Veriqa.Core.ChannelAdapter.Telegram
 
-Telegram channel adapter for Veriqa — a satellite package. The user confirms a desktop sign-in in a
-Telegram bot they already have installed, and the adapter turns that confirmation into the identity
-the core issues tokens for.
+**Telegram login and authentication for your website or app.** Your users scan a QR code on a
+computer, TV or kiosk, or tap a button on their phone, and confirm the sign-in with one tap in
+Telegram: no password, no SMS code and no sign-up form. Your application receives standard OpenID
+Connect tokens with the user's name, language and photo and, with their consent, their phone number.
 
-It is one channel out of several: a deployment installs the channels it actually uses, and only the
-Telegram SDK travels with this one.
+This package is the Telegram channel of [Veriqa](https://veriqa.app), an open-source
+project for passwordless authentication through popular messaging apps and email, over standard
+OpenID Connect.
+Setup guide: [Telegram channel](https://veriqa.app/docs/guides/channels#telegram).
+
+## About this package
+
+The adapter turns the user's confirmation in your Telegram bot into the identity the core issues
+tokens for. It is one channel out of several: a deployment installs the channels it actually uses,
+and only the Telegram SDK travels with this one.
 
 ## Install
 

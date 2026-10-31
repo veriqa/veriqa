@@ -16,4 +16,14 @@ public static class ChannelAdapterLimits
     /// overall 128 KB snapshot budget (SPEC-001 §3.3), which is why one channel cannot raise it alone.
     /// </summary>
     public const int MaxRawMetadataSize = 4096;
+
+    /// <summary>
+    /// Maximum size in bytes of a body the channel contour accepts over HTTP (1 MB): the body of
+    /// every webhook route — the built-in and the third-party channels alike, so the protective
+    /// parity holds by construction — and the answer of an external channel adapter to an outbound
+    /// call of the HTTP channel wrapper (SPEC-042 E54). Webhook bodies are usually under 100 KB;
+    /// the limit protects against a denial of service by a large body. A body over it is refused as
+    /// it arrives, without reading the rest.
+    /// </summary>
+    public const int MaxWebhookBodySize = 1_048_576;
 }

@@ -108,7 +108,8 @@ internal sealed partial class CustomChannelRegistry
             return new ChannelReplyTexts(
                 options.ErrorMessageText,
                 options.StaleLinkReplyText,
-                options.UnaddressedReplyText);
+                options.UnaddressedReplyText,
+                options.UnmatchedCodeReplyText);
         }
 
         throw new InvalidOperationException(

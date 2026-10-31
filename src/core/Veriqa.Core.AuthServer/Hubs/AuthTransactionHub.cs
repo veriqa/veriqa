@@ -3,7 +3,10 @@
 
 using Microsoft.AspNetCore.SignalR;
 using Veriqa.Core.AuthServer.Constants;
+using Veriqa.Core.AuthServer.HopMode;
 using Veriqa.Core.AuthServer.Infrastructure;
+using Veriqa.Core.ChannelAdapter.Constants;
+using Veriqa.Core.TransactionEngine.Services;
 using Veriqa.Core.TransactionEngine.Store;
 
 namespace Veriqa.Core.AuthServer.Hubs;
@@ -35,6 +38,11 @@ public sealed class AuthTransactionHub : Hub
     private readonly TimeProvider _timeProvider;
 
     /// <summary>
+    /// Services of the invocation scope the internal services of the hop mode are taken from.
+    /// </summary>
+    private readonly IServiceProvider _services;
+
+    /// <summary>
     /// Initializes the authentication hub.
     /// </summary>
     /// <param name="transactionStore">Transaction store.</param>
@@ -45,21 +53,29 @@ public sealed class AuthTransactionHub : Hub
     /// container, which every wiring of this hub has: the store it takes above comes from the
     /// Transaction Engine, and the engine registers the clock alongside it.
     /// </param>
+    /// <param name="services">
+    /// Services of the scope of the invocation. The re-issue of hop QR codes is an internal service of the
+    /// library and cannot be a parameter of this public constructor, so it is taken from here — only by the
+    /// method that needs it.
+    /// </param>
     public AuthTransactionHub(
         ITransactionStore transactionStore,
         ILogger<AuthTransactionHub> logger,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IServiceProvider services)
     {
         _transactionStore = transactionStore;
         _logger = logger;
         _timeProvider = timeProvider;
+        _services = services;
     }
 
     /// <summary>
     /// Subscribes the client to updates for a specific transaction (SPEC-007 UI-028).
     /// Validates the session_id format, verifies that the transaction exists in the store, and
     /// replays the transaction's current status to the caller so that a subscriber is never left
-    /// waiting for a broadcast that has already gone out (SPEC-007 UI-087).
+    /// waiting for a broadcast that has already gone out (SPEC-007 UI-087). The answer of the bot of a
+    /// channel, while it is still awaited in the chat, is replayed the same way.
     /// </summary>
     /// <param name="sessionId">External session identifier (session_id).</param>
     /// <returns>Group subscription task.</returns>
@@ -122,12 +138,58 @@ public sealed class AuthTransactionHub : Hub
                 Context.ConnectionAborted);
         }
 
+        // The answer of the bot is a fact on the transaction as well — the sender entered it and the
+        // answer is awaited in the channel — and its broadcast is as unrepeated as that of a status: a
+        // page that left for the chat on the same device and came back subscribes after it. So it is
+        // replayed to the caller alone from the same second read, by the predicate the broadcast is
+        // published under, over the method and the model of a channel status. The message names the
+        // channel the sender entered by and nothing of the sender (SPEC-007 UI-095).
+        if (current.IsAwaitingAnswerInChannel() && current.SubjectBinding is { } subjectBinding)
+        {
+            await Clients.Caller.SendAsync(
+                SignalRConstants.OnChannelStatusChangedMethod,
+                new ChannelStatusMessage
+                {
+                    SessionId = sessionId,
+                    ChannelType = subjectBinding.ChannelType,
+                    ChannelStatus = ChannelAnswerStatuses.ChannelAnswered
+                },
+                Context.ConnectionAborted);
+        }
+
         _logger.LogInformation(
             "Client {ConnectionId} subscribed to session {SessionId}, replayed status: {Status}",
             Context.ConnectionId,
             sessionId,
             currentStatus?.Status);
     }
+
+    /// <summary>
+    /// Replaces the hop QR codes of a page before their tokens expire (SPEC-025 HOP-152): a new token and
+    /// its picture per entry the page names. The answer goes to the caller alone; the method only reads —
+    /// it writes neither the transaction nor the audit, publishes no status, carries no code of the hop
+    /// family and has no bearing on the completion of the transaction. The session_id is the same bearer
+    /// capability as for the subscription (SPEC-007 UI-095).
+    /// </summary>
+    /// <remarks>
+    /// An entry left out of the answer is one the page stops re-issuing: the transaction is gone or past
+    /// entering a channel, the entry names no channel of its set or no hop for it, or this connection asks
+    /// again before the token it was given for the entry is due for replacement. An entry the replacement of
+    /// which failed is answered as failed, and the page asks again later. No failure leaves the method as an
+    /// error: the call has no outcome the page shows.
+    /// </remarks>
+    /// <param name="sessionId">External session identifier (session_id).</param>
+    /// <param name="entries">
+    /// The entries of the page: the channel types of its per-channel hop QR codes, in any letter case, or an
+    /// empty string for its unified hop QR code.
+    /// </param>
+    /// <returns>An item per replaced or failed QR code; empty — nothing to replace.</returns>
+    public Task<IReadOnlyList<HopQrReissueItem>> ReissueHopQrAsync(string sessionId, IReadOnlyList<string> entries) =>
+        _services.GetRequiredService<HopQrReissue>().ReissueAsync(
+            sessionId,
+            entries,
+            Context.Items,
+            Context.ConnectionAborted);
 
     /// <summary>
     /// Unsubscribes the client from transaction updates (SPEC-007 UI-029).

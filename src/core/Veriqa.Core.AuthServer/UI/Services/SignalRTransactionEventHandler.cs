@@ -130,12 +130,19 @@ internal sealed class SignalRTransactionEventHandler : ITransactionEventHandler
             // The core has taken the question onto its own page: the browser is sent to the callback
             // exactly the same way as on completion — the same deterministic session URL — because
             // the transaction will not reach a terminal status until the user answers there.
-            TransactionChannelIdentityAttachedEvent => new TransactionStatusMessage
+            TransactionChannelIdentityAttachedEvent attached => new TransactionStatusMessage
             {
                 SessionId = sessionId,
                 Status = TransactionStatusNames.AwaitingWebConfirmation,
-                RedirectUrl = TransactionStatusMessageFactory.BuildCallbackUrl(sessionId)
+                RedirectUrl = TransactionStatusMessageFactory.BuildCallbackUrl(sessionId),
+                AnswerBrowserBound = attached.AnswerBrowserBound
             },
+
+            // A step of the claims completion began (SPEC-041 L91): the page learns which one, and
+            // stays where it is. Step and surface come off the event, which read them off the stored
+            // transaction.
+            TransactionClaimCompletionStepEvent step => TransactionStatusMessageFactory.ForClaimCompletionStep(
+                sessionId, step.Step, step.Surface),
 
             TransactionCompletedEvent => new TransactionStatusMessage
             {

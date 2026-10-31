@@ -34,7 +34,7 @@ public sealed class AcmeChatChannelAdapter : IChannelAdapter, IChannelDisplayMet
     /// Declaring "cannot" is the whole point — the core then never calls what this channel is unable
     /// to do, and never silently skips a confirmation the operator configured.
     /// </summary>
-    private static readonly ChannelCapabilities DeclaredCapabilities = new()
+    private static readonly ChannelCapabilities BaseCapabilities = new()
     {
         SupportedMessageKinds = new[] { ChannelMessageKind.PlainText }.ToFrozenSet(),
         SupportsMessageUpdate = false,
@@ -61,6 +61,12 @@ public sealed class AcmeChatChannelAdapter : IChannelAdapter, IChannelDisplayMet
     private readonly ILogger<AcmeChatChannelAdapter> _logger;
 
     /// <summary>
+    /// The facts this instance declares: <see cref="BaseCapabilities"/>, plus the start by code when
+    /// the settings turn it on.
+    /// </summary>
+    private readonly ChannelCapabilities _capabilities;
+
+    /// <summary>
     /// Creates the sample adapter.
     /// </summary>
     /// <param name="options">Channel settings.</param>
@@ -69,6 +75,7 @@ public sealed class AcmeChatChannelAdapter : IChannelAdapter, IChannelDisplayMet
     {
         _options = options;
         _logger = logger;
+        _capabilities = BaseCapabilities with { CodeStart = DeclareCodeStart(options) };
     }
 
     /// <inheritdoc />
@@ -81,7 +88,7 @@ public sealed class AcmeChatChannelAdapter : IChannelAdapter, IChannelDisplayMet
     public string? IconSvgPath => AcmeChatConstants.IconSvgPath;
 
     /// <inheritdoc />
-    public ChannelCapabilities Capabilities => DeclaredCapabilities;
+    public ChannelCapabilities Capabilities => _capabilities;
 
     /// <summary>
     /// Validates the webhook by the shared secret in the signature header. A real adapter would
@@ -111,7 +118,8 @@ public sealed class AcmeChatChannelAdapter : IChannelAdapter, IChannelDisplayMet
 
     /// <summary>
     /// Turns the raw webhook body carried by the envelope into an inbound result. The user opened
-    /// the deep link and reached the platform, which is the sign-in intent.
+    /// the deep link and reached the platform, which is the sign-in intent. When the channel declares
+    /// a start by code, an event carrying a code is the same intent addressed by that code instead.
     /// </summary>
     /// <param name="request">Neutral inbound request envelope.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -137,7 +145,9 @@ public sealed class AcmeChatChannelAdapter : IChannelAdapter, IChannelDisplayMet
                 "The Acme Chat webhook body is not valid JSON."));
         }
 
-        if (payload?.TransactionId is null || payload.UserId is null)
+        var startsByCode = _capabilities.CodeStart is not null && !string.IsNullOrWhiteSpace(payload?.Code);
+
+        if (payload?.UserId is null || (payload.TransactionId is null && !startsByCode))
         {
             return Task.FromResult(Result<ChannelInboundResult>.Failure(
                 VeriqaErrorCodes.IdentityExtractionFailed,
@@ -153,6 +163,19 @@ public sealed class AcmeChatChannelAdapter : IChannelAdapter, IChannelDisplayMet
             CapturedAt = DateTimeOffset.UtcNow,
             AdapterVersion = AcmeChatConstants.AdapterVersion
         };
+
+        // A code is handed over exactly as the user sent it: the adapter neither normalizes it nor
+        // checks its length — both belong to the core, which finds the transaction by the code and
+        // answers a code that names none.
+        if (startsByCode)
+        {
+            return Task.FromResult(Result<ChannelInboundResult>.Success(
+                new ChannelAuthStartByCodeResult
+                {
+                    Code = payload.Code!,
+                    Identity = snapshot
+                }));
+        }
 
         // The identifier arrives as a string in the channel event, so the adapter is where it is
         // parsed. A value that does not parse means the event is not ours: the core is handed an
@@ -176,18 +199,53 @@ public sealed class AcmeChatChannelAdapter : IChannelAdapter, IChannelDisplayMet
     }
 
     /// <summary>
-    /// Builds the deep link the sign-in window turns into a button and a QR code.
+    /// Builds the deep link the sign-in window turns into a button and a QR code. A channel started
+    /// by code alone returns a link that only opens the chat: it has no way to carry the transaction,
+    /// which is what <see cref="ChannelCodeStart.LinkCarriesTransaction"/> <c>false</c> declares. The
+    /// link does not depend on the purpose of the request: the button, the QR code and the hop target
+    /// all get the same one.
     /// </summary>
-    /// <param name="transactionId">Transaction identifier.</param>
+    /// <param name="request">The transaction and the purpose of the link.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Deep link URL.</returns>
-    public Task<Result<string>> GetDeepLinkAsync(TransactionId transactionId, CancellationToken cancellationToken = default)
+    public Task<Result<string>> GetDeepLinkAsync(DeepLinkRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (_capabilities.CodeStart is { LinkCarriesTransaction: false })
+        {
+            return Task.FromResult(Result<string>.Success(_options.DeepLinkBaseUrl));
+        }
+
         var deepLink =
             $"{_options.DeepLinkBaseUrl}?{AcmeChatConstants.DeepLinkTransactionParameter}=" +
-            Uri.EscapeDataString(transactionId.ToString());
+            Uri.EscapeDataString(request.TransactionId.ToString());
 
         return Task.FromResult(Result<string>.Success(deepLink));
+    }
+
+    /// <summary>
+    /// What the channel declares about a start by code, from its settings: none by default; the code
+    /// as the only start when the link carries no transaction; the code as a fallback beside a link
+    /// that does. A fallback code is sent as it is — the user types the digits off another screen, and
+    /// a command around them would only get in the way.
+    /// </summary>
+    /// <param name="options">Channel settings.</param>
+    /// <returns>The declaration, or null when the sign-in is started by the link alone.</returns>
+    private static ChannelCodeStart? DeclareCodeStart(AcmeChatOptions options)
+    {
+        if (options.StartByCode)
+        {
+            return new ChannelCodeStart
+            {
+                MessageTemplate = AcmeChatConstants.StartMessageTemplate,
+                LinkCarriesTransaction = false
+            };
+        }
+
+        return options.CodeFallback
+            ? new ChannelCodeStart { LinkCarriesTransaction = true }
+            : null;
     }
 
     /// <inheritdoc />

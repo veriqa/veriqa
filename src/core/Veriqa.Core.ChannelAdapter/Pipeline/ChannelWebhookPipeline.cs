@@ -36,19 +36,8 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 /// The wire format of an inbound event is parsed by the adapter, not here: the pipeline builds one
 /// channel-neutral envelope per request and hands the same envelope to validation and to processing.
 /// </summary>
-public static class ChannelWebhookPipeline
+public static partial class ChannelWebhookPipeline
 {
-    /// <summary>
-    /// Body size limit of every webhook route (1 MB): protects against DoS by large request
-    /// bodies (webhook updates are usually &lt;100 KB). A single constant for the built-in and the
-    /// generic third-party routes — the protective parity is guaranteed by construction.
-    /// The limit is enforced by the envelope's own copy of the body, so nothing is reserved for a
-    /// request rejected before the body is read, and an over-limit body stops the copy instead of
-    /// being materialized first. The name keeps the word "buffer" for continuity with the earlier
-    /// naming; no buffering wrapper is involved in reading the body.
-    /// </summary>
-    private const int WebhookBodyBufferLimitBytes = 1_048_576;
-
     /// <summary>
     /// Message of the exception raised when the webhook body crosses the size limit.
     /// </summary>
@@ -58,6 +47,24 @@ public static class ChannelWebhookPipeline
     /// Separator joining the values of a multi-valued header or query parameter into one envelope value.
     /// </summary>
     private const string MultiValueSeparator = ", ";
+
+    /// <summary>
+    /// Name of the write <see cref="RecordChannelRefusalAsync"/> logs for a refused channel identity attach.
+    /// </summary>
+    private const string RefusedIdentityAttach = "Channel identity not attached";
+
+    /// <summary>
+    /// Message of the failure the attach of a letter's mailbox hands back for a refusal decided before the
+    /// attach was attempted (<see cref="AttachSignInLetterIdentityAsync"/>, <see cref="RefuseLetterAttachAsync"/>,
+    /// <see cref="RefuseLetterOutOfTimeAsync"/>).
+    /// </summary>
+    private const string LetterNotAttached =
+        "The mailbox of the letter was not attached to the transaction.";
+
+    /// <summary>
+    /// Name of the write <see cref="RecordChannelRefusalAsync"/> logs for a refused subject binding.
+    /// </summary>
+    private const string RefusedSubjectBinding = "The sender is not bound";
 
     /// <summary>
     /// Registers the endpoints of every registered channel.
@@ -208,7 +215,7 @@ public static class ChannelWebhookPipeline
 
     /// <summary>
     /// Reads the request body in full, refusing to hold more than
-    /// <see cref="WebhookBodyBufferLimitBytes"/>.
+    /// <see cref="ChannelAdapterLimits.MaxWebhookBodySize"/>.
     /// </summary>
     /// <remarks>
     /// The limit lives here, in the copy itself, rather than in a buffering wrapper around the
@@ -231,7 +238,7 @@ public static class ChannelWebhookPipeline
         await BoundedBodyReader.CopyAsync(
             body,
             buffer,
-            WebhookBodyBufferLimitBytes,
+            ChannelAdapterLimits.MaxWebhookBodySize,
             static () => new BadHttpRequestException(BodyOverLimitMessage, StatusCodes.Status413PayloadTooLarge),
             cancellationToken);
 
@@ -258,7 +265,7 @@ public static class ChannelWebhookPipeline
     /// and one handler for all of them is what keeps the two from drifting apart.
     /// </summary>
     /// <param name="httpContext">HTTP request context.</param>
-    /// <param name="support">Optional dependencies of the pipeline.</param>
+    /// <param name="support">Optional dependency of the route — the resolver of the tenant demux.</param>
     /// <param name="channelType">Channel type of the registered channel.</param>
     /// <param name="options">Registration settings of the channel (its status texts).</param>
     /// <returns>HTTP result of the webhook.</returns>
@@ -270,32 +277,11 @@ public static class ChannelWebhookPipeline
     {
         // Get dependencies from DI
         var adapters = httpContext.RequestServices.GetRequiredService<IEnumerable<IChannelAdapter>>();
-        var transactionService = httpContext.RequestServices.GetRequiredService<ITransactionService>();
-        // The store and the clock travel beside the service: a decision reported by a channel is
-        // answered for a transaction whose time may already be up, and the TTL gate of the service
-        // hides exactly that transaction (SPEC-003 CA-192).
-        var transactionStore = httpContext.RequestServices.GetRequiredService<ITransactionStore>();
-        var timeProvider = httpContext.RequestServices.GetRequiredService<TimeProvider>();
-        var identityResolutionService = httpContext.RequestServices.GetRequiredService<IIdentityResolutionService>();
         var logger = GetLogger(httpContext);
-        // The instrument comes from the request's services, the same way the logger does. It is not
-        // the only seam: the background and polling paths have no HttpContext and get it from their
-        // own container, which is why it travels onwards as a parameter.
-        var metrics = httpContext.RequestServices.GetRequiredService<ChannelAdapterMetrics>();
-        // The terminal wording of a transaction is the core's, not the registration's: it is resolved
-        // from the levelled configuration, so it is a required service and is taken exactly the way
-        // the other required ones above are — not through the bundle of OPTIONAL dependencies.
-        var receiptText = httpContext.RequestServices.GetRequiredService<IOutcomeReceiptText>();
-        // How the deployment wants the receipt to appear in the conversation. Taken exactly like the
-        // wording above and for the same reason: the value lives in the levelled configuration, so
-        // there is no default for this route to stand in with.
-        var displayIntentSource = httpContext.RequestServices.GetRequiredService<IOutcomeNoticeDisplayIntentSource>();
-        // The journal of the interaction surface (SPEC-039 E48). Optional: the publisher belongs to
-        // the transaction engine, and a composition wired without the engine has no journal to write
-        // to — the refusals are then still logged, they simply reach no audit consumer.
-        var eventPublisher = httpContext.RequestServices.GetService<ITransactionEventPublisher>();
-        // Per-user rate limiter — optional (not registered in tests / polling mode)
-        var userAuthRateLimiter = support.UserAuthRateLimiter;
+        // The processing of the event is a required service of the request, taken the way the
+        // adapters above are: AddVeriqaChannelAdapters registers it together with the channel registry
+        // this route is mapped from, so a route that exists has a processor to hand the event to.
+        var processor = httpContext.RequestServices.GetRequiredService<ChannelInboundProcessor>();
 
         // The fact of the call is worth a span whether or not it turns out to address a live
         // transaction, so it opens here and not after the lookups. It belongs to the trace of THIS
@@ -404,21 +390,18 @@ public static class ChannelWebhookPipeline
                 return Results.Ok();
             }
 
-            await ProcessInboundResultAsync(
-                inboundResult.Value, adapter, transactionService, transactionStore, timeProvider,
-                identityResolutionService, logger,
-                metrics,
-                userAuthRateLimiter,
-                support.PromptOrchestrator,
-                support.PromptLocalizer,
-                support.PromptMessageStore,
-                receiptText,
-                displayIntentSource,
-                eventPublisher,
+            // The processing applies the facts the registration of the channel states for the core
+            // (SPEC-042 R60, L62) itself — the owner of the registration and whether an answer takes
+            // only this channel's prompt reference.
+            await processor.ProcessAsync(
+                inboundResult.Value,
+                adapter,
                 new ChannelReplyTexts(
                     options.ErrorMessageText,
                     options.StaleLinkReplyText,
-                    options.UnaddressedReplyText),
+                    options.UnaddressedReplyText,
+                    options.UnmatchedCodeReplyText),
+                asksInChannelPrompt: true,
                 cancellationToken);
         }
         // As above: only a real cancellation of this request escapes; a spurious timeout of a
@@ -450,7 +433,7 @@ public static class ChannelWebhookPipeline
     /// depend on how well-behaved the adapter is.
     /// </summary>
     /// <param name="httpContext">HTTP request context.</param>
-    /// <param name="support">Optional dependencies of the pipeline.</param>
+    /// <param name="support">Optional dependency of the route — the resolver of the tenant demux.</param>
     /// <param name="channelType">Channel type of the registered channel.</param>
     /// <param name="challengeQueryKey">Query parameter carrying the challenge to echo back.</param>
     /// <returns>HTTP result of the handshake.</returns>
@@ -532,79 +515,63 @@ public static class ChannelWebhookPipeline
     }
 
     /// <summary>
-    /// Processes the inbound event result through the pipeline logic.
-    /// Used by polling services for routing in dev mode (without a webhook).
+    /// Routes the result of an inbound event to the handler of its intent — the body of
+    /// <see cref="ChannelInboundProcessor"/>, which states the services of the event's scope and the
+    /// choices of the call.
     /// </summary>
+    /// <remarks>
+    /// SPEC-042 R60: with an owner stated, an event that names a transaction is acted on only when the
+    /// transaction belongs to the owner. The transaction is read once, past the TTL gate, before any
+    /// other work with it — before its deadline is looked at, so an expired transaction of another
+    /// tenant is answered like a live one and like an identifier nobody issued. Any read that does not
+    /// yield a transaction of the owner — another tenant's, none, or a failed read — gets the answer to
+    /// an unknown transaction, which reads and spends nothing keyed by the transaction: no prompt
+    /// reference, no journal, no write. A failed read is not retried by the handler, so no second read
+    /// can find a transaction whose tenant was never compared.
+    /// </remarks>
+    /// <param name="processor">Processor holding the services of the event's scope.</param>
     /// <param name="inboundResult">Inbound event processing result.</param>
     /// <param name="adapter">Channel adapter.</param>
-    /// <param name="transactionService">Transaction service.</param>
-    /// <param name="transactionStore">
-    /// Transaction store. A decision reported by a channel is read through it rather than through
-    /// the TTL gate of the service: an expiry is an outcome this pipeline answers with a receipt of
-    /// its own (SPEC-003 CA-192), and the gate hides the very transaction that receipt is worded
-    /// from.
+    /// <param name="replyTexts">Texts the channel states for itself.</param>
+    /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator (null — the path
+    /// asks no question in the chat: AuthStart auto-confirmation, SPEC-003 §4.8).</param>
+    /// <param name="promptLocalizer">Channel message localizer (null — status texts stay in the base
+    /// language, 1:1).</param>
+    /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — the outcome notice
+    /// carries no prompt reference).</param>
+    /// <param name="ownerTenantId">
+    /// Tenant that owns the channel registration (SPEC-042 R60); null — the registration of the
+    /// operator, whose events are processed for any tenant.
     /// </param>
-    /// <param name="timeProvider">
-    /// Clock the deadline of a transaction is read against. Stated by the caller and never taken
-    /// from the ambient system clock: the answer to a decision made after the deadline is the same
-    /// before and after the cleanup pass, and that is only observable on a clock the caller drives.
-    /// </param>
-    /// <param name="identityResolutionService">Channel identity resolution service (TASK-002).</param>
-    /// <param name="logger">Logger.</param>
-    /// <param name="metrics">Component metrics (from DI) a failed user notification is counted into.</param>
-    /// <param name="userAuthRateLimiter">Per-user rate limiter (null — no limit).</param>
-    /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator (null — AuthStart auto-confirmation, SPEC-003 §4.8).</param>
-    /// <param name="promptLocalizer">Channel message localizer (null — status texts stay in the base language, 1:1).</param>
-    /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — the outcome notice carries no prompt reference).</param>
-    /// <param name="receiptText">
-    /// Terminal text of the transaction: the caller states the address of the receipt and the core
-    /// answers with the wording (SPEC-036 TPL-123). MANDATORY — the wordings live in the levelled
-    /// configuration of the deployment rather than in a compiled table, so there is no default to
-    /// take when it is absent.
-    /// </param>
-    /// <param name="displayIntentSource">
-    /// How the deployment wants the receipt of a terminal outcome to appear in the conversation —
-    /// in place of the question that was asked, or as a message of its own. MANDATORY for the reason
-    /// <paramref name="receiptText"/> is: the value lives in the levelled configuration of the
-    /// deployment, so a caller that stated nothing would have no default to fall back on.
-    /// </param>
-    /// <param name="eventPublisher">
-    /// Bus the refusals of this surface are written to (SPEC-039 E48); null — the composition has no
-    /// transaction engine and therefore no journal, and the refusals reach the log alone.
-    /// </param>
-    /// <param name="replyTexts">
-    /// Texts the channel states for itself: the error, and the replies it declares for a sign-in link
-    /// that cannot be served and for a message that names no transaction.
-    /// </param>
+    /// <param name="letterKey">What identifies the letter the event is, so that its decision is charged
+    /// once (<see cref="TakeConfirmBudgetOnceAsync"/>); null — the event is no letter.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <remarks>
-    /// The three prompt dependencies are nullable and have no default, exactly like
-    /// <paramref name="userAuthRateLimiter"/>: null keeps its declared meaning, but a caller that has
-    /// no prompt to send states it by hand, so the confirmation question can no longer be switched
-    /// off by an argument nobody wrote (SPEC-039 E41).
-    /// </remarks>
-    public static async Task ProcessInboundResultAsync(
+    internal static async Task RouteInboundResultAsync(
+        ChannelInboundProcessor processor,
         ChannelInboundResult inboundResult,
         IChannelAdapter adapter,
-        ITransactionService transactionService,
-        ITransactionStore transactionStore,
-        TimeProvider timeProvider,
-        IIdentityResolutionService identityResolutionService,
-        ILogger logger,
-        ChannelAdapterMetrics metrics,
-        IUserAuthRateLimiter? userAuthRateLimiter,
+        ChannelReplyTexts replyTexts,
         IConfirmationPromptOrchestrator? confirmationPromptOrchestrator,
         IConfirmationPromptLocalizer? promptLocalizer,
         IChannelPromptMessageStore? promptMessageStore,
-        IOutcomeReceiptText receiptText,
-        IOutcomeNoticeDisplayIntentSource displayIntentSource,
-        ITransactionEventPublisher? eventPublisher,
-        ChannelReplyTexts replyTexts,
+        string? ownerTenantId,
+        string? letterKey,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(receiptText);
-        ArgumentNullException.ThrowIfNull(displayIntentSource);
+        ArgumentNullException.ThrowIfNull(processor);
         ArgumentNullException.ThrowIfNull(replyTexts);
+
+        var transactionService = processor.TransactionService;
+        var transactionStore = processor.TransactionStore;
+        var timeProvider = processor.TimeProvider;
+        var identityResolutionService = processor.IdentityResolutionService;
+        var logger = processor.Logger;
+        var metrics = processor.Metrics;
+        var userAuthRateLimiter = processor.UserAuthRateLimiter;
+        var receiptText = processor.ReceiptText;
+        var displayIntentSource = processor.DisplayIntentSource;
+        var eventPublisher = processor.EventPublisher;
+        var completionBehaviorDispatcher = processor.CompletionBehaviorDispatcher;
 
         var errorText = replyTexts.ErrorMessageText;
 
@@ -613,36 +580,80 @@ public static class ChannelWebhookPipeline
         switch (inboundResult)
         {
             case ChannelAuthStartResult start:
-                await HandleAuthStartAsync(
-                    start, adapter, transactionService, timeProvider, identityResolutionService,
-                    logger, metrics,
-                    userAuthRateLimiter, confirmationPromptOrchestrator, receiptText,
-                    displayIntentSource, eventPublisher,
-                    replyTexts, promptLocalizer, cancellationToken);
+                await RouteAuthStartAsync(
+                    processor, start, adapter, replyTexts, userAuthRateLimiter,
+                    confirmationPromptOrchestrator, promptLocalizer, ownerTenantId, cancellationToken);
+                break;
+
+            case ChannelAuthStartByCodeResult startByCode:
+                // A start by a code is served only for a channel that declared it — before any attempt
+                // is taken or any code is looked up, whatever channel the event came through.
+                if (adapter.Capabilities.CodeStart is null)
+                {
+                    DropUndeclaredCodeStart(adapter, logger, metrics);
+                    break;
+                }
+
+                await HandleAuthStartByCodeAsync(
+                    processor, startByCode, adapter, replyTexts, confirmationPromptOrchestrator,
+                    promptLocalizer, ownerTenantId, cancellationToken);
                 break;
 
             case ChannelAuthConfirmResult confirm:
-                await HandleAuthConfirmAsync(
-                    confirm, adapter, transactionService, transactionStore, timeProvider,
-                    identityResolutionService, logger, metrics,
-                    userAuthRateLimiter, confirmationPromptOrchestrator,
-                    receiptText, displayIntentSource, eventPublisher, errorText, promptLocalizer,
-                    promptMessageStore, cancellationToken);
-                break;
+                {
+                    var decision = await ReadDecisionTransactionAsync(
+                        transactionStore, confirm.TransactionId, ownerTenantId, promptMessageStore,
+                        adapter, logger, metrics, cancellationToken);
+
+                    await HandleAuthConfirmAsync(
+                        processor, confirm, decision.Transaction, adapter, transactionService, transactionStore,
+                        timeProvider, identityResolutionService, logger, metrics,
+                        confirmationPromptOrchestrator,
+                        receiptText, displayIntentSource, eventPublisher, completionBehaviorDispatcher,
+                        errorText, promptLocalizer, decision.PromptMessageStore, letterKey, cancellationToken);
+                    break;
+                }
 
             case ChannelAuthDeclineResult decline:
-                await HandleAuthDeclineAsync(
-                    decline, adapter, transactionService, transactionStore, timeProvider, logger,
-                    metrics, confirmationPromptOrchestrator,
-                    receiptText, displayIntentSource, eventPublisher, errorText, promptLocalizer,
-                    promptMessageStore, cancellationToken);
-                break;
+                {
+                    var decision = await ReadDecisionTransactionAsync(
+                        transactionStore, decline.TransactionId, ownerTenantId, promptMessageStore,
+                        adapter, logger, metrics, cancellationToken);
+
+                    await HandleAuthDeclineAsync(
+                        processor, decline, decision.Transaction, adapter, transactionService, transactionStore,
+                        timeProvider, logger, metrics, confirmationPromptOrchestrator,
+                        receiptText, displayIntentSource, eventPublisher, errorText,
+                        promptLocalizer, decision.PromptMessageStore, cancellationToken);
+                    break;
+                }
 
             case ChannelPhoneSharedResult phoneShared:
-                await HandlePhoneSharedAsync(phoneShared, logger);
+                await HandlePhoneSharedAsync(
+                    processor, phoneShared, adapter, confirmationPromptOrchestrator, promptMessageStore,
+                    ownerTenantId, cancellationToken);
+                break;
+
+            case ChannelPhoneStepActionResult phoneStepAction:
+                await ApplyPhoneStepActionAsync(
+                    processor, phoneStepAction.TransactionId, phoneStepAction.Identity, phoneStepAction.Action,
+                    adapter, confirmationPromptOrchestrator, promptMessageStore, ownerTenantId, cancellationToken);
+                break;
+
+            case ChannelMenuItemPressedResult menuItemPressed:
+                await HandleMenuItemPressedAsync(processor, menuItemPressed, adapter, cancellationToken);
                 break;
 
             case ChannelUnaddressedResult unaddressed:
+                // A plain keyboard button of the phone step arrives as a message naming no transaction
+                // (SPEC-041 L73); every other such message keeps the answer it always had.
+                if (await TryApplyPhoneStepButtonTextAsync(
+                        processor, unaddressed, adapter, confirmationPromptOrchestrator, promptMessageStore,
+                        ownerTenantId, cancellationToken))
+                {
+                    break;
+                }
+
                 await HandleUnaddressedAsync(
                     unaddressed, adapter, replyTexts.UnaddressedReplyText, userAuthRateLimiter,
                     promptLocalizer, logger, metrics, cancellationToken);
@@ -662,6 +673,67 @@ public static class ChannelWebhookPipeline
     }
 
     /// <summary>
+    /// Starts the authentication of the transaction an event names — the one path both a start by
+    /// link and a start by code take once the transaction is known: the check of the owner of the
+    /// registration (SPEC-042 R60), then <see cref="HandleAuthStartAsync"/>.
+    /// </summary>
+    /// <param name="processor">Processor holding the services of the event's scope.</param>
+    /// <param name="start">The start, naming its transaction.</param>
+    /// <param name="adapter">Channel adapter the event arrived through.</param>
+    /// <param name="replyTexts">Texts the channel states for itself.</param>
+    /// <param name="userAuthRateLimiter">
+    /// Per-user rate limiter the start is charged to. Null — nothing is charged on this path: either
+    /// the host registered no limiter, or the caller has already taken the attempt of this very event
+    /// and every point of the path that would take one more must not.
+    /// </param>
+    /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator (null — the path
+    /// asks no question in the chat).</param>
+    /// <param name="promptLocalizer">Channel message localizer (null — base language).</param>
+    /// <param name="ownerTenantId">Tenant that owns the channel registration (null — no owner).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private static async Task RouteAuthStartAsync(
+        ChannelInboundProcessor processor,
+        ChannelAuthStartResult start,
+        IChannelAdapter adapter,
+        ChannelReplyTexts replyTexts,
+        IUserAuthRateLimiter? userAuthRateLimiter,
+        IConfirmationPromptOrchestrator? confirmationPromptOrchestrator,
+        IConfirmationPromptLocalizer? promptLocalizer,
+        string? ownerTenantId,
+        CancellationToken cancellationToken)
+    {
+        var logger = processor.Logger;
+        var metrics = processor.Metrics;
+
+        if (ownerTenantId is not null
+            && await ReadOwnedTransactionAsync(
+                processor.TransactionStore, start.TransactionId, ownerTenantId, adapter, logger, metrics,
+                cancellationToken) is null)
+        {
+            // The answer of the handler's branch for an identifier no record answers to: the
+            // unserved start is counted and the declared reply goes out in the language of
+            // the channel snapshot — the transaction is not in hand to take one off.
+            metrics.RecordUnservedStart(adapter.ChannelType);
+
+            await ReplyToUnservedStartAsync(
+                adapter, start.Identity, replyTexts.StaleLinkReplyText, start.Identity.Locale,
+                userAuthRateLimiter, promptLocalizer, logger, metrics, start.TransactionId,
+                cancellationToken);
+            return;
+        }
+
+        // The transaction of the owner is read again by the handler, through the service
+        // it needs the transaction from; the identifier is the one just compared, and the
+        // tenant of a transaction is written once, at its creation.
+        await HandleAuthStartAsync(
+            processor, start, adapter, processor.TransactionService, processor.TimeProvider,
+            processor.IdentityResolutionService, logger, metrics,
+            userAuthRateLimiter, confirmationPromptOrchestrator, processor.ReceiptText,
+            processor.DisplayIntentSource, processor.EventPublisher, processor.CompletionBehaviorDispatcher,
+            replyTexts, promptLocalizer, cancellationToken);
+    }
+
+    /// <summary>
     /// Handles the start of authentication (the user followed the deep link).
     /// The mode is determined by the pipeline configuration (SPEC-003 §4.8, §13.2):
     /// AutoConfirm — following the deep link is treated as confirmation of intent;
@@ -674,6 +746,7 @@ public static class ChannelWebhookPipeline
     /// web-confirmation branch it hands over to does answer a closed window with a receipt.
     /// </summary>
     private static async Task HandleAuthStartAsync(
+        ChannelInboundProcessor processor,
         ChannelAuthStartResult result,
         IChannelAdapter adapter,
         ITransactionService transactionService,
@@ -686,6 +759,7 @@ public static class ChannelWebhookPipeline
         IOutcomeReceiptText receiptText,
         IOutcomeNoticeDisplayIntentSource displayIntentSource,
         ITransactionEventPublisher? eventPublisher,
+        ICompletionBehaviorDispatcher completionBehaviorDispatcher,
         ChannelReplyTexts replyTexts,
         IConfirmationPromptLocalizer? promptLocalizer,
         CancellationToken cancellationToken)
@@ -739,6 +813,34 @@ public static class ChannelWebhookPipeline
         // Recipient-locale chain (B17): channel snapshot locale → initiation-page language stored in
         // the transaction → base language (the localizer applies the base fallback for null).
         var recipientLocale = result.Identity.Locale ?? txResult.Value.GetUiLocale();
+
+        // Only the channel subject the transaction is bound to may act on it (SPEC-007 UI-022, SPEC-039
+        // N34). Compared first — before the expiry branch and before the rate-limit block — so another
+        // sender learns nothing of the state of the transaction and cannot spend a budget whose refusal
+        // fails the owner's sign-in.
+        if (txResult.Value.IsBoundToAnotherSubject(result.Identity))
+        {
+            metrics.RecordUnservedStart(adapter.ChannelType);
+
+            // A sender the transaction does not admit is answered the way it always is, with silence
+            // (SPEC-003 CA-200) — whoever the transaction is bound to.
+            if (!await IsSenderAdmittedAsync(
+                    txResult.Value, result.Identity, adapter, transactionService, eventPublisher,
+                    timeProvider, logger, cancellationToken))
+            {
+                return;
+            }
+
+            await RecordSubjectMismatchAsync(transactionId, adapter, eventPublisher, timeProvider, logger);
+
+            // Answered as an identifier with nothing behind it (SPEC-039 C15): the same text, in the
+            // language of the snapshot alone, under the same budget.
+            await ReplyToUnservedStartAsync(
+                adapter, result.Identity, replyTexts.StaleLinkReplyText, result.Identity.Locale,
+                userAuthRateLimiter, promptLocalizer, logger, metrics, transactionId,
+                cancellationToken);
+            return;
+        }
 
         // The cleanup pass has already written the expiry down. It is the same occurrence the failed
         // read above answers — the two are simply the two sides of that pass — so it gets the same
@@ -795,6 +897,41 @@ public static class ChannelWebhookPipeline
             return;
         }
 
+        // The user has already confirmed and the transaction waits for missing claims (SPEC-041
+        // L91): the snapshot is frozen, so the start is recorded and, on a channel that updates its
+        // messages, answered like one on a transaction that no longer accepts it. A channel that
+        // does not is not sent that reply — it would arrive as one more message under the request
+        // of the step in progress — and is sent the request again instead: the message of the user
+        // may have taken its buttons away (SPEC-003 CA-200). A button press during the completion
+        // is answered the same way. Like the expiry above,
+        // the branch stands before the rate-limit block, whose refusal would fail the transaction
+        // the user is completing; the reply takes the budget itself.
+        if (txResult.Value.IsCompletingClaims())
+        {
+            metrics.RecordUnservedStart(adapter.ChannelType);
+
+            await RecordClaimCompletionRefusalAsync(
+                transactionId, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
+
+            if (adapter.Capabilities.SupportsMessageUpdate)
+            {
+                await ReplyToUnservedStartAsync(
+                    adapter, result.Identity, replyTexts.StaleLinkReplyText, result.Identity.Locale,
+                    userAuthRateLimiter, promptLocalizer, logger, metrics, transactionId,
+                    cancellationToken);
+            }
+            else
+            {
+                // The limiter of this start, not the one of the processor: a start whose attempt
+                // the caller has already taken arrives here with none.
+                await SendPhoneRequestAgainAsync(
+                    processor, txResult.Value, result.Identity, userAuthRateLimiter,
+                    UserAuthRateLimitOperations.AuthStart, cancellationToken);
+            }
+
+            return;
+        }
+
         // Per-user rate limiting: check before confirmation. The partition is scoped to the
         // auth-start operation so this check does not drain the confirmation/token budgets
         // of the same user (see UserAuthRateLimitOperations).
@@ -838,39 +975,67 @@ public static class ChannelWebhookPipeline
             }
         }
 
+        // The sender enters the transaction, so it is bound to this subject here — whatever surface the
+        // orchestrator resolves below, which is not known yet: the question of the channel then goes to
+        // the bound subject only, and a later start of another sender is refused above. The transaction
+        // the binding hands back carries the concurrency token it left, so every write below goes with it.
+        var bindResult = await transactionService.BindChannelSubjectAsync(
+            transactionId, result.Identity, cancellationToken);
+
+        if (bindResult.IsFailure)
+        {
+            await AnswerRefusedBindingAsync(
+                bindResult.Error.Code, result.Identity, transactionId, adapter,
+                replyTexts.StaleLinkReplyText, promptLocalizer, eventPublisher, timeProvider, logger,
+                metrics, cancellationToken);
+            return;
+        }
+
+        var transaction = bindResult.Value;
+
         // The orchestrator resolves the effective surface (SPEC-012 §4.4) and returns what to do:
         // InChannel — a confirmation message with buttons and initiator context (SPEC-017) has been
         // sent, the transaction will be confirmed after a button press (AuthConfirm); OnWebPage — the
-        // question belongs to the core page, so the channel gets nothing while it is answered there
-        // (a transaction that refuses the event is a different matter — CA-200); None — the previous
-        // auto-confirmation applies.
+        // question belongs to the core page, so the chat gets no question, only the one notice
+        // sending the sender to that page (a transaction that refuses the event is a different
+        // matter — CA-200); None — the previous auto-confirmation applies.
         if (confirmationPromptOrchestrator is not null)
         {
             var outcome = await confirmationPromptOrchestrator.HandleAuthStartConfirmationAsync(
-                txResult.Value,
+                transaction,
                 adapter,
-                result.Identity.ChannelUserId,
+                result.Identity,
                 recipientLocale,
                 cancellationToken);
 
             if (outcome is AuthStartConfirmationOutcome.HandledInChannel)
             {
+                // The answer is now awaited in the chat, and the page is told so: it stops offering
+                // the way around a silent chat. The same predicate decides the replay to a page that
+                // connects later, so the two cannot disagree.
+                if (transaction.IsAwaitingAnswerInChannel())
+                {
+                    await PublishChannelAnsweredAsync(
+                        eventPublisher, timeProvider, transactionId, adapter.ChannelType, logger);
+                }
+
                 return;
             }
 
             if (outcome is AuthStartConfirmationOutcome.AwaitingWebConfirmation)
             {
                 await AttachIdentityForWebConfirmationAsync(
-                    result.Identity, txResult.Value, adapter, transactionService, timeProvider,
+                    result.Identity, transaction, adapter, transactionService, timeProvider,
                     recipientLocale, replyTexts.StaleLinkReplyText, receiptText, displayIntentSource,
-                    promptLocalizer, eventPublisher, logger, metrics, cancellationToken);
+                    processor.WebConfirmationNoticeSender, promptLocalizer, eventPublisher, logger, metrics,
+                    cancellationToken);
                 return;
             }
 
             if (outcome is AuthStartConfirmationOutcome.ChannelCannotContinue)
             {
                 await FailForChannelCannotContinueAsync(
-                    transactionId, transactionService, txResult.Value.ConcurrencyToken, logger);
+                    transactionId, transactionService, transaction.ConcurrencyToken, logger);
 
                 // Nothing is sent to the user in the channel — it has just declared it cannot carry
                 // the confirmation out — and auto-confirmation is not performed either. The user
@@ -886,7 +1051,7 @@ public static class ChannelWebhookPipeline
                 // transaction ends here, and the user gets the channel's own neutral error text —
                 // the one its options carry, not a wording of this particular cause.
                 await FailForConfirmationSubjectUnavailableAsync(
-                    transactionId, transactionService, txResult.Value.ConcurrencyToken, logger);
+                    transactionId, transactionService, transaction.ConcurrencyToken, logger);
 
                 await SendUserMessageAsync(
                     adapter,
@@ -906,30 +1071,62 @@ public static class ChannelWebhookPipeline
         // then left as it is, to its TTL: auto-confirming it would complete the action the relying
         // party named without ever showing it, which is what E41 exists to prevent.
         if (!await AcceptsChannelDecisionAsync(
-                txResult.Value, adapter, confirmationPromptOrchestrator, logger, cancellationToken))
+                transaction, adapter, confirmationPromptOrchestrator, logger, cancellationToken))
         {
             return;
         }
 
+        // Whether the sign-in was completed BEFORE this event is taken as a value here: a transaction
+        // store is free to hand out the very instance it keeps, and the finalization below would then
+        // move this one to Completed as well, leaving nothing to tell the two cases apart.
+        var wasCompleted = transaction.State is TransactionState.Completed;
+
         // Automatically confirm and complete the transaction (SPEC-003 §4.8)
         var finalizeResult = await ChannelTransactionFinalizer.ConfirmAndCompleteAsync(
             result.Identity, transactionId, transactionService,
-            identityResolutionService, txResult.Value.ConcurrencyToken, logger, cancellationToken);
+            identityResolutionService, transaction.ConcurrencyToken, logger, cancellationToken);
+
+        // A parallel delivery set the claims completion mark between the read above and this write:
+        // the same frozen snapshot the pre-check answers, with the same text. The budget of this
+        // event is already spent by the limiter block above.
+        if (finalizeResult.IsFailure
+            && await IsRefusedByClaimCompletionAsync(
+                finalizeResult.Error.Code, transactionId, transactionService, cancellationToken))
+        {
+            metrics.RecordUnservedStart(adapter.ChannelType);
+
+            await RecordClaimCompletionRefusalAsync(
+                transactionId, adapter, finalizeResult.Error.Code, eventPublisher, timeProvider, logger);
+
+            await SendDeclaredReplyAsync(
+                adapter, result.Identity, replyTexts.StaleLinkReplyText, result.Identity.Locale,
+                promptLocalizer, logger, metrics, cancellationToken);
+            return;
+        }
+
+        // The confirmation left the transaction waiting for missing claims (SPEC-041 L91): the
+        // sign-in is not confirmed, so there is no receipt — what the user sees in the chat now is
+        // the business of the step starter, which has already run.
+        if (finalizeResult.IsSuccess && finalizeResult.Value.IsCompletingClaims())
+        {
+            return;
+        }
+
         var completed = finalizeResult.IsSuccess;
 
         // Send a text notification (without buttons). A confirmed outcome is a RECEIPT — the core
         // states its wording; an error stays the channel's own text and is localized here.
         var outcomeText = completed
             ? await receiptText.RenderAsync(
-                ReceiptAddressOf(TransactionOutcome.Confirmed, adapter, txResult.Value),
+                ReceiptAddressOf(TransactionOutcome.Confirmed, adapter, transaction),
                 recipientLocale,
-                txResult.Value.GetUiTimeZone(),
+                transaction.GetUiTimeZone(),
                 // The moment of the outcome is the one the completion wrote down, read off the
                 // instance the finalizer returned: the one held before the call is the stale one.
                 finalizeResult.Value.UpdatedAt,
                 // The gate above accepted this channel, so the question stood before this user here.
-                TransactionSlotSource.From(txResult.Value),
-                TransactionResolutionContext.For(txResult.Value),
+                SenderSlotSource(transaction, result.Identity),
+                TransactionResolutionContext.For(transaction),
                 cancellationToken)
             : Localize(promptLocalizer, errorText, recipientLocale);
 
@@ -940,6 +1137,15 @@ public static class ChannelWebhookPipeline
             logger,
             metrics,
             cancellationToken);
+
+        // The post-completion action follows the receipt and never replaces it (SPEC-012 §4.9). A
+        // repeated start on a sign-in that is already completed passes the finalization on its
+        // idempotent branch, so the action is performed only by the event that completed the sign-in;
+        // it is handed the instance the finalizer returned — the one carrying the resolved identity.
+        if (completed && !wasCompleted)
+        {
+            await completionBehaviorDispatcher.DispatchAsync(finalizeResult.Value, cancellationToken);
+        }
     }
 
     /// <summary>
@@ -947,11 +1153,11 @@ public static class ChannelWebhookPipeline
     /// the render point knows, and nothing more. The wording of that address is chosen by the
     /// resolution (SPEC-036 TPL-116), never here.
     /// </summary>
-    /// <param name="outcome">Terminal outcome being reported.</param>
+    /// <param name="outcome">Outcome being reported — a terminal one, or the claims completion state.</param>
     /// <param name="adapter">Channel adapter the receipt travels through.</param>
     /// <param name="transaction">Transaction the decision was made on.</param>
     /// <returns>The address of the receipt.</returns>
-    private static OutcomeReceiptAddress ReceiptAddressOf(
+    internal static OutcomeReceiptAddress ReceiptAddressOf(
         TransactionOutcome outcome,
         IChannelAdapter adapter,
         Transaction transaction) =>
@@ -959,7 +1165,8 @@ public static class ChannelWebhookPipeline
             OutcomeReceiptSurfaces.ForChannel(adapter),
             transaction.Type,
             transaction.ConfirmationSnapshot?.ActionType,
-            adapter.ChannelType);
+            adapter.ChannelType,
+            transaction.InitiatorContextSnapshot?.DeviceType);
 
     /// <summary>
     /// The address of a receipt shown inside a channel when the transaction could NOT be read
@@ -976,6 +1183,68 @@ public static class ChannelWebhookPipeline
         new(outcome,
             OutcomeReceiptSurfaces.ForChannel(adapter),
             ChannelType: adapter.ChannelType);
+
+    /// <summary>
+    /// Answers a pressed button as one naming a transaction that is not there — the single answer both
+    /// a missing transaction and a sender other than the bound subject get, so the two cannot be told
+    /// apart (SPEC-039 C15).
+    /// </summary>
+    /// <remarks>
+    /// A pressed button is always answered (SPEC-003 §13.3, CA-192): a transaction that is not there is
+    /// an outcome too, and leaving without one would keep the platform's loading indicator spinning
+    /// until its own timeout. "Never existed" and "reaped long ago" are not told apart — to the user
+    /// both mean the same thing — hence the receipt of an expiry. There is no transaction to word it
+    /// with, so the recipient-locale chain (B17) collapses to the channel snapshot locale and then to
+    /// the base language.
+    /// </remarks>
+    /// <param name="adapter">Channel adapter the answer travels through.</param>
+    /// <param name="transactionId">Transaction identifier the button named.</param>
+    /// <param name="identity">Identity snapshot of the sender.</param>
+    /// <param name="inboundToken">Opaque token of the live interaction (null — no interaction).</param>
+    /// <param name="receiptText">Port the terminal wording comes from.</param>
+    /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference is
+    /// consumed; the one stored for a transaction bound to another subject belongs to that subject).</param>
+    /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="metrics">Component metrics a failed notification is counted into.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private static async Task ShowUnknownTransactionAsync(
+        IChannelAdapter adapter,
+        TransactionId transactionId,
+        ChannelIdentitySnapshot identity,
+        ChannelInboundToken? inboundToken,
+        IOutcomeReceiptText receiptText,
+        IChannelPromptMessageStore? promptMessageStore,
+        IOutcomeNoticeDisplayIntentSource displayIntentSource,
+        ILogger logger,
+        ChannelAdapterMetrics metrics,
+        CancellationToken cancellationToken)
+        => await ShowOutcomeAsync(
+            adapter, transactionId, identity.ChannelUserId, inboundToken,
+            TransactionOutcome.Expired,
+            await receiptText.RenderAsync(
+                ReceiptAddressWithoutTransaction(TransactionOutcome.Expired, adapter),
+                identity.Locale,
+                // Neither the zone nor the moment of the outcome has a source here: the transaction
+                // they are both read off is not in hand. Stating "now" instead would be this handler's
+                // own clock passed off as the moment the transaction ended, so nothing is stated and a
+                // moment falls back to UTC.
+                recipientTimeZone: null,
+                outcomeMoment: null,
+                // Nor any value of the transaction: they are read off the same transaction
+                // (SPEC-036 TPL-107).
+                transaction: null,
+                // There is no transaction to take ownership from. The only level left is the tenant of
+                // the ambient channel scope, which the single context builder puts in for a null
+                // transaction.
+                TransactionResolutionContext.For(null),
+                cancellationToken),
+            promptMessageStore,
+            displayIntentSource,
+            // The same context the wording above is addressed with: the receipt and the way it is shown
+            // are one answer about one notice.
+            TransactionResolutionContext.For(null),
+            logger, metrics, cancellationToken);
 
     /// <summary>
     /// Reads the transaction a channel decision names, from the STORE — past the TTL gate of the
@@ -1013,6 +1282,120 @@ public static class ChannelWebhookPipeline
     }
 
     /// <summary>
+    /// Reads the transaction a channel decision names and states the store its answer may take a
+    /// prompt reference from. Without an owner of the registration it is the read every decision has
+    /// always had (<see cref="ReadForDecisionAsync"/>); with one, it is the single read of
+    /// <see cref="ReadOwnedTransactionAsync"/>, and a decision it yields no transaction for is answered
+    /// with no store at all — the answer to an unknown transaction reads nothing keyed by the
+    /// transaction (SPEC-042 R60).
+    /// </summary>
+    /// <param name="transactionStore">Transaction store.</param>
+    /// <param name="transactionId">Transaction identifier the decision names.</param>
+    /// <param name="ownerTenantId">Tenant that owns the channel registration (null — no owner).</param>
+    /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
+    /// <param name="adapter">Channel adapter the decision arrived through.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="metrics">Component metrics a foreign transaction is counted into.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The transaction to act on (null — none to answer with) and the store of the answer.</returns>
+    private static async Task<DecisionTransaction> ReadDecisionTransactionAsync(
+        ITransactionStore transactionStore,
+        TransactionId transactionId,
+        string? ownerTenantId,
+        IChannelPromptMessageStore? promptMessageStore,
+        IChannelAdapter adapter,
+        ILogger logger,
+        ChannelAdapterMetrics metrics,
+        CancellationToken cancellationToken)
+    {
+        if (ownerTenantId is null)
+        {
+            return new DecisionTransaction(
+                await ReadForDecisionAsync(transactionStore, transactionId, logger, cancellationToken),
+                promptMessageStore);
+        }
+
+        var owned = await ReadOwnedTransactionAsync(
+            transactionStore, transactionId, ownerTenantId, adapter, logger, metrics, cancellationToken);
+
+        return new DecisionTransaction(owned, owned is null ? null : promptMessageStore);
+    }
+
+    /// <summary>
+    /// The one read of the transaction an event of a registration with an owner names (SPEC-042
+    /// R60): from the STORE, past the TTL gate, so the tenant is compared before the deadline is. It
+    /// yields the transaction only when its tenant is the owner, compared ordinally; a transaction of
+    /// another tenant — the implicit one included — is logged with the identifier as a fingerprint and
+    /// counted, and a failed read is logged; both, like a missing record, yield null.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="ReadForDecisionAsync"/> the three outcomes stay apart here: a failed read is
+    /// not a transaction of another tenant — it is not proven to be — so it is not counted as one,
+    /// yet it is not taken for "nothing there" and read again later either. Only a real cancellation
+    /// of the request escapes.
+    /// </remarks>
+    /// <param name="transactionStore">Transaction store.</param>
+    /// <param name="transactionId">Transaction identifier the event names.</param>
+    /// <param name="ownerTenantId">Tenant that owns the channel registration.</param>
+    /// <param name="adapter">Channel adapter the event arrived through.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="metrics">Component metrics a foreign transaction is counted into.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The transaction of the owner, or null.</returns>
+    private static async Task<Transaction?> ReadOwnedTransactionAsync(
+        ITransactionStore transactionStore,
+        TransactionId transactionId,
+        string ownerTenantId,
+        IChannelAdapter adapter,
+        ILogger logger,
+        ChannelAdapterMetrics metrics,
+        CancellationToken cancellationToken)
+    {
+        Transaction? transaction;
+
+        try
+        {
+            transaction = await transactionStore.GetByIdAsync(transactionId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to read the transaction a channel event of an owned registration names — answered as an unknown transaction. ChannelType: {ChannelType}, TransactionIdHash: {TransactionIdHash}",
+                adapter.ChannelType,
+                LogMasking.Fingerprint(transactionId.ToString()));
+            return null;
+        }
+
+        if (transaction is null
+            || string.Equals(transaction.GetTenantId(), ownerTenantId, StringComparison.Ordinal))
+        {
+            return transaction;
+        }
+
+        logger.LogWarning(
+            "Channel event names a transaction of another tenant — answered as an unknown transaction. ChannelType: {ChannelType}, RouteTenant: {RouteTenant}, TransactionIdHash: {TransactionIdHash}",
+            adapter.ChannelType,
+            ChannelTenantContext.CurrentTenantId,
+            LogMasking.Fingerprint(transactionId.ToString()));
+
+        metrics.RecordForeignTransactionEvent(adapter.ChannelType);
+        return null;
+    }
+
+    /// <summary>
+    /// The slot source of a receipt answering an event of a sender in the channel: the transaction, with the
+    /// channel snapshot of the sender as the account the receipt names (SPEC-036 TPL-124). The instance read
+    /// before the outcome was written down carries no snapshot of its own yet, and the sender of the event
+    /// is the account the question stood before.
+    /// </summary>
+    /// <param name="transaction">Transaction the receipt reports.</param>
+    /// <param name="sender">Identity snapshot of the sender of the event.</param>
+    /// <returns>The slot source.</returns>
+    private static TransactionSlotSource SenderSlotSource(Transaction transaction, ChannelIdentitySnapshot sender) =>
+        TransactionSlotSource.From(transaction) with { ChannelIdentity = sender };
+
+    /// <summary>
     /// The receipt of a closed sign-in window, worded for the transaction that closed. The ONE place
     /// its address is built, so the pre-check and the refusal of a write answer the same occurrence
     /// with the same wording.
@@ -1046,6 +1429,26 @@ public static class ChannelWebhookPipeline
             cancellationToken);
 
     /// <summary>
+    /// Has the engine move a transaction whose deadline a pressed button met into Expired, once the
+    /// press has been answered with the receipt of the expiry.
+    /// </summary>
+    /// <remarks>
+    /// After the answer, never before it: the answer has taken the record of the chat, so the expiry
+    /// handler the engine's event wakes finds nothing and the chat gets one receipt — the one the press
+    /// produced, the same before and after the cleanup pass. A transaction the pass already moved is
+    /// left as it is by the engine.
+    /// </remarks>
+    /// <param name="transactionService">Transaction service.</param>
+    /// <param name="transactionId">Transaction the press addressed.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The completed operation.</returns>
+    private static Task ExpireAfterLateDecisionAsync(
+        ITransactionService transactionService,
+        TransactionId transactionId,
+        CancellationToken cancellationToken)
+        => transactionService.ExpireOverdueAsync(transactionId, cancellationToken);
+
+    /// <summary>
     /// Reads a refused write of the user's decision by its class (SPEC-003 CA-192) and states what
     /// the sender is answered with.
     /// </summary>
@@ -1070,6 +1473,8 @@ public static class ChannelWebhookPipeline
     /// <param name="pressedDecision">Outcome the pressed button asked for — tells a repeat of the same
     /// decision from a decision that someone else recorded.</param>
     /// <param name="transaction">Transaction as it was read before the write.</param>
+    /// <param name="sender">Identity snapshot of the sender of the decision — the account a receipt
+    /// names.</param>
     /// <param name="adapter">Channel adapter the decision arrived through.</param>
     /// <param name="transactionStore">Transaction store the single re-read goes to.</param>
     /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
@@ -1080,11 +1485,16 @@ public static class ChannelWebhookPipeline
     /// <param name="errorText">Message text shown to the user on error.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>What to show the sender.</returns>
-    private static async Task<RefusedDecisionAnswer> AnswerToRefusedDecisionAsync(
+    /// <returns>
+    /// What to show the sender; null — the transaction waits for missing claims (SPEC-041 L91), so
+    /// there is no terminal outcome to show and the caller answers the press with the state of that
+    /// wait. The refusal is already journaled.
+    /// </returns>
+    private static async Task<RefusedDecisionAnswer?> AnswerToRefusedDecisionAsync(
         string errorCode,
         TransactionOutcome pressedDecision,
         Transaction transaction,
+        ChannelIdentitySnapshot sender,
         IChannelAdapter adapter,
         ITransactionStore transactionStore,
         ITransactionEventPublisher? eventPublisher,
@@ -1106,16 +1516,21 @@ public static class ChannelWebhookPipeline
                     transaction.Id,
                     errorCode);
 
-                await PublishChannelRefusalAsync(
-                    eventPublisher, timeProvider, transaction.Id, adapter.ChannelType,
-                    ChannelInteractionAuditCodes.LinkExpired, errorCode, logger);
+                // A transaction the store no longer holds is logged above and not journaled, as on every
+                // other entry of the channel (SPEC-039 E48, RecordChannelRefusalAsync).
+                if (errorCode is not TransactionErrorCodes.TransactionNotFound)
+                {
+                    await PublishChannelRefusalAsync(
+                        eventPublisher, timeProvider, transaction.Id, adapter.ChannelType,
+                        ChannelInteractionAuditCodes.LinkExpired, errorCode, logger);
+                }
 
                 // A write is attempted only past the decision gate, so the question of this transaction
                 // stood before this user in this channel and the receipt may name its subject.
                 return new RefusedDecisionAnswer(
                     TransactionOutcome.Expired,
                     await ExpiredReceiptAsync(
-                        adapter, transaction, TransactionSlotSource.From(transaction),
+                        adapter, transaction, SenderSlotSource(transaction, sender),
                         recipientLocale, receiptText, cancellationToken));
 
             case DecisionRefusalClass.Race:
@@ -1162,6 +1577,19 @@ public static class ChannelWebhookPipeline
                         return errorAnswer;
                     }
 
+                    // The decision that stands is the user's confirmation, held as the claims
+                    // completion mark (SPEC-041 L91): nothing has ended, and the answer is not a
+                    // terminal outcome but the state of the wait, which the caller shows. The journal
+                    // above already has it.
+                    if (current.IsCompletingClaims())
+                    {
+                        logger.LogInformation(
+                            "The decision was refused — the transaction waits for missing claims. TransactionId: {TransactionId}, Error: {ErrorCode}",
+                            current.Id,
+                            errorCode);
+                        return null;
+                    }
+
                     // Nothing has ended yet (a decision is written but not finalized), or it ended in a
                     // failure. A failure has no receipt of its own — OutcomeReceiptAddress.Kind is
                     // declared for the other three and throws on this one — so the channel's error text
@@ -1178,7 +1606,7 @@ public static class ChannelWebhookPipeline
                         return new RefusedDecisionAnswer(
                             TransactionOutcome.Expired,
                             await ExpiredReceiptAsync(
-                                adapter, current, TransactionSlotSource.From(current),
+                                adapter, current, SenderSlotSource(current, sender),
                                 recipientLocale, receiptText, cancellationToken));
                     }
 
@@ -1203,7 +1631,7 @@ public static class ChannelWebhookPipeline
                             // The moment of the outcome is the one the decision wrote down, read off the
                             // re-read instance: the one held before the write is the stale one.
                             current.UpdatedAt,
-                            TransactionSlotSource.From(current),
+                            SenderSlotSource(current, sender),
                             TransactionResolutionContext.For(current),
                             cancellationToken));
                 }
@@ -1402,27 +1830,40 @@ public static class ChannelWebhookPipeline
     /// <summary>
     /// Handles authentication confirmation (an inline-keyboard button press).
     /// </summary>
+    /// <param name="processor">Processor holding the services of the event's scope.</param>
     /// <param name="result">Inbound event result with confirmation data.</param>
+    /// <param name="transaction">
+    /// The transaction the confirmation names, read by the caller from the STORE — past the TTL gate
+    /// of the service: what happens to a transaction whose time is up is decided below, and a gate
+    /// that answers "expired" by withholding it would leave the receipt nothing to be worded from.
+    /// Null — there is no transaction to answer with.
+    /// </param>
     /// <param name="adapter">Channel adapter.</param>
     /// <param name="transactionService">Transaction service.</param>
-    /// <param name="transactionStore">Transaction store the decision is read through.</param>
+    /// <param name="transactionStore">Transaction store the single re-read after a refused write goes to.</param>
     /// <param name="timeProvider">Clock the deadline of the transaction is read against.</param>
     /// <param name="identityResolutionService">Channel identity resolution service.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="metrics">Component metrics a failed user notification is counted into.</param>
-    /// <param name="userAuthRateLimiter">Per-user rate limiter (null — no limit).</param>
     /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator — the point that
     /// answers whether this channel was the one asked to show the question (SPEC-039 E41).</param>
-    /// <param name="receiptText">Terminal text of the transaction (SPEC-036 TPL-123).</param>
+    /// <param name="receiptText">Receipt text of the transaction — a terminal outcome or the claims
+    /// completion state (SPEC-036 TPL-123).</param>
     /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
     /// <param name="eventPublisher">Bus the refusals of the press are written to — a late press, a
     /// decision already recorded, a sender not admitted (SPEC-039 E48; null — no journal).</param>
+    /// <param name="completionBehaviorDispatcher">Performer of the post-completion action of the
+    /// sign-in this press completes (SPEC-012 §4.9).</param>
     /// <param name="errorText">Message text shown to the user on error.</param>
     /// <param name="promptLocalizer">Channel message localizer (null — base language).</param>
     /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
+    /// <param name="letterKey">What identifies the letter the confirmation is — a letter is charged one
+    /// attempt however many times it arrives; null — a press of a button, charged on every press.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     private static async Task HandleAuthConfirmAsync(
+        ChannelInboundProcessor processor,
         ChannelAuthConfirmResult result,
+        Transaction? transaction,
         IChannelAdapter adapter,
         ITransactionService transactionService,
         ITransactionStore transactionStore,
@@ -1430,25 +1871,20 @@ public static class ChannelWebhookPipeline
         IIdentityResolutionService identityResolutionService,
         ILogger logger,
         ChannelAdapterMetrics metrics,
-        IUserAuthRateLimiter? userAuthRateLimiter,
         IConfirmationPromptOrchestrator? confirmationPromptOrchestrator,
         IOutcomeReceiptText receiptText,
         IOutcomeNoticeDisplayIntentSource displayIntentSource,
         ITransactionEventPublisher? eventPublisher,
+        ICompletionBehaviorDispatcher completionBehaviorDispatcher,
         string errorText,
         IConfirmationPromptLocalizer? promptLocalizer,
         IChannelPromptMessageStore? promptMessageStore,
+        string? letterKey,
         CancellationToken cancellationToken)
     {
         // The identifier arrives already parsed: the adapter is the one that reads it out of the
         // channel event, so an unparseable value never reaches this point (SPEC-003 §6.3).
         var transactionId = result.TransactionId;
-
-        // Read the transaction for its ConcurrencyToken — through the STORE, past the TTL gate of
-        // the service: what happens to a transaction whose time is up is decided below, and a gate
-        // that answers "expired" by withholding it would leave the receipt nothing to be worded from.
-        var transaction = await ReadForDecisionAsync(
-            transactionStore, transactionId, logger, cancellationToken);
 
         if (transaction is null)
         {
@@ -1456,51 +1892,33 @@ public static class ChannelWebhookPipeline
                 "No transaction to answer the AuthConfirm with. TransactionId: {TransactionId}",
                 result.TransactionId);
 
-            // A pressed button is always answered (SPEC-003 §13.3, CA-192): a transaction that is
-            // not there is an outcome too, and leaving here would keep the platform's loading
-            // indicator spinning until its own timeout. "Never existed" and "reaped long ago" are
-            // not told apart — to the user both mean the same thing. There is no transaction, so the
-            // recipient-locale chain (B17) collapses to the channel snapshot locale and then to the
-            // base language.
-            await ShowOutcomeAsync(
-                adapter, transactionId, result.Identity.ChannelUserId, result.InboundToken,
-                TransactionOutcome.Expired,
-                await receiptText.RenderAsync(
-                    ReceiptAddressWithoutTransaction(TransactionOutcome.Expired, adapter),
-                    result.Identity.Locale,
-                    // Neither the zone nor the moment of the outcome has a source on this branch: the
-                    // transaction they are both read off is the one that could not be read. Stating
-                    // "now" instead would be this handler's own clock passed off as the moment the
-                    // transaction ended, so nothing is stated and a moment falls back to UTC.
-                    recipientTimeZone: null,
-                    outcomeMoment: null,
-                    // Nor any value of the transaction: they are read off the same transaction
-                    // (SPEC-036 TPL-107).
-                    transaction: null,
-                    // There is no transaction to take ownership from — that is this branch. The only
-                    // level left is the tenant of the ambient channel scope, which the single context
-                    // builder puts in for a null transaction.
-                    TransactionResolutionContext.For(null),
-                    cancellationToken),
-                promptMessageStore,
-                displayIntentSource,
-                // The same context the wording above is addressed with: the receipt and the way it is
-                // shown are one answer about one notice.
-                TransactionResolutionContext.For(null),
-                logger, metrics, cancellationToken);
+            await ShowUnknownTransactionAsync(
+                adapter, transactionId, result.Identity, result.InboundToken, receiptText,
+                promptMessageStore, displayIntentSource, logger, metrics, cancellationToken);
             return;
         }
 
         // Recipient-locale chain (B17): channel snapshot locale → initiation-page language → base.
         var recipientLocale = result.Identity.Locale ?? transaction.GetUiLocale();
 
+        // Only the channel subject the transaction is bound to decides it (SPEC-007 UI-022, SPEC-039
+        // N34) — compared before the expiry branch and the rate limiter, like on the start.
+        if (transaction.IsBoundToAnotherSubject(result.Identity))
+        {
+            await RefuseDecisionOfAnotherSubjectAsync(
+                result.Identity, result.InboundToken, transaction, recipientLocale, adapter,
+                transactionService, receiptText, displayIntentSource, promptLocalizer, errorText,
+                eventPublisher, timeProvider, logger, metrics, cancellationToken);
+            return;
+        }
+
         // The window closed before the button was pressed. The answer is the receipt of an expiry —
         // the SAME one on both sides of the cleanup pass, which is the whole point of reading past
-        // the gate. Nothing is written down and no state is changed: the transaction is already over,
-        // and the cleanup will record it in its own time. Asked before the decision gate and before
-        // the rate limiter: a transaction whose time is up spends not the user's budget, and asks the
-        // surface only whether its receipt may name the subject — and only when there is a subject
-        // to name (SPEC-036 TPL-123).
+        // the gate. No decision is written down: the transaction is already over, and the engine
+        // records that after the answer (see the call below the receipt). Asked before the decision
+        // gate and before the rate limiter: a transaction whose time is up spends not the user's
+        // budget, and asks the surface only whether its receipt may name the subject — and only when
+        // there is a subject to name (SPEC-036 TPL-123).
         if (transaction.HasRunOutOfTime(timeProvider.GetUtcNow()))
         {
             // The transaction was found, so the late press reaches the journal (SPEC-039 E48). No
@@ -1517,7 +1935,7 @@ public static class ChannelWebhookPipeline
                     transaction,
                     // The gate of the caller values cuts off what the calling party supplied and
                     // nothing the core states about the transaction.
-                    TransactionSlotSource.From(transaction) with
+                    SenderSlotSource(transaction, result.Identity) with
                     {
                         CallerSlotValues = await ShownCallerSlotValuesAsync(
                             transaction, adapter, confirmationPromptOrchestrator, cancellationToken)
@@ -1530,6 +1948,8 @@ public static class ChannelWebhookPipeline
                 // The context the expiry helper addresses its wording with — the transaction in hand.
                 TransactionResolutionContext.For(transaction),
                 logger, metrics, cancellationToken);
+
+            await ExpireAfterLateDecisionAsync(transactionService, transactionId, cancellationToken);
             return;
         }
 
@@ -1570,51 +1990,63 @@ public static class ChannelWebhookPipeline
             return;
         }
 
-        // Per-user rate limiting (SPEC-002): check BEFORE ConfirmTransactionAsync.
-        // The partition is scoped to the confirmation operation (see UserAuthRateLimitOperations).
-        if (userAuthRateLimiter is not null)
+        // The user has already confirmed and the transaction waits for missing claims (SPEC-041
+        // L91): the completion mark froze the snapshot, so the press changes nothing. It is recorded,
+        // and on a channel that updates its messages it is answered with the state of the wait — the
+        // press gets its answer and the question message reads "confirmed, one step left"; a channel
+        // that does not is sent the request of the step again instead (SPEC-003 CA-192). Before the rate limiter, whose refusal
+        // would fail the transaction the user is completing.
+        if (transaction.IsCompletingClaims())
         {
-            var identitySnapshot = result.Identity;
-            var userKey = NormalizeUserKey(identitySnapshot);
-            var rateLimitResult = await userAuthRateLimiter.TryAcquireAsync(
-                UserAuthRateLimitOperations.AuthConfirm + userKey, cancellationToken);
+            await RecordClaimCompletionRefusalAsync(
+                transactionId, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
 
-            if (!rateLimitResult.IsAllowed)
-            {
-                logger.LogWarning(
-                    "Per-user rate limit exceeded. TransactionId: {TransactionId}, UserKeyHash: {UserKeyHash}",
-                    result.TransactionId,
-                    LogMasking.Fingerprint(userKey));
-
-                var failRlResult = await transactionService.FailTransactionAsync(
-                    transactionId,
-                    TransactionErrorCodes.UserRateLimitExceeded,
-                    transaction.ConcurrencyToken,
-                    CancellationToken.None);
-
-                if (failRlResult.IsFailure)
-                {
-                    logger.LogWarning(
-                        "Failed to move the transaction to Failed (rate limit). TransactionId: {TransactionId}, Error: {ErrorCode}",
-                        result.TransactionId,
-                        failRlResult.Error.Code);
-                }
-
-                // The transaction was moved to Failed, so the user is shown the error outcome — with
-                // the wording of an exhausted budget rather than the channel's generic error: what
-                // to do next after this refusal is to wait, and telling them to start again would
-                // spend the budget they have just run out of.
-                await ShowOutcomeAsync(
-                    adapter, transactionId, result.Identity.ChannelUserId, result.InboundToken,
-                    TransactionOutcome.Failed,
-                    Localize(promptLocalizer, MessageTemplateNaturalKeys.OutcomeTooManyAttempts, recipientLocale),
-                    promptMessageStore,
-                    displayIntentSource,
-                    TransactionResolutionContext.For(transaction),
-                    logger, metrics, cancellationToken);
-                return;
-            }
+            await AnswerRepeatedPressInTheCompletionAsync(
+                processor, adapter, transaction, transaction.UpdatedAt, result.Identity,
+                result.InboundToken, recipientLocale, receiptText, promptMessageStore,
+                displayIntentSource, logger, metrics, cancellationToken);
+            return;
         }
+
+        // Per-user rate limiting (SPEC-002): check BEFORE ConfirmTransactionAsync. A letter is charged once:
+        // the same letter arriving again goes on on the outcome of its first pass, without a second attempt.
+        var budget = await TakeConfirmBudgetOnceAsync(
+            processor, transaction, result.Identity, adapter, letterKey, cancellationToken);
+
+        // Another pass of the same letter holds the budget and has not been let through: this one writes
+        // nothing and sends nothing back — the letter's own route reads the transaction for its answer.
+        if (budget is LetterBudgetOutcome.InProgress)
+        {
+            return;
+        }
+
+        if (budget is LetterBudgetOutcome.Exhausted)
+        {
+            // The transaction was moved to Failed, so the user is shown the error outcome — with
+            // the wording of an exhausted budget rather than the channel's generic error: what
+            // to do next after this refusal is to wait, and telling them to start again would
+            // spend the budget they have just run out of.
+            await ShowOutcomeAsync(
+                adapter, transactionId, result.Identity.ChannelUserId, result.InboundToken,
+                TransactionOutcome.Failed,
+                Localize(promptLocalizer, MessageTemplateNaturalKeys.OutcomeTooManyAttempts, recipientLocale),
+                promptMessageStore,
+                displayIntentSource,
+                TransactionResolutionContext.For(transaction),
+                logger, metrics, cancellationToken);
+            return;
+        }
+
+        // Whether the sign-in was completed BEFORE this event is taken as a value here: a transaction
+        // store is free to hand out the very instance it keeps, and the finalization below would then
+        // move this one to Completed as well, leaving nothing to tell the two cases apart.
+        var wasCompleted = transaction.State is TransactionState.Completed;
+
+        // The confirmation may begin a step of the claims completion, whose starter hands its message
+        // to the background delivery before this press is answered. The gate holds that delivery
+        // until the handler is left — by any branch below — so the message of the step follows the
+        // answer in the chat instead of racing it (SPEC-041 L91).
+        using var pressReplyGate = ChannelPressReplyGate.Open();
 
         // Confirm and complete the transaction
         var finalizeResult = await ChannelTransactionFinalizer.ConfirmAndCompleteAsync(
@@ -1623,21 +2055,61 @@ public static class ChannelWebhookPipeline
 
         if (finalizeResult.IsFailure)
         {
+            // Another subject entered a transaction nobody was bound to, between the read above and this
+            // write: the answer of the subject gate, reached through the race.
+            if (finalizeResult.Error.Code is TransactionErrorCodes.ChannelSubjectMismatch)
+            {
+                await RecordSubjectMismatchAsync(transactionId, adapter, eventPublisher, timeProvider, logger);
+
+                await ShowUnknownTransactionAsync(
+                    adapter, transactionId, result.Identity, result.InboundToken, receiptText,
+                    promptMessageStore: null, displayIntentSource, logger, metrics, cancellationToken);
+                return;
+            }
+
             // A refusal is read by its class, not reduced to a flag: the code is right here, and an
             // expiry that slipped through between the read and the write is the same occurrence the
             // pre-check answers, so it gets the same answer.
             var refusal = await AnswerToRefusedDecisionAsync(
-                finalizeResult.Error.Code, TransactionOutcome.Confirmed, transaction, adapter,
+                finalizeResult.Error.Code, TransactionOutcome.Confirmed, transaction, result.Identity, adapter,
                 transactionStore, eventPublisher, timeProvider, recipientLocale, receiptText,
                 promptLocalizer, errorText, logger, cancellationToken);
 
+            // The transaction waits for missing claims — the pre-check's answer, reached through the
+            // race, and given under the same condition; the record is already written.
+            if (refusal is null)
+            {
+                await AnswerRepeatedPressInTheCompletionAsync(
+                    processor, adapter, transaction, transaction.UpdatedAt, result.Identity,
+                    result.InboundToken, recipientLocale, receiptText, promptMessageStore,
+                    displayIntentSource, logger, metrics, cancellationToken);
+                return;
+            }
+
             await ShowOutcomeAsync(
                 adapter, transactionId, result.Identity.ChannelUserId, result.InboundToken,
-                refusal.Outcome, refusal.Text,
+                refusal.Value.Outcome, refusal.Value.Text,
                 promptMessageStore,
                 displayIntentSource,
                 TransactionResolutionContext.For(transaction),
                 logger, metrics, cancellationToken);
+            return;
+        }
+
+        // The confirmation left the transaction waiting for missing claims (SPEC-041 L91): the sign-in
+        // is not over, so there is no terminal receipt yet. The press is answered with the state of
+        // the wait, and the question message loses its buttons; the reference to it stays in the
+        // store. What else the user sees in the chat is the business of the step starter, which has
+        // already run.
+        if (finalizeResult.Value.IsCompletingClaims())
+        {
+            await ShowClaimCompletionStateAsync(
+                adapter, transaction,
+                // The moment the completion was entered is the one the confirmation wrote down, read
+                // off the instance the finalizer returned: the one held before the call is stale.
+                finalizeResult.Value.UpdatedAt,
+                result.Identity, result.InboundToken, recipientLocale, receiptText,
+                promptMessageStore, displayIntentSource, logger, metrics, cancellationToken);
             return;
         }
 
@@ -1654,19 +2126,29 @@ public static class ChannelWebhookPipeline
                 // instance the finalizer returned: the one held before the call is the stale one.
                 finalizeResult.Value.UpdatedAt,
                 // Past the decision gate: the question stood before this user in this channel.
-                TransactionSlotSource.From(transaction),
+                SenderSlotSource(transaction, result.Identity),
                 TransactionResolutionContext.For(transaction),
                 cancellationToken),
             promptMessageStore,
             displayIntentSource,
             TransactionResolutionContext.For(transaction),
             logger, metrics, cancellationToken);
+
+        // The post-completion action follows the receipt and never replaces it (SPEC-012 §4.9). A
+        // repeated press on a transaction that is already completed passes the finalization on its
+        // idempotent branch, so the action is performed only by the press that completed it; it is
+        // handed the instance the finalizer returned — the one carrying the resolved identity.
+        if (!wasCompleted)
+        {
+            await completionBehaviorDispatcher.DispatchAsync(finalizeResult.Value, cancellationToken);
+        }
     }
 
     /// <summary>
     /// Attaches the channel identity to the still-Pending transaction so the browser waiting on the
-    /// sign-in screen can be taken to the core's confirmation question. Nothing is sent to the
-    /// channel and the transaction is not completed — the user answers on the web page.
+    /// sign-in screen can be taken to the core's confirmation question. The transaction is not
+    /// completed — the user answers on the web page; the chat gets one notice sending the sender
+    /// there, and no question.
     /// </summary>
     /// <remarks>
     /// A failure is never turned into an auto-confirmation: that would silently replace the chosen
@@ -1674,9 +2156,9 @@ public static class ChannelWebhookPipeline
     /// What the sender is told about a refusal is read off its class (SPEC-003 CA-200): a closed
     /// window is answered by the receipt of an expiry, a decision already recorded by the one neutral
     /// text the registration declares. Silence is left for the single case it was always meant for —
-    /// a sender the transaction does not admit must not be able to make the core reply. On this
-    /// surface the channel says nothing for the whole sign-in, so such a reply is the first message
-    /// the sender gets rather than a second copy of an answer already given.
+    /// a sender the transaction does not admit must not be able to make the core reply. A refused
+    /// attach sends no notice of the hand-over, so such a reply is the first message the sender gets
+    /// rather than a second copy of an answer already given.
     /// The reply goes out WITHOUT taking the rate limit: the budget of this event was already spent
     /// by the limiter block of the caller, and taking it twice would charge one event two attempts.
     /// </remarks>
@@ -1691,6 +2173,7 @@ public static class ChannelWebhookPipeline
     /// <param name="staleLinkReplyText">Declared reply to an unservable sign-in link (null — silence).</param>
     /// <param name="receiptText">Port the terminal wording comes from.</param>
     /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
+    /// <param name="webConfirmationNotice">Sender of the notice of the hand-over to the core page.</param>
     /// <param name="promptLocalizer">Channel message localizer (null — base language).</param>
     /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
     /// <param name="logger">Logger.</param>
@@ -1706,6 +2189,7 @@ public static class ChannelWebhookPipeline
         string? staleLinkReplyText,
         IOutcomeReceiptText receiptText,
         IOutcomeNoticeDisplayIntentSource displayIntentSource,
+        WebConfirmationNoticeSender webConfirmationNotice,
         IConfirmationPromptLocalizer? promptLocalizer,
         ITransactionEventPublisher? eventPublisher,
         ILogger logger,
@@ -1714,11 +2198,17 @@ public static class ChannelWebhookPipeline
     {
         var transactionId = transaction.Id;
 
+        // Whether the question had already been handed over to the core page BEFORE this event — a
+        // repeated start of the same sender, or the provider delivering the event again — is taken as a
+        // value here: a transaction store is free to hand out the very instance it keeps, and the attach
+        // below would then make this one read "awaiting" as well. One notice per sign-in, never two.
+        var handedOverBefore = transaction.IsAwaitingWebConfirmation();
+
         var attachResult = await transactionService.AttachChannelIdentityAsync(
             transactionId,
             identity,
             transaction.ConcurrencyToken,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         if (attachResult.IsSuccess)
         {
@@ -1727,6 +2217,17 @@ public static class ChannelWebhookPipeline
                 "TransactionId: {TransactionId}, ChannelType: {ChannelType}",
                 transactionId,
                 identity.ChannelType);
+
+            // The sender has just written to the bot and would otherwise wait for an answer in the chat
+            // that never comes: the chat is told once to look at the page that asks (SPEC-012 CFG-266).
+            // A sign-in and a confirmation are told alike; the template names the action by the type
+            // of the transaction.
+            if (!handedOverBefore)
+            {
+                await webConfirmationNotice.SendAsync(
+                    transaction, adapter, identity.ChannelUserId, recipientLocale, cancellationToken);
+            }
+
             return;
         }
 
@@ -1736,25 +2237,11 @@ public static class ChannelWebhookPipeline
         // the branch is counted before it is answered.
         metrics.RecordUnservedStart(adapter.ChannelType);
 
-        // A late delivery of the same channel event (the transaction has already been declined or has
-        // expired) and a sender the transaction does not admit (a channel outside its allow-list, a
-        // bot) are expected refusals, not operational errors — hence Warning for those codes and
-        // Error for the rest. An expiry is reported by two codes, not one: past the TTL the engine
-        // answers with the deadline while the transaction is still Pending, and with the state only
-        // after the cleanup pass has promoted it — the classifier reads both as one class.
-        switch (DecisionRefusalClassifier.Classify(refusalCode))
+        switch (await RecordChannelRefusalAsync(
+                    RefusedIdentityAttach, refusalCode, transactionId, adapter, eventPublisher, timeProvider,
+                    logger))
         {
             case DecisionRefusalClass.Expired:
-                logger.LogWarning(
-                    "Channel identity not attached — the sign-in window has closed. " +
-                    "TransactionId: {TransactionId}, Error: {ErrorCode}",
-                    transactionId,
-                    refusalCode);
-
-                await PublishChannelRefusalAsync(
-                    eventPublisher, timeProvider, transactionId, adapter.ChannelType,
-                    ChannelInteractionAuditCodes.LinkExpired, refusalCode, logger);
-
                 // The transaction is in hand, so the expiry is worded for it in full — the same
                 // receipt the same occurrence gets on every other surface.
                 await ShowOutcomeAsync(
@@ -1766,12 +2253,14 @@ public static class ChannelWebhookPipeline
                         // The question of this surface is asked on the core page only AFTER the
                         // identity is attached, and it was not: nothing of the transaction was shown to
                         // this user yet, so its receipt names no subject (SPEC-036 TPL-123).
-                        TransactionSlotSource.From(transaction).WithoutCallerValues(),
+                        SenderSlotSource(transaction, identity).WithoutCallerValues(),
                         recipientLocale,
                         receiptText,
                         cancellationToken),
-                    // No prompt was ever sent into this channel on this surface — the question lives
-                    // on the core page — so there are no prompt coordinates to consume.
+                    // No prompt was sent into this channel on this surface — the question lives on
+                    // the core page. The record of the chat the start may have written is not
+                    // consumed here: it stays for the background expiry path, which then reports
+                    // the expiry into the chat once more.
                     promptMessageStore: null,
                     displayIntentSource,
                     // The context the expiry helper addresses its wording with — the transaction in hand.
@@ -1780,16 +2269,6 @@ public static class ChannelWebhookPipeline
                 return;
 
             case DecisionRefusalClass.Race:
-                logger.LogWarning(
-                    "Channel identity not attached — the transaction does not accept this event. " +
-                    "TransactionId: {TransactionId}, Error: {ErrorCode}",
-                    transactionId,
-                    refusalCode);
-
-                await PublishChannelRefusalAsync(
-                    eventPublisher, timeProvider, transactionId, adapter.ChannelType,
-                    ChannelInteractionAuditCodes.LinkNotAnswerable, refusalCode, logger);
-
                 // What became of the transaction is not disclosed (SPEC-039 C15): the sender gets the
                 // same neutral text a missing transaction gets, down to the language it is written
                 // in — the snapshot locale and then the base one, never the language the transaction
@@ -1804,29 +2283,495 @@ public static class ChannelWebhookPipeline
                 // The transaction refused the sender, or something of ours refused: either way the
                 // sender is told nothing at all. A sender a transaction does not admit must not be
                 // able to make the core send it a message.
-                if (refusalCode is TransactionErrorCodes.ChannelNotAllowed
-                    or TransactionErrorCodes.BotRejected)
-                {
-                    logger.LogWarning(
-                        "Channel identity not attached — the transaction does not admit this sender. " +
-                        "TransactionId: {TransactionId}, Error: {ErrorCode}",
-                        transactionId,
-                        refusalCode);
-                }
-                else
-                {
-                    logger.LogError(
-                        "Failed to attach the channel identity for web confirmation. " +
-                        "TransactionId: {TransactionId}, Error: {ErrorCode}",
-                        transactionId,
-                        refusalCode);
-                }
-
-                await PublishChannelRefusalAsync(
-                    eventPublisher, timeProvider, transactionId, adapter.ChannelType,
-                    ChannelInteractionAuditCodes.SenderNotAdmitted, refusalCode, logger);
                 return;
         }
+    }
+
+    /// <summary>
+    /// Attaches the mailbox a sign-in letter proved to the still-Pending sign-in, leaving the decision to
+    /// the sign-in window: on an effective confirmation surface other than
+    /// <see cref="ConfirmationSurface.None"/> the window asks the one question of the sign-in (SPEC-012
+    /// §4.4.2), so the letter does not complete it. The one path of both ways a letter answers a sign-in —
+    /// the "Continue signing in" of the Pull mode and the inbound mail of the Push mode.
+    /// </summary>
+    /// <remarks>
+    /// A confirmation transaction is refused before any check: the letter of a confirmation does not take
+    /// this path — its Pull letter binds the answer to its browser, its Push mail calls
+    /// <see cref="AttachLetterIdentityAsync"/> directly. The rest of this path is that method.
+    /// </remarks>
+    /// <param name="processor">Processor holding the services of the scope of the letter.</param>
+    /// <param name="transaction">The sign-in as the caller read it.</param>
+    /// <param name="identity">Identity snapshot of the mailbox the letter proved.</param>
+    /// <param name="adapter">The Email channel adapter.</param>
+    /// <param name="letterKey">What identifies the letter (<see cref="RefuseLetterAttachAsync"/>); not empty.</param>
+    /// <param name="cancellationToken">Cancels the reads before the write; the write itself is not
+    /// interrupted by it.</param>
+    /// <returns>The transaction with the mailbox attached; a failure — the code of the refusal, already
+    /// logged and journaled.</returns>
+    internal static async Task<Result<Transaction>> AttachSignInLetterIdentityAsync(
+        ChannelInboundProcessor processor,
+        Transaction transaction,
+        ChannelIdentitySnapshot identity,
+        IChannelAdapter adapter,
+        string letterKey,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(processor);
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(adapter);
+        ArgumentException.ThrowIfNullOrEmpty(letterKey);
+
+        // A confirmation is answered on the core page (SPEC-039 E29), not by the sign-in window this path
+        // hands the letter to: a confirmation is refused here whichever caller routed it.
+        if (string.Equals(transaction.Type, TransactionTypes.Confirmation, StringComparison.Ordinal))
+        {
+            await PublishChannelRefusalAsync(
+                processor.EventPublisher, processor.TimeProvider, transaction.Id, adapter.ChannelType,
+                ChannelInteractionAuditCodes.LinkNotAnswerable, refusalErrorCode: null, processor.Logger);
+
+            return Result<Transaction>.Failure(TransactionErrorCodes.InvalidStateTransition, LetterNotAttached);
+        }
+
+        return await AttachLetterIdentityAsync(processor, transaction, identity, adapter, letterKey, cancellationToken);
+    }
+
+    /// <summary>
+    /// Attaches the mailbox a letter proved to the still-Pending transaction without binding the answer to a
+    /// browser: the answer is given by the sign-in window, or on the core page of a confirmation. The path of
+    /// the letter of a sign-in (<see cref="AttachSignInLetterIdentityAsync"/>) and of the inbound mail of a
+    /// confirmation in the Push mode.
+    /// </summary>
+    /// <remarks>
+    /// The letter passes <see cref="RefuseLetterAttachAsync"/> first. A second letter of the same mailbox
+    /// attaches the same subject again; a write lost to a parallel one is read once more and is a success
+    /// when the transaction already waits for the web answer with this subject.
+    /// </remarks>
+    /// <param name="processor">Processor holding the services of the scope of the letter.</param>
+    /// <param name="transaction">The transaction as the caller read it.</param>
+    /// <param name="identity">Identity snapshot of the mailbox the letter proved.</param>
+    /// <param name="adapter">The Email channel adapter.</param>
+    /// <param name="letterKey">What identifies the letter (<see cref="RefuseLetterAttachAsync"/>); not empty.</param>
+    /// <param name="cancellationToken">Cancels the reads before the write; the write itself is not
+    /// interrupted by it.</param>
+    /// <returns>The transaction with the mailbox attached; a failure — the code of the refusal, already
+    /// logged and journaled.</returns>
+    internal static async Task<Result<Transaction>> AttachLetterIdentityAsync(
+        ChannelInboundProcessor processor,
+        Transaction transaction,
+        ChannelIdentitySnapshot identity,
+        IChannelAdapter adapter,
+        string letterKey,
+        CancellationToken cancellationToken)
+    {
+        if (await RefuseLetterAttachAsync(processor, transaction, identity, adapter, letterKey, cancellationToken) is { } refusal)
+        {
+            return refusal;
+        }
+
+        var transactionService = processor.TransactionService;
+        var transactionId = transaction.Id;
+
+        // CancellationToken.None: the mailbox is proved, and the web answer must have somebody to sign even
+        // if the request of the letter goes away.
+        var attachResult = await transactionService.AttachChannelIdentityAsync(
+            transactionId,
+            identity,
+            transaction.ConcurrencyToken,
+            bindAnswerToBrowser: false,
+            cancellationToken: CancellationToken.None);
+
+        if (attachResult.IsSuccess)
+        {
+            processor.Logger.LogInformation(
+                "Mailbox of the letter attached; the transaction is decided on the web. " +
+                "TransactionId: {TransactionId}, ChannelType: {ChannelType}",
+                transactionId,
+                identity.ChannelType);
+            return attachResult;
+        }
+
+        var refusalCode = attachResult.Error.Code;
+
+        if (refusalCode is TransactionErrorCodes.ConcurrencyConflict)
+        {
+            // The write was lost to a parallel one: when that one left the transaction waiting for the web
+            // answer with this same subject — a second letter of the same mailbox — this letter has done its
+            // work.
+            var rereadResult = await transactionService.GetTransactionAsync(transactionId, CancellationToken.None);
+            if (rereadResult.IsSuccess
+                && rereadResult.Value.IsAwaitingWebConfirmation()
+                && !rereadResult.Value.IsBoundToAnotherSubject(identity))
+            {
+                return rereadResult;
+            }
+        }
+
+        await RecordLetterRefusalAsync(processor, transactionId, refusalCode, adapter);
+
+        return attachResult;
+    }
+
+    /// <summary>
+    /// Gates the letter that is about to attach its mailbox to a transaction, in the order of
+    /// <see cref="HandleAuthConfirmAsync"/>: the transaction bound to another subject, out of time, no longer
+    /// Pending, a sender it does not admit, in the claims completion — and then the budget of the sender. The
+    /// one gate of the letter of a sign-in and the letter of a confirmation, Pull and Push alike.
+    /// </summary>
+    /// <remarks>
+    /// No check before the rate limiter writes onto the transaction or takes the budget: neither a sender of
+    /// another subject nor a letter on a transaction out of time or in the claims completion can have that
+    /// transaction failed by a spent budget (SPEC-039 N34). Each refusal reaches the journal under its class
+    /// (SPEC-039 E48) and is handed back by the code the attach itself would refuse with; what the sender is
+    /// answered is the caller's business. The budget is the one of the confirmation operation
+    /// (<see cref="UserAuthRateLimitOperations.AuthConfirm"/>), and an exhausted one fails the transaction,
+    /// as it does on the press of a button. One letter costs one attempt, however many times it passes the
+    /// gate — two parallel sendings of the page of one link, a redelivery of the same mail, a retry of a
+    /// mail its source was asked to hand in again (<see cref="TakeConfirmBudgetOnceAsync"/>); two letters
+    /// are two attempts. A pass that finds another pass of the same letter holding the budget, not yet let
+    /// through by it, is refused as a write lost to a parallel one (<see cref="TransactionErrorCodes.ConcurrencyConflict"/>):
+    /// it writes nothing onto the transaction, and the caller answers it as such a lost write — a link with the
+    /// error page, a mail of Push with a retry unless the caller's own read of the transaction finds it ended.
+    /// </remarks>
+    /// <param name="processor">Processor holding the services of the scope of the letter.</param>
+    /// <param name="transaction">The transaction as the caller read it.</param>
+    /// <param name="identity">Identity snapshot of the mailbox the letter proved.</param>
+    /// <param name="adapter">The Email channel adapter.</param>
+    /// <param name="letterKey">What identifies the letter within its channel — the token of its link, the
+    /// identifier of its mail; not empty.</param>
+    /// <param name="cancellationToken">Cancels the reads of the gate; the write of an exhausted budget is not
+    /// interrupted by it.</param>
+    /// <returns>The refusal, already logged and journaled; null — the letter may attach its mailbox.</returns>
+    internal static async Task<Result<Transaction>?> RefuseLetterAttachAsync(
+        ChannelInboundProcessor processor,
+        Transaction transaction,
+        ChannelIdentitySnapshot identity,
+        IChannelAdapter adapter,
+        string letterKey,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(processor);
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(adapter);
+        ArgumentException.ThrowIfNullOrEmpty(letterKey);
+
+        var transactionService = processor.TransactionService;
+        var timeProvider = processor.TimeProvider;
+        var eventPublisher = processor.EventPublisher;
+        var logger = processor.Logger;
+        var transactionId = transaction.Id;
+
+        if (transaction.IsBoundToAnotherSubject(identity))
+        {
+            // A sender the transaction does not admit is journaled as such, whoever it is bound to.
+            if (await SenderAdmissionRefusalAsync(
+                    transaction, identity, adapter, transactionService, eventPublisher, timeProvider, logger,
+                    cancellationToken) is null)
+            {
+                await RecordSubjectMismatchAsync(transactionId, adapter, eventPublisher, timeProvider, logger);
+            }
+
+            return Result<Transaction>.Failure(TransactionErrorCodes.ChannelSubjectMismatch, LetterNotAttached);
+        }
+
+        if (await RefuseLetterOutOfTimeAsync(processor, transaction, adapter) is { } outOfTime)
+        {
+            return outOfTime;
+        }
+
+        if (transaction.State is not TransactionState.Pending)
+        {
+            await PublishChannelRefusalAsync(
+                eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+                ChannelInteractionAuditCodes.LinkNotAnswerable, refusalErrorCode: null, logger);
+
+            return Result<Transaction>.Failure(TransactionErrorCodes.InvalidStateTransition, LetterNotAttached);
+        }
+
+        if (await SenderAdmissionRefusalAsync(
+                transaction, identity, adapter, transactionService, eventPublisher, timeProvider, logger,
+                cancellationToken) is { } admissionRefusal)
+        {
+            return Result<Transaction>.Failure(admissionRefusal, LetterNotAttached);
+        }
+
+        // The snapshot of a transaction in the claims completion is frozen (SPEC-041 L91): the letter changes
+        // nothing, and the budget stays untouched, whose refusal would fail the transaction being completed.
+        if (transaction.IsCompletingClaims())
+        {
+            await RecordClaimCompletionRefusalAsync(
+                transactionId, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
+
+            return Result<Transaction>.Failure(TransactionErrorCodes.ClaimCompletionInProgress, LetterNotAttached);
+        }
+
+        return await TakeConfirmBudgetOnceAsync(processor, transaction, identity, adapter, letterKey, cancellationToken) switch
+        {
+            LetterBudgetOutcome.Exhausted =>
+                Result<Transaction>.Failure(TransactionErrorCodes.UserRateLimitExceeded, LetterNotAttached),
+
+            // Answered as a write lost to a parallel one — the other pass of the letter is that write.
+            LetterBudgetOutcome.InProgress =>
+                Result<Transaction>.Failure(TransactionErrorCodes.ConcurrencyConflict, LetterNotAttached),
+
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Takes the sender's attempt of the budget of the confirmation operation for one pass of an event through
+    /// the gate — asked past every check of the gate, so that an event refused earlier spends nothing and
+    /// leaves no mark. A letter is charged once for its transaction however many times it passes: its first
+    /// pass claims the budget, takes it and, when the limiter lets it through, marks the letter allowed; a
+    /// later pass goes on on that mark without the budget, and a pass that finds the claim without the mark —
+    /// the first pass still in progress, or refused by the budget — takes nothing and writes nothing onto the
+    /// transaction; the journal is told what the transaction has become by then.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A press of a button (no letter key), a composition without the marks, or one without a rate limiter
+    /// takes the budget on every pass. A mark that cannot be claimed or read — its store failed — leaves the
+    /// pass charged: an extra attempt costs less than a limit left unenforced. A pass so let through still
+    /// marks the letter allowed: the store may have written the claim before it failed, and a claim without
+    /// the mark would answer every later pass of the letter as in progress.
+    /// </para>
+    /// <para>
+    /// Once the budget is claimed, the pass runs to its outcome uninterrupted. A pass that still does not reach
+    /// the mark — the limiter or the store of the mark failed after the claim — leaves the claim without an
+    /// outcome, and the later passes of that letter are answered as in progress until the transaction ends:
+    /// the letter is refused rather than let through unlimited.
+    /// </para>
+    /// </remarks>
+    /// <param name="processor">Processor holding the services of the scope of the event.</param>
+    /// <param name="transaction">The transaction the event answers.</param>
+    /// <param name="identity">Identity snapshot of the sender, whose budget is charged.</param>
+    /// <param name="adapter">Adapter of the channel of the event — the journal of a pass in progress.</param>
+    /// <param name="letterKey">What identifies the letter; null — the event is no letter.</param>
+    /// <param name="cancellationToken">Cancels the gate up to the claim; the pass that claimed is not
+    /// interrupted by it.</param>
+    /// <returns>The answer of the budget to this pass.</returns>
+    private static async Task<LetterBudgetOutcome> TakeConfirmBudgetOnceAsync(
+        ChannelInboundProcessor processor,
+        Transaction transaction,
+        ChannelIdentitySnapshot identity,
+        IChannelAdapter adapter,
+        string? letterKey,
+        CancellationToken cancellationToken)
+    {
+        if (processor.UserAuthRateLimiter is null
+            || string.IsNullOrEmpty(letterKey)
+            || processor.LetterBudgetChargeMark is not { } chargeMark)
+        {
+            return await TakeBudgetAsync(cancellationToken);
+        }
+
+        bool claimed;
+        try
+        {
+            claimed = await chargeMark.TryClaimChargeAsync(transaction.Id, letterKey, cancellationToken);
+
+            if (!claimed && await chargeMark.IsAllowedAsync(transaction.Id, letterKey, cancellationToken))
+            {
+                return LetterBudgetOutcome.Allowed;
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            processor.Logger.LogWarning(
+                exception,
+                "The budget mark of the letter could not be read or set; the letter is charged. TransactionId: {TransactionId}",
+                transaction.Id);
+
+            return await ChargeAsync(chargeMark, letterKey, cancellationToken);
+        }
+
+        if (!claimed)
+        {
+            processor.Logger.LogInformation(
+                "Another pass of the same letter holds the budget and has not been let through; this pass writes nothing. TransactionId: {TransactionId}",
+                transaction.Id);
+
+            // What the transaction has become tells the journal what refused this pass (SPEC-039 E48), as for a
+            // decision recorded in parallel: the other pass ended in the confirmation this letter asks for — no
+            // refusal, nothing is written; the transaction ended otherwise — the class of its end; it is still
+            // under way, or cannot be read — the parallel write this pass stands for.
+            var current = await ReadForDecisionAsync(
+                processor.TransactionStore, transaction.Id, processor.Logger, cancellationToken);
+            var ending = current is null ? null : TerminalTransactionOutcome.Of(current);
+
+            if (ending != TransactionOutcome.Confirmed)
+            {
+                await PublishChannelRefusalAsync(
+                    processor.EventPublisher, processor.TimeProvider, transaction.Id, adapter.ChannelType,
+                    ending == TransactionOutcome.Expired
+                        ? ChannelInteractionAuditCodes.LinkExpired
+                        : ChannelInteractionAuditCodes.LinkNotAnswerable,
+                    ending is null ? TransactionErrorCodes.ConcurrencyConflict : null,
+                    processor.Logger);
+            }
+
+            return LetterBudgetOutcome.InProgress;
+        }
+
+        // CancellationToken.None from here on: a claim left without its outcome would refuse the letter.
+        return await ChargeAsync(chargeMark, letterKey, CancellationToken.None);
+
+        // Takes the budget and, when the limiter lets the letter through, marks it allowed — the mark is set
+        // whatever the token, since a claim left without it answers the later passes as in progress.
+        async Task<LetterBudgetOutcome> ChargeAsync(ILetterBudgetChargeMark mark, string key, CancellationToken token)
+        {
+            if (await TakeBudgetAsync(token) is LetterBudgetOutcome.Exhausted)
+            {
+                return LetterBudgetOutcome.Exhausted;
+            }
+
+            try
+            {
+                await mark.MarkAllowedAsync(transaction.Id, key, CancellationToken.None);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                processor.Logger.LogWarning(
+                    exception,
+                    "The letter was let through, but its budget mark could not be set; a later pass of it may be answered as in progress. TransactionId: {TransactionId}",
+                    transaction.Id);
+            }
+
+            return LetterBudgetOutcome.Allowed;
+        }
+
+        async Task<LetterBudgetOutcome> TakeBudgetAsync(CancellationToken token) =>
+            await TryTakeAuthConfirmBudgetAsync(
+                processor.UserAuthRateLimiter, processor.TransactionService, transaction, identity,
+                processor.Logger, token)
+                ? LetterBudgetOutcome.Allowed
+                : LetterBudgetOutcome.Exhausted;
+    }
+
+    /// <summary>
+    /// Refuses a letter whose transaction has run out of time, before anything is built for the letter —
+    /// the identity of the mailbox and the channel credentials it reads — and journals it as an expired
+    /// link (SPEC-039 E48). The one check of a run-out transaction for the letter of a sign-in and the
+    /// letter of a confirmation alike: what the letter is answered with stays with the caller.
+    /// </summary>
+    /// <param name="processor">Processor holding the services of the scope of the letter.</param>
+    /// <param name="transaction">The transaction the letter names, as the caller read it.</param>
+    /// <param name="adapter">The channel adapter of the letter.</param>
+    /// <returns>The refusal, already journaled; null — the transaction has time left.</returns>
+    internal static async Task<Result<Transaction>?> RefuseLetterOutOfTimeAsync(
+        ChannelInboundProcessor processor,
+        Transaction transaction,
+        IChannelAdapter adapter)
+    {
+        ArgumentNullException.ThrowIfNull(processor);
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(adapter);
+
+        if (!transaction.HasRunOutOfTime(processor.TimeProvider.GetUtcNow()))
+        {
+            return null;
+        }
+
+        await PublishChannelRefusalAsync(
+            processor.EventPublisher, processor.TimeProvider, transaction.Id, adapter.ChannelType,
+            ChannelInteractionAuditCodes.LinkExpired, refusalErrorCode: null, processor.Logger);
+
+        return Result<Transaction>.Failure(TransactionErrorCodes.TransactionExpired, LetterNotAttached);
+    }
+
+    /// <summary>
+    /// Logs and journals the refused attach of the mailbox a letter proved, under the class of the code the
+    /// engine refused it with (SPEC-039 E48): a transaction past its deadline — an expired link; a decision
+    /// already recorded or a parallel write — a link the transaction no longer answers; a mailbox other
+    /// than the bound subject or a sender the transaction does not admit — a sender not admitted. A
+    /// transaction the store no longer holds is logged and not journaled, as on every entry of the channel
+    /// (<see cref="RecordChannelRefusalAsync"/>). The one reading of such a refusal for the letter of a
+    /// sign-in and the letter of a confirmation alike.
+    /// </summary>
+    /// <param name="processor">Processor holding the services of the scope of the letter.</param>
+    /// <param name="transactionId">Transaction the letter names.</param>
+    /// <param name="refusalCode">Code the engine refused the attach with.</param>
+    /// <param name="adapter">The channel adapter of the letter.</param>
+    /// <returns>A task completed once the refusal is journaled.</returns>
+    internal static async Task RecordLetterRefusalAsync(
+        ChannelInboundProcessor processor,
+        TransactionId transactionId,
+        string refusalCode,
+        IChannelAdapter adapter)
+    {
+        ArgumentNullException.ThrowIfNull(processor);
+        ArgumentNullException.ThrowIfNull(adapter);
+
+        if (refusalCode is TransactionErrorCodes.ChannelSubjectMismatch)
+        {
+            await RecordSubjectMismatchAsync(
+                transactionId, adapter, processor.EventPublisher, processor.TimeProvider, processor.Logger);
+        }
+        else
+        {
+            _ = await RecordChannelRefusalAsync(
+                RefusedIdentityAttach, refusalCode, transactionId, adapter, processor.EventPublisher,
+                processor.TimeProvider, processor.Logger);
+        }
+    }
+
+    /// <summary>
+    /// Takes one attempt of the sender's budget of the confirmation operation (SPEC-002) — the press of a
+    /// button and the letter of a sign-in or of a confirmation alike — and fails the transaction when the
+    /// budget is exhausted.
+    /// </summary>
+    /// <param name="userAuthRateLimiter">Per-user rate limiter (null — no limit).</param>
+    /// <param name="transactionService">Transaction service the exhausted budget fails the transaction through.</param>
+    /// <param name="transaction">The transaction the event answers.</param>
+    /// <param name="identity">Identity snapshot of the sender, whose budget is charged.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="cancellationToken">Cancels the budget check; the write of Failed is not interrupted by it.</param>
+    /// <returns>true — the event may go on; false — the budget is exhausted and the transaction is moved to
+    /// Failed (a lost write is logged).</returns>
+    private static async Task<bool> TryTakeAuthConfirmBudgetAsync(
+        IUserAuthRateLimiter? userAuthRateLimiter,
+        ITransactionService transactionService,
+        Transaction transaction,
+        ChannelIdentitySnapshot identity,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (userAuthRateLimiter is null)
+        {
+            return true;
+        }
+
+        // The partition is scoped to the confirmation operation (see UserAuthRateLimitOperations).
+        var userKey = NormalizeUserKey(identity);
+        var rateLimitResult = await userAuthRateLimiter.TryAcquireAsync(
+            UserAuthRateLimitOperations.AuthConfirm + userKey, cancellationToken);
+
+        if (rateLimitResult.IsAllowed)
+        {
+            return true;
+        }
+
+        logger.LogWarning(
+            "Per-user rate limit exceeded. TransactionId: {TransactionId}, UserKeyHash: {UserKeyHash}",
+            transaction.Id,
+            LogMasking.Fingerprint(userKey));
+
+        var failRlResult = await transactionService.FailTransactionAsync(
+            transaction.Id,
+            TransactionErrorCodes.UserRateLimitExceeded,
+            transaction.ConcurrencyToken,
+            CancellationToken.None);
+
+        if (failRlResult.IsFailure)
+        {
+            logger.LogWarning(
+                "Failed to move the transaction to Failed (rate limit). TransactionId: {TransactionId}, Error: {ErrorCode}",
+                transaction.Id,
+                failRlResult.Error.Code);
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -1839,7 +2784,8 @@ public static class ChannelWebhookPipeline
     /// exactly the same condition. A channel that declares no text costs the budget nothing: there is
     /// nothing to send, so nothing is taken.
     /// A refused limit is not written onto the transaction: there may be none, and one that is there
-    /// is already terminal — the branch this helper serves is the branch where nothing is left to fail.
+    /// is either already terminal — nothing is left to fail — or waiting for missing claims (SPEC-041
+    /// L91), whose sign-in the user is completing and a spent budget of a stale link must not end.
     /// </remarks>
     /// <param name="adapter">Channel adapter the reply travels through.</param>
     /// <param name="identity">Identity snapshot of the sender.</param>
@@ -1930,6 +2876,73 @@ public static class ChannelWebhookPipeline
     }
 
     /// <summary>
+    /// Logs and journals a channel event on a transaction that waits for missing claims (SPEC-041
+    /// L91): the user has already confirmed, and the completion mark froze the channel snapshot, so a
+    /// start, a confirmation or a decline from an admitted sender is not acted on. It reaches the
+    /// journal as a transaction that no longer accepts the event (SPEC-039 E48) — the same reason a
+    /// decision recorded in parallel is written under. What the sender is answered with stays with
+    /// the caller, which knows whether the event's budget is already spent.
+    /// </summary>
+    /// <param name="transactionId">Transaction the event named.</param>
+    /// <param name="adapter">Channel adapter the event arrived through.</param>
+    /// <param name="refusalErrorCode">Code the engine refused with, when a write was refused; null
+    /// when the transaction as read already carried the mark.</param>
+    /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
+    /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
+    /// <param name="logger">Logger.</param>
+    private static async Task RecordClaimCompletionRefusalAsync(
+        TransactionId transactionId,
+        IChannelAdapter adapter,
+        string? refusalErrorCode,
+        ITransactionEventPublisher? eventPublisher,
+        TimeProvider timeProvider,
+        ILogger logger)
+    {
+        logger.LogInformation(
+            "Channel event on a transaction waiting for missing claims — the event is not acted on. " +
+            "TransactionId: {TransactionId}, ChannelType: {ChannelType}, Error: {ErrorCode}",
+            transactionId,
+            adapter.ChannelType,
+            refusalErrorCode);
+
+        await PublishChannelRefusalAsync(
+            eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+            ChannelInteractionAuditCodes.LinkNotAnswerable, refusalErrorCode, logger);
+    }
+
+    /// <summary>
+    /// Tells whether a refused confirmation met a transaction waiting for missing claims (SPEC-041
+    /// L91): the engine said so itself, or the refusal is a race and the transaction, read once
+    /// more, carries the completion mark — a parallel confirmation set it between the read and the
+    /// write.
+    /// </summary>
+    /// <param name="errorCode">Code the confirmation was refused with.</param>
+    /// <param name="transactionId">Transaction the confirmation named.</param>
+    /// <param name="transactionService">Transaction service the re-read goes to.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns><c>true</c> — the transaction waits for missing claims.</returns>
+    private static async Task<bool> IsRefusedByClaimCompletionAsync(
+        string errorCode,
+        TransactionId transactionId,
+        ITransactionService transactionService,
+        CancellationToken cancellationToken)
+    {
+        if (errorCode is TransactionErrorCodes.ClaimCompletionInProgress)
+        {
+            return true;
+        }
+
+        if (DecisionRefusalClassifier.Classify(errorCode) is not DecisionRefusalClass.Race)
+        {
+            return false;
+        }
+
+        var current = await transactionService.GetTransactionAsync(transactionId, cancellationToken);
+
+        return current.IsSuccess && current.Value.IsCompletingClaims();
+    }
+
+    /// <summary>
     /// Asks the engine's own admissibility rule whether the sender of a channel event may act on the
     /// transaction the event names — the channel is in the transaction's allow-list, the sender is not
     /// a bot the application rejects — and writes a refusal into the integrator's journal under
@@ -1960,13 +2973,41 @@ public static class ChannelWebhookPipeline
         TimeProvider timeProvider,
         ILogger logger,
         CancellationToken cancellationToken)
+        => await SenderAdmissionRefusalAsync(
+            transaction, identity, adapter, transactionService, eventPublisher, timeProvider, logger,
+            cancellationToken) is null;
+
+    /// <summary>
+    /// The admission gate of <see cref="IsSenderAdmittedAsync"/> for a caller that hands the refusal on by
+    /// its code rather than answering it on the spot: the same rule, the same log entry and the same
+    /// journal record.
+    /// </summary>
+    /// <param name="transaction">Transaction the event named.</param>
+    /// <param name="identity">Identity snapshot of the sender.</param>
+    /// <param name="adapter">Channel adapter the event arrived through.</param>
+    /// <param name="transactionService">Transaction service — the one implementation of the rule.</param>
+    /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
+    /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Null — the sender is admitted; otherwise the code the rule refused it with, already
+    /// logged and journaled.</returns>
+    private static async Task<string?> SenderAdmissionRefusalAsync(
+        Transaction transaction,
+        ChannelIdentitySnapshot identity,
+        IChannelAdapter adapter,
+        ITransactionService transactionService,
+        ITransactionEventPublisher? eventPublisher,
+        TimeProvider timeProvider,
+        ILogger logger,
+        CancellationToken cancellationToken)
     {
         var admissibility = await transactionService.ValidateChannelAdmissibilityAsync(
             transaction, identity, cancellationToken);
 
         if (admissibility.IsSuccess)
         {
-            return true;
+            return null;
         }
 
         logger.LogWarning(
@@ -1979,7 +3020,233 @@ public static class ChannelWebhookPipeline
             eventPublisher, timeProvider, transaction.Id, adapter.ChannelType,
             ChannelInteractionAuditCodes.SenderNotAdmitted, admissibility.Error.Code, logger);
 
-        return false;
+        return admissibility.Error.Code;
+    }
+
+    /// <summary>
+    /// Logs and journals a channel event of a sender other than the subject the transaction is bound
+    /// to (SPEC-039 N34): <see cref="ChannelInteractionAuditCodes.SenderNotAdmitted"/> with
+    /// <see cref="TransactionErrorCodes.ChannelSubjectMismatch"/> in the details (SPEC-039 E48). Nothing
+    /// of the bound subject is written anywhere. What the sender is answered with stays with the caller.
+    /// </summary>
+    /// <param name="transactionId">Transaction the event named.</param>
+    /// <param name="adapter">Channel adapter the event arrived through.</param>
+    /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
+    /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
+    /// <param name="logger">Logger.</param>
+    private static async Task RecordSubjectMismatchAsync(
+        TransactionId transactionId,
+        IChannelAdapter adapter,
+        ITransactionEventPublisher? eventPublisher,
+        TimeProvider timeProvider,
+        ILogger logger)
+    {
+        logger.LogWarning(
+            "The sender is not the channel subject the transaction is bound to — the channel event is not acted on. " +
+            "TransactionId: {TransactionId}, ChannelType: {ChannelType}",
+            transactionId,
+            adapter.ChannelType);
+
+        await PublishChannelRefusalAsync(
+            eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+            ChannelInteractionAuditCodes.SenderNotAdmitted, TransactionErrorCodes.ChannelSubjectMismatch, logger);
+    }
+
+    /// <summary>
+    /// Answers a pressed button of a sender other than the subject the transaction is bound to
+    /// (SPEC-007 UI-022, SPEC-039 N34): nothing is changed, and the prompt reference of the bound
+    /// subject is not consumed.
+    /// </summary>
+    /// <remarks>
+    /// A sender the transaction does not admit is answered by the admission gate, as it always is — its
+    /// refusal is the one the journal gets. Any other is answered as a button naming a transaction that
+    /// is not there (SPEC-039 C15), and journaled as a subject mismatch.
+    /// </remarks>
+    /// <param name="identity">Identity snapshot of the sender.</param>
+    /// <param name="inboundToken">Opaque token of the live interaction (null — no interaction).</param>
+    /// <param name="transaction">Transaction the button named.</param>
+    /// <param name="recipientLocale">Recipient locale of the admission refusal (null — base language).</param>
+    /// <param name="adapter">Channel adapter the button arrived through.</param>
+    /// <param name="transactionService">Transaction service — the one implementation of the admission rule.</param>
+    /// <param name="receiptText">Port the terminal wording comes from.</param>
+    /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
+    /// <param name="promptLocalizer">Channel message localizer (null — base language).</param>
+    /// <param name="errorText">Message text shown to the user on error.</param>
+    /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
+    /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="metrics">Component metrics a failed notification is counted into.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private static async Task RefuseDecisionOfAnotherSubjectAsync(
+        ChannelIdentitySnapshot identity,
+        ChannelInboundToken? inboundToken,
+        Transaction transaction,
+        string? recipientLocale,
+        IChannelAdapter adapter,
+        ITransactionService transactionService,
+        IOutcomeReceiptText receiptText,
+        IOutcomeNoticeDisplayIntentSource displayIntentSource,
+        IConfirmationPromptLocalizer? promptLocalizer,
+        string errorText,
+        ITransactionEventPublisher? eventPublisher,
+        TimeProvider timeProvider,
+        ILogger logger,
+        ChannelAdapterMetrics metrics,
+        CancellationToken cancellationToken)
+    {
+        if (!await IsSenderAdmittedAsync(
+                transaction, identity, adapter, transactionService, eventPublisher, timeProvider, logger,
+                cancellationToken))
+        {
+            await ShowOutcomeAsync(
+                adapter, transaction.Id, identity.ChannelUserId, inboundToken,
+                TransactionOutcome.Failed,
+                Localize(promptLocalizer, errorText, recipientLocale),
+                promptMessageStore: null,
+                displayIntentSource,
+                TransactionResolutionContext.For(transaction),
+                logger, metrics, cancellationToken);
+            return;
+        }
+
+        await RecordSubjectMismatchAsync(transaction.Id, adapter, eventPublisher, timeProvider, logger);
+
+        await ShowUnknownTransactionAsync(
+            adapter, transaction.Id, identity, inboundToken, receiptText, promptMessageStore: null,
+            displayIntentSource, logger, metrics, cancellationToken);
+    }
+
+    /// <summary>
+    /// Answers a sign-in start whose binding to the sender the engine refused (SPEC-039 N34). It is
+    /// reached past the subject gate and past the rate-limit block, so the refusal is something the gate
+    /// could not see — another subject bound first, the window closed, a decision recorded in parallel —
+    /// and the budget of this event is already spent: the reply goes out without taking it again.
+    /// </summary>
+    /// <remarks>
+    /// Each answer is the one the same occurrence gets before the binding: a subject mismatch and a
+    /// transaction that no longer accepts the event get the neutral text of an unknown transaction, in
+    /// the language of the snapshot alone (SPEC-039 C15); a refusal of the sender, or of ours, gets
+    /// silence, as on the attach of the web-page surface.
+    /// </remarks>
+    /// <param name="refusalCode">Code the binding was refused with.</param>
+    /// <param name="identity">Identity snapshot of the sender.</param>
+    /// <param name="transactionId">Transaction the start named.</param>
+    /// <param name="adapter">Channel adapter the start arrived through.</param>
+    /// <param name="staleLinkReplyText">Declared reply to an unservable sign-in link (null — silence).</param>
+    /// <param name="promptLocalizer">Channel message localizer (null — base language).</param>
+    /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
+    /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="metrics">Component metrics the unserved start is counted into.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private static async Task AnswerRefusedBindingAsync(
+        string refusalCode,
+        ChannelIdentitySnapshot identity,
+        TransactionId transactionId,
+        IChannelAdapter adapter,
+        string? staleLinkReplyText,
+        IConfirmationPromptLocalizer? promptLocalizer,
+        ITransactionEventPublisher? eventPublisher,
+        TimeProvider timeProvider,
+        ILogger logger,
+        ChannelAdapterMetrics metrics,
+        CancellationToken cancellationToken)
+    {
+        metrics.RecordUnservedStart(adapter.ChannelType);
+
+        if (refusalCode is TransactionErrorCodes.ChannelSubjectMismatch)
+        {
+            await RecordSubjectMismatchAsync(transactionId, adapter, eventPublisher, timeProvider, logger);
+        }
+        else
+        {
+            var refusalClass = await RecordChannelRefusalAsync(
+                RefusedSubjectBinding, refusalCode, transactionId, adapter, eventPublisher, timeProvider, logger);
+            if (refusalClass is not (DecisionRefusalClass.Expired or DecisionRefusalClass.Race))
+            {
+                return;
+            }
+        }
+
+        await SendDeclaredReplyAsync(
+            adapter, identity, staleLinkReplyText, identity.Locale, promptLocalizer, logger, metrics,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Records an engine refusal of a write of the sender's channel data — the operational log and the
+    /// audit event of its class — and hands the class back: what the sender is answered is decided by the
+    /// caller.
+    /// </summary>
+    /// <remarks>
+    /// A late delivery of the same channel event (the transaction has already been decided or has
+    /// expired) and a sender the transaction does not admit (a channel outside its allow-list, a bot, a
+    /// sender refused by a restriction policy or by a registered admissibility check) are
+    /// expected refusals, not operational errors — hence Warning for those and Error for the rest. An
+    /// expiry is reported by two codes, not one: past the TTL the engine answers with the deadline while
+    /// the transaction is still Pending, and with the state only after the cleanup pass has promoted it —
+    /// the classifier reads both as one class.
+    /// </remarks>
+    /// <param name="refusedWrite">Name of the refused write, for the log.</param>
+    /// <param name="refusalCode">Code the engine refused with.</param>
+    /// <param name="transactionId">Transaction the event named.</param>
+    /// <param name="adapter">Channel adapter the event arrived through.</param>
+    /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
+    /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
+    /// <param name="logger">Logger.</param>
+    /// <returns>The class of the refusal.</returns>
+    private static async Task<DecisionRefusalClass> RecordChannelRefusalAsync(
+        string refusedWrite,
+        string refusalCode,
+        TransactionId transactionId,
+        IChannelAdapter adapter,
+        ITransactionEventPublisher? eventPublisher,
+        TimeProvider timeProvider,
+        ILogger logger)
+    {
+        var refusalClass = DecisionRefusalClassifier.Classify(refusalCode);
+
+        // A transaction the store no longer holds is logged and not journaled, on every entry of the
+        // channel alike (SPEC-039 E48): the entry is keyed by the transaction, and there is none. The class
+        // is still handed back — the sender is answered as for an expiry either way.
+        if (refusalCode is TransactionErrorCodes.TransactionNotFound)
+        {
+            logger.LogWarning(
+                "{RefusedWrite} — the transaction is no longer stored. TransactionId: {TransactionId}",
+                refusedWrite,
+                transactionId);
+            return refusalClass;
+        }
+
+        var (level, reason, auditCode) = refusalClass switch
+        {
+            DecisionRefusalClass.Expired => (
+                LogLevel.Warning, "the sign-in window has closed", ChannelInteractionAuditCodes.LinkExpired),
+            DecisionRefusalClass.Race => (
+                LogLevel.Warning, "the transaction does not accept this event",
+                ChannelInteractionAuditCodes.LinkNotAnswerable),
+            _ when refusalCode is TransactionErrorCodes.ChannelNotAllowed
+                or TransactionErrorCodes.BotRejected
+                or TransactionErrorCodes.RestrictionPolicyViolation
+                or TransactionErrorCodes.SecurityPolicyViolation => (
+                LogLevel.Warning, "the transaction does not admit this sender",
+                ChannelInteractionAuditCodes.SenderNotAdmitted),
+            _ => (
+                LogLevel.Error, "the engine refused the write", ChannelInteractionAuditCodes.SenderNotAdmitted)
+        };
+
+        logger.Log(
+            level,
+            "{RefusedWrite} — {Reason}. TransactionId: {TransactionId}, Error: {ErrorCode}",
+            refusedWrite,
+            reason,
+            transactionId,
+            refusalCode);
+
+        await PublishChannelRefusalAsync(
+            eventPublisher, timeProvider, transactionId, adapter.ChannelType, auditCode, refusalCode, logger);
+
+        return refusalClass;
     }
 
     /// <summary>
@@ -2035,6 +3302,61 @@ public static class ChannelWebhookPipeline
                 "Failed to publish audit event {EventCode}. TransactionId: {TransactionId}",
                 auditCode,
                 transactionId);
+        }
+    }
+
+    /// <summary>
+    /// Tells the subscribers of the transaction bus that the sender entered the transaction and the
+    /// answer is awaited in the channel (<see cref="ChannelAnswerStatuses.ChannelAnswered"/>).
+    /// </summary>
+    /// <remarks>
+    /// An additive status of the channel: it moves no state and names the channel only — the sender
+    /// is not part of it. It is a side signal of the start: a composition without a bus, or a bus
+    /// that failed, leaves a warning and changes neither the answer to the user nor the result of the
+    /// webhook. <see cref="CancellationToken.None"/> for the publish: the fact has happened, and an
+    /// abandoned delivery attempt of the platform must not keep it from the page.
+    /// </remarks>
+    /// <param name="eventPublisher">Bus the status goes to (null — the composition has none).</param>
+    /// <param name="timeProvider">Clock the moment of the event is read off.</param>
+    /// <param name="transactionId">Transaction the sender entered.</param>
+    /// <param name="channelType">Channel the start arrived through.</param>
+    /// <param name="logger">Logger.</param>
+    private static async Task PublishChannelAnsweredAsync(
+        ITransactionEventPublisher? eventPublisher,
+        TimeProvider timeProvider,
+        TransactionId transactionId,
+        string channelType,
+        ILogger logger)
+    {
+        if (eventPublisher is null)
+        {
+            logger.LogWarning(
+                "No transaction event publisher is registered; the page is not told that the channel answered. TransactionId: {TransactionId}, ChannelType: {ChannelType}",
+                transactionId,
+                channelType);
+            return;
+        }
+
+        try
+        {
+            await eventPublisher.PublishAsync(
+                new TransactionChannelStatusChangedEvent
+                {
+                    TransactionId = transactionId,
+                    OccurredAt = timeProvider.GetUtcNow(),
+                    ChannelType = channelType,
+                    ChannelStatus = ChannelAnswerStatuses.ChannelAnswered
+                },
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to publish the channel status {ChannelStatus}. TransactionId: {TransactionId}, ChannelType: {ChannelType}",
+                ChannelAnswerStatuses.ChannelAnswered,
+                transactionId,
+                channelType);
         }
     }
 
@@ -2100,16 +3422,23 @@ public static class ChannelWebhookPipeline
     /// <summary>
     /// Handles the user declining authentication.
     /// </summary>
+    /// <param name="processor">Processor holding the services of the event's scope.</param>
     /// <param name="result">Inbound event result with decline data.</param>
+    /// <param name="transaction">
+    /// The transaction the decline names, read by the caller from the STORE — past the TTL gate, for
+    /// the reason the twin parameter of the confirmation handler states. Null — there is no
+    /// transaction to answer with.
+    /// </param>
     /// <param name="adapter">Channel adapter.</param>
     /// <param name="transactionService">Transaction service.</param>
-    /// <param name="transactionStore">Transaction store the decision is read through.</param>
+    /// <param name="transactionStore">Transaction store the single re-read after a refused write goes to.</param>
     /// <param name="timeProvider">Clock the deadline of the transaction is read against.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="metrics">Component metrics a failed user notification is counted into.</param>
     /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator — the point that
     /// answers whether this channel was the one asked to show the question (SPEC-039 E41).</param>
-    /// <param name="receiptText">Terminal text of the transaction (SPEC-036 TPL-123).</param>
+    /// <param name="receiptText">Receipt text of the transaction — a terminal outcome or the claims
+    /// completion state (SPEC-036 TPL-123).</param>
     /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
     /// <param name="eventPublisher">Bus the refusals of the press are written to — a late press, a
     /// decision already recorded, a sender not admitted (SPEC-039 E48; null — no journal).</param>
@@ -2118,7 +3447,9 @@ public static class ChannelWebhookPipeline
     /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     private static async Task HandleAuthDeclineAsync(
+        ChannelInboundProcessor processor,
         ChannelAuthDeclineResult result,
+        Transaction? transaction,
         IChannelAdapter adapter,
         ITransactionService transactionService,
         ITransactionStore transactionStore,
@@ -2138,51 +3469,32 @@ public static class ChannelWebhookPipeline
         // channel event, so an unparseable value never reaches this point (SPEC-003 §6.3).
         var transactionId = result.TransactionId;
 
-        // Read the transaction for its ConcurrencyToken — through the STORE, past the TTL gate, for
-        // the reason the twin branch of the confirmation handler states.
-        var transaction = await ReadForDecisionAsync(
-            transactionStore, transactionId, logger, cancellationToken);
-
         if (transaction is null)
         {
             logger.LogWarning(
                 "No transaction to answer the AuthDecline with. TransactionId: {TransactionId}",
                 result.TransactionId);
 
-            // A pressed button is always answered (SPEC-003 §13.3, CA-192) — see the twin branch of
-            // the confirmation handler for why the outcome is Expired and why a transaction that is
-            // not there is not told apart from one that never was.
-            await ShowOutcomeAsync(
-                adapter, transactionId, result.Identity.ChannelUserId, result.InboundToken,
-                TransactionOutcome.Expired,
-                await receiptText.RenderAsync(
-                    ReceiptAddressWithoutTransaction(TransactionOutcome.Expired, adapter),
-                    result.Identity.Locale,
-                    // Neither the zone nor the moment of the outcome has a source on this branch: the
-                    // transaction they are both read off is the one that could not be read. Stating
-                    // "now" instead would be this handler's own clock passed off as the moment the
-                    // transaction ended, so nothing is stated and a moment falls back to UTC.
-                    recipientTimeZone: null,
-                    outcomeMoment: null,
-                    // Nor any value of the transaction: they are read off the same transaction
-                    // (SPEC-036 TPL-107).
-                    transaction: null,
-                    // There is no transaction to take ownership from — that is this branch. The only
-                    // level left is the tenant of the ambient channel scope, which the single context
-                    // builder puts in for a null transaction.
-                    TransactionResolutionContext.For(null),
-                    cancellationToken),
-                promptMessageStore,
-                displayIntentSource,
-                // The same context the wording above is addressed with: the receipt and the way it is
-                // shown are one answer about one notice.
-                TransactionResolutionContext.For(null),
-                logger, metrics, cancellationToken);
+            await ShowUnknownTransactionAsync(
+                adapter, transactionId, result.Identity, result.InboundToken, receiptText,
+                promptMessageStore, displayIntentSource, logger, metrics, cancellationToken);
             return;
         }
 
         // Recipient-locale chain (B17): channel snapshot locale → initiation-page language → base.
         var recipientLocale = result.Identity.Locale ?? transaction.GetUiLocale();
+
+        // The subject gate of the confirmation, for the same reason: failing a transaction checks the
+        // state and the concurrency token, not who asks, so another subject would otherwise end the
+        // sign-in of the bound one.
+        if (transaction.IsBoundToAnotherSubject(result.Identity))
+        {
+            await RefuseDecisionOfAnotherSubjectAsync(
+                result.Identity, result.InboundToken, transaction, recipientLocale, adapter,
+                transactionService, receiptText, displayIntentSource, promptLocalizer, errorText,
+                eventPublisher, timeProvider, logger, metrics, cancellationToken);
+            return;
+        }
 
         // The window closed before the button was pressed — the twin of the confirmation pre-check,
         // and deliberately the same answer: a decision reported after the deadline is answered by
@@ -2203,7 +3515,7 @@ public static class ChannelWebhookPipeline
                     transaction,
                     // The gate of the caller values cuts off what the calling party supplied and
                     // nothing the core states about the transaction.
-                    TransactionSlotSource.From(transaction) with
+                    SenderSlotSource(transaction, result.Identity) with
                     {
                         CallerSlotValues = await ShownCallerSlotValuesAsync(
                             transaction, adapter, confirmationPromptOrchestrator, cancellationToken)
@@ -2216,6 +3528,8 @@ public static class ChannelWebhookPipeline
                 // The context the expiry helper addresses its wording with — the transaction in hand.
                 TransactionResolutionContext.For(transaction),
                 logger, metrics, cancellationToken);
+
+            await ExpireAfterLateDecisionAsync(transactionService, transactionId, cancellationToken);
             return;
         }
 
@@ -2248,6 +3562,23 @@ public static class ChannelWebhookPipeline
             return;
         }
 
+        // The user has already confirmed and the transaction waits for missing claims (SPEC-041
+        // L91): the completion mark froze the snapshot, so the press changes nothing — the decline
+        // button of the question no longer declines — and is recorded and answered exactly as the
+        // confirm button is: with the state of the wait on a channel that updates its messages, with
+        // the request of the step sent again on one that does not.
+        if (transaction.IsCompletingClaims())
+        {
+            await RecordClaimCompletionRefusalAsync(
+                transactionId, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
+
+            await AnswerRepeatedPressInTheCompletionAsync(
+                processor, adapter, transaction, transaction.UpdatedAt, result.Identity,
+                result.InboundToken, recipientLocale, receiptText, promptMessageStore,
+                displayIntentSource, logger, metrics, cancellationToken);
+            return;
+        }
+
         // Decline the transaction
         var failResult = await transactionService.FailTransactionAsync(
             transactionId,
@@ -2261,13 +3592,24 @@ public static class ChannelWebhookPipeline
             // shown a terminal state even on error — the stale buttons must go — and which state
             // that is depends on what refused the write.
             var refusal = await AnswerToRefusedDecisionAsync(
-                failResult.Error.Code, TransactionOutcome.Declined, transaction, adapter,
+                failResult.Error.Code, TransactionOutcome.Declined, transaction, result.Identity, adapter,
                 transactionStore, eventPublisher, timeProvider, recipientLocale, receiptText,
                 promptLocalizer, errorText, logger, cancellationToken);
 
+            // The transaction waits for missing claims — the pre-check's answer, reached through the
+            // race, and given under the same condition; the record is already written.
+            if (refusal is null)
+            {
+                await AnswerRepeatedPressInTheCompletionAsync(
+                    processor, adapter, transaction, transaction.UpdatedAt, result.Identity,
+                    result.InboundToken, recipientLocale, receiptText, promptMessageStore,
+                    displayIntentSource, logger, metrics, cancellationToken);
+                return;
+            }
+
             await ShowOutcomeAsync(
                 adapter, transactionId, result.Identity.ChannelUserId, result.InboundToken,
-                refusal.Outcome, refusal.Text,
+                refusal.Value.Outcome, refusal.Value.Text,
                 promptMessageStore,
                 displayIntentSource,
                 TransactionResolutionContext.For(transaction),
@@ -2287,7 +3629,7 @@ public static class ChannelWebhookPipeline
                 // read off the instance that write returned.
                 failResult.Value.UpdatedAt,
                 // Past the decision gate: the question stood before this user in this channel.
-                TransactionSlotSource.From(transaction),
+                SenderSlotSource(transaction, result.Identity),
                 TransactionResolutionContext.For(transaction),
                 cancellationToken),
             promptMessageStore,
@@ -2310,31 +3652,6 @@ public static class ChannelWebhookPipeline
         string? recipientLocale)
         => promptLocalizer?.ResolveOrBaseText(naturalKey, recipientLocale)
             ?? NaturalKeyContext.BaseTextOf(naturalKey);
-
-    /// <summary>
-    /// Handles receiving a phone number from the user (CA-004).
-    /// Logs the received number for further processing.
-    /// Full integration with Identity Resolution (snapshot update)
-    /// requires an additional Identity Resolution layer spec.
-    /// </summary>
-    private static Task HandlePhoneSharedAsync(
-        ChannelPhoneSharedResult result,
-        ILogger logger)
-    {
-        logger.LogInformation(
-            "Phone number received. ChannelType: {ChannelType}",
-            result.Identity.ChannelType);
-
-        // The phone number is extracted and available in result.PhoneNumber.
-        // Persisting it onto the ChannelIdentitySnapshot in the Transaction Engine is outside the
-        // current identity-resolution behaviour (CA-020): the snapshot is not updated here.
-        // CA-121: snapshot contents (including the phone) are PII, log only at Debug
-        logger.LogDebug(
-            "Phone number extracted from PhoneShared. ChannelUserId: {ChannelUserId}, PhonePresent: true",
-            result.Identity.ChannelUserId);
-
-        return Task.CompletedTask;
-    }
 
     /// <summary>
     /// Sends a plain message to the user through the shared outbound seam, which gates the content
@@ -2364,17 +3681,176 @@ public static class ChannelWebhookPipeline
     }
 
     /// <summary>
-    /// States the core's intent "show the user the terminal state of this transaction" (SPEC-003 §6.2).
-    /// The prompt reference is taken from the store with remove-on-read, exactly like the TTL path —
-    /// the two paths differ only in what triggers them. The desired display intent is resolved here
-    /// too, so every outcome this route shows states the one intent of the deployment, whichever
-    /// branch it came from.
+    /// Answers a press on a sign-in that was already waiting for missing claims when the press
+    /// arrived (SPEC-041 L91; SPEC-003 CA-192). A channel that declares the update of its messages
+    /// is shown the state of the wait: the press gets its answer, and the state lands on the question
+    /// message. A channel that does not is not sent the state — it would arrive as one more message
+    /// under the request of the step in progress — and is sent that request again instead: on such a
+    /// platform the press itself may stand in the chat as a message of the user and take the buttons
+    /// of the request away. The fact is the one the channel declared, so the decision is the
+    /// caller's and not the adapter's (SPEC-003 CA-183). The record of the press is the caller's
+    /// business and is written before this call, whichever way it goes.
+    /// </summary>
+    /// <param name="processor">Processor holding the services of the event's scope.</param>
+    /// <param name="adapter">Channel adapter.</param>
+    /// <param name="transaction">Transaction the press names.</param>
+    /// <param name="stateMoment">Moment the instance in hand was last written.</param>
+    /// <param name="sender">Identity of the user who pressed.</param>
+    /// <param name="inboundToken">Opaque token of the live interaction (null — no interaction).</param>
+    /// <param name="recipientLocale">Recipient locale (null — base language).</param>
+    /// <param name="receiptText">Port the wording of the state comes from.</param>
+    /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
+    /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="metrics">Component metrics a failed notification is counted into.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Completion of the answer.</returns>
+    private static Task AnswerRepeatedPressInTheCompletionAsync(
+        ChannelInboundProcessor processor,
+        IChannelAdapter adapter,
+        Transaction transaction,
+        DateTimeOffset stateMoment,
+        ChannelIdentitySnapshot sender,
+        ChannelInboundToken? inboundToken,
+        string? recipientLocale,
+        IOutcomeReceiptText receiptText,
+        IChannelPromptMessageStore? promptMessageStore,
+        IOutcomeNoticeDisplayIntentSource displayIntentSource,
+        ILogger logger,
+        ChannelAdapterMetrics metrics,
+        CancellationToken cancellationToken)
+        => adapter.Capabilities.SupportsMessageUpdate
+            ? ShowClaimCompletionStateAsync(
+                adapter, transaction, stateMoment, sender, inboundToken, recipientLocale,
+                receiptText, promptMessageStore, displayIntentSource, logger, metrics, cancellationToken)
+            : SendPhoneRequestAgainAsync(
+                processor, transaction, sender, processor.UserAuthRateLimiter,
+                UserAuthRateLimitOperations.AuthConfirm, cancellationToken);
+
+    /// <summary>
+    /// Sends the phone number request of a transaction waiting in the phone step of its claims
+    /// completion once more — the answer of a channel that does not update its messages to an event
+    /// of the user that may have taken the buttons of the request away (SPEC-003 CA-192, CA-200).
+    /// The record tying the chat to the transaction and the window of an <c>Optional</c> number are
+    /// those of the first request and are left as they are. A transaction that waits in another
+    /// step, or whose instance in hand was read before the completion began, gets nothing: the
+    /// starter of its step is the one that speaks in the chat.
+    /// </summary>
+    /// <param name="processor">Processor holding the services of the event's scope.</param>
+    /// <param name="transaction">Transaction the event names.</param>
+    /// <param name="sender">Identity of the user the event came from.</param>
+    /// <param name="userAuthRateLimiter">Per-user rate limiter the event is charged to (null — nothing
+    /// is charged here: the host registered none, or the attempt of this event is already taken).</param>
+    /// <param name="rateLimitOperation">Partition of the per-user rate limiter the event belongs to
+    /// (<see cref="UserAuthRateLimitOperations"/>); a refusal leaves the event unanswered and does
+    /// not touch the transaction.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private static async Task SendPhoneRequestAgainAsync(
+        ChannelInboundProcessor processor,
+        Transaction transaction,
+        ChannelIdentitySnapshot sender,
+        IUserAuthRateLimiter? userAuthRateLimiter,
+        string rateLimitOperation,
+        CancellationToken cancellationToken)
+    {
+        if (transaction.GetCurrentClaimCompletionStep() is not ClaimCompletionStep.Phone)
+        {
+            return;
+        }
+
+        if (userAuthRateLimiter is { } rateLimiter)
+        {
+            var userKey = NormalizeUserKey(sender);
+            var rateLimitResult = await rateLimiter.TryAcquireAsync(rateLimitOperation + userKey, cancellationToken);
+
+            if (!rateLimitResult.IsAllowed)
+            {
+                processor.Logger.LogWarning(
+                    "Per-user rate limit exceeded — the phone number request is not sent again. " +
+                    "TransactionId: {TransactionId}, UserKeyHash: {UserKeyHash}",
+                    transaction.Id.ToString(),
+                    LogMasking.Fingerprint(userKey));
+                return;
+            }
+        }
+
+        if (await processor.PhoneNumberRequestBuilder.BuildAsync(transaction, cancellationToken) is { } request)
+        {
+            processor.ClaimCompletionDelivery.DeliverInBackground(transaction, request.Message);
+        }
+    }
+
+    /// <summary>
+    /// Shows the state of a transaction that waits for missing claims (SPEC-041 L91): the platform
+    /// gets its answer to the press, and the question message loses its buttons and reads "confirmed,
+    /// one step left" (SPEC-003 CA-142, CA-192). The one notice of this route that is not the last
+    /// word about the transaction. The press that sent the sign-in into the completion is answered
+    /// with it on every channel; a press made while the completion lasts — only on a channel that
+    /// updates its messages, which <see cref="AnswerRepeatedPressInTheCompletionAsync"/> decides.
+    /// </summary>
+    /// <remarks>
+    /// Called only from the handling of an inbound channel event: a notice sent outside of one would
+    /// share the idempotency key of the terminal notice on the HTTP channel.
+    /// </remarks>
+    /// <param name="adapter">Channel adapter.</param>
+    /// <param name="transaction">Transaction the press names — the source of the address, the slot
+    /// values and the ownership context of the wording.</param>
+    /// <param name="stateMoment">Moment the instance in hand was last written — the moment of the
+    /// state for a receipt that declares one.</param>
+    /// <param name="sender">Identity snapshot of the sender of the press — the recipient within the channel
+    /// and the account the receipt names.</param>
+    /// <param name="inboundToken">Opaque token of the live interaction (null — no interaction).</param>
+    /// <param name="recipientLocale">Recipient locale (null — base language).</param>
+    /// <param name="receiptText">Port the wording of the state comes from (SPEC-036 TPL-123).</param>
+    /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
+    /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="metrics">Component metrics a failed notification is counted into.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private static async Task ShowClaimCompletionStateAsync(
+        IChannelAdapter adapter,
+        Transaction transaction,
+        DateTimeOffset stateMoment,
+        ChannelIdentitySnapshot sender,
+        ChannelInboundToken? inboundToken,
+        string? recipientLocale,
+        IOutcomeReceiptText receiptText,
+        IChannelPromptMessageStore? promptMessageStore,
+        IOutcomeNoticeDisplayIntentSource displayIntentSource,
+        ILogger logger,
+        ChannelAdapterMetrics metrics,
+        CancellationToken cancellationToken)
+        => await ShowOutcomeAsync(
+            adapter, transaction.Id, sender.ChannelUserId, inboundToken,
+            TransactionOutcome.AwaitingClaims,
+            await receiptText.RenderAsync(
+                ReceiptAddressOf(TransactionOutcome.AwaitingClaims, adapter, transaction),
+                recipientLocale,
+                transaction.GetUiTimeZone(),
+                stateMoment,
+                // Past the decision gate: the question stood before this user in this channel.
+                SenderSlotSource(transaction, sender),
+                TransactionResolutionContext.For(transaction),
+                cancellationToken),
+            promptMessageStore,
+            displayIntentSource,
+            TransactionResolutionContext.For(transaction),
+            logger, metrics, cancellationToken);
+
+    /// <summary>
+    /// States the core's intent "show the user the state of this transaction" (SPEC-003 §6.2): one of
+    /// its terminal outcomes, or the one non-terminal state — a sign-in confirmed and waiting for
+    /// missing claims. For a terminal outcome the prompt reference is taken from the store with
+    /// remove-on-read, exactly like the TTL path — the two paths differ only in what triggers them;
+    /// for the claims completion state it is read and left in place. The desired display intent is
+    /// resolved here too, so every outcome this route shows states the one intent of the deployment,
+    /// whichever branch it came from.
     /// </summary>
     /// <param name="adapter">Channel adapter.</param>
     /// <param name="transactionId">Transaction identifier.</param>
     /// <param name="channelUserId">Recipient within the channel.</param>
     /// <param name="inboundToken">Opaque token of the live interaction (null — no interaction).</param>
-    /// <param name="outcome">Terminal outcome to show.</param>
+    /// <param name="outcome">Terminal outcome to show, or <see cref="TransactionOutcome.AwaitingClaims"/>.</param>
     /// <param name="statusText">Already localized status text.</param>
     /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
     /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
@@ -2405,12 +3881,23 @@ public static class ChannelWebhookPipeline
         var displayIntent = await displayIntentSource.ResolveAsync(resolutionContext, cancellationToken);
 
         ChannelMessageRef? promptMessage = null;
+        ChannelMessageRef? phoneRequestMessage = null;
         if (promptMessageStore is not null)
         {
-            // CancellationToken.None: the transaction has already reached a terminal state, so the
-            // stored reference must be consumed even if the request is being cancelled.
-            var stored = await promptMessageStore.TakeAsync(transactionId, CancellationToken.None);
+            // The claims completion state is not the last word about the transaction: the reference
+            // is read and stays in the store for the expiry path and for a repeated press. Any other
+            // outcome is terminal and consumes it. CancellationToken.None on the take: the
+            // transaction has already reached a terminal state, so the stored reference must be
+            // consumed even if the request is being cancelled.
+            var stored = outcome == TransactionOutcome.AwaitingClaims
+                ? await promptMessageStore.FindAsync(transactionId, cancellationToken)
+                : await promptMessageStore.TakeAsync(transactionId, CancellationToken.None);
             promptMessage = stored?.Message;
+
+            // A terminal outcome consumed the record, and the reference to a phone number request
+            // goes with it: the adapter takes the request down by this notice, and nothing reads
+            // the record afterwards.
+            phoneRequestMessage = outcome == TransactionOutcome.AwaitingClaims ? null : stored?.PhoneRequestMessage;
         }
 
         var notice = new TransactionOutcomeNotice
@@ -2421,6 +3908,7 @@ public static class ChannelWebhookPipeline
             StatusText = statusText,
             InboundToken = inboundToken,
             PromptMessage = promptMessage,
+            PhoneRequestMessage = phoneRequestMessage,
             DisplayIntent = displayIntent
         };
 
@@ -2466,7 +3954,8 @@ public static class ChannelWebhookPipeline
             .CreateLogger(typeof(ChannelWebhookPipeline));
 
     /// <summary>
-    /// Finds the adapter by channel type via a linear scan over the current request's adapters (there are only a few).
+    /// Finds the adapter by channel type via a linear scan over the registered adapters (there are only a few) —
+    /// the one lookup the webhook, the delivery of claim completion and the phone step share.
     /// An adapter is a stateless singleton per channel type (CA-014/CA-164): a tenant does not multiply adapter
     /// instances; instead, the seam determines which credentials/client it uses during processing. The tenant
     /// is carried into processing via the ambient context (<see cref="ChannelTenantContext"/>) set by the
@@ -2475,10 +3964,10 @@ public static class ChannelWebhookPipeline
     /// between different DI containers in one process (multiple WebApplicationFactory instances in tests,
     /// a multi-tenant host) — review feedback. The scan cost is negligible next to JSON parsing and the DB.
     /// </summary>
-    /// <param name="adapters">Registered adapters of the current request.</param>
+    /// <param name="adapters">Registered adapters.</param>
     /// <param name="channelType">Channel type.</param>
     /// <returns>Adapter of the channel type or null if not registered.</returns>
-    private static IChannelAdapter? FindAdapter(IEnumerable<IChannelAdapter> adapters, string channelType)
+    internal static IChannelAdapter? FindAdapter(IEnumerable<IChannelAdapter> adapters, string channelType)
     {
         foreach (var adapter in adapters)
         {
@@ -2517,4 +4006,15 @@ public static class ChannelWebhookPipeline
     /// <param name="Outcome">Terminal state shown to the user.</param>
     /// <param name="Text">Already localized text of that state.</param>
     private readonly record struct RefusedDecisionAnswer(TransactionOutcome Outcome, string Text);
+
+    /// <summary>
+    /// The transaction a channel decision is acted on and the store its answer may take a prompt
+    /// reference from.
+    /// </summary>
+    /// <param name="Transaction">Transaction to act on; null — there is none to answer with.</param>
+    /// <param name="PromptMessageStore">Store of sent-prompt coordinates; null — the answer carries no
+    /// prompt reference.</param>
+    private readonly record struct DecisionTransaction(
+        Transaction? Transaction,
+        IChannelPromptMessageStore? PromptMessageStore);
 }

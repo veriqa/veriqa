@@ -32,6 +32,9 @@
   <ItemGroup>
     <!-- Redis as the orchestrated transaction store (official Aspire integration) -->
     <PackageReference Include="Aspire.Hosting.Redis" Version="13.4.6" />
+    <!-- Pinned above the version Aspire.Hosting brings through StreamJsonRpc: 2.5.302 is under advisory
+         GHSA-qhrr-8q5h-9q3h (fixed in 2.5.303). Drop once Aspire depends on a fixed version. -->
+    <PackageReference Include="MessagePack" Version="2.5.303" />
   </ItemGroup>
 
   <ItemGroup>

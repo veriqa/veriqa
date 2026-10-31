@@ -12,20 +12,22 @@ using Veriqa.Core.TransactionEngine.Events;
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
 /// <summary>
-/// Lifecycle handler that, on transaction TTL expiry, shows the user the terminal "expired" status
-/// for the confirmation prompt already sent to the channel (SPEC-003 §4.5). It states the same
-/// intent as the live confirm/decline path — the adapter picks the platform operations — but is
-/// driven by <see cref="TransactionExpiredEvent"/> instead of an inbound callback.
+/// Lifecycle handler that, on transaction TTL expiry, shows the user the terminal "expired" status in
+/// the chat the transaction was started from (SPEC-003 §4.5), whether the question was asked there or
+/// not. It states the same intent as the live confirm/decline path — the adapter picks the platform
+/// operations — but is driven by <see cref="TransactionExpiredEvent"/> instead of an inbound callback.
+/// The notice carries every reference the record of the chat has: to the prompt, and to a phone
+/// number request still waiting in the chat.
 ///
-/// If no prompt was sent for the transaction (no in-channel surface, or a different instance sent it
-/// in a multi-instance in-memory deployment) the handler is a graceful no-op. All failures are logged,
+/// If the transaction left no record (it never reached a channel that reports outcomes, or a different
+/// instance wrote it in a multi-instance in-memory deployment) the handler is a graceful no-op. All failures are logged,
 /// never thrown — a background lifecycle handler must not break event processing (a throw here is
 /// isolated by the publisher, but we degrade explicitly).
 /// </summary>
 internal sealed class ChannelPromptExpiryHandler : ITransactionEventHandler
 {
     /// <summary>
-    /// Store of sent-prompt coordinates keyed by transaction.
+    /// Store of the chat a transaction was started from, keyed by transaction.
     /// </summary>
     private readonly IChannelPromptMessageStore _promptMessageStore;
 
@@ -62,7 +64,7 @@ internal sealed class ChannelPromptExpiryHandler : ITransactionEventHandler
     /// <summary>
     /// Creates the expiry handler.
     /// </summary>
-    /// <param name="promptMessageStore">Store of sent-prompt coordinates.</param>
+    /// <param name="promptMessageStore">Store of the chat a transaction was started from.</param>
     /// <param name="adapters">Registered channel adapters.</param>
     /// <param name="receiptText">Terminal text of the transaction.</param>
     /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
@@ -93,7 +95,7 @@ internal sealed class ChannelPromptExpiryHandler : ITransactionEventHandler
             return;
         }
 
-        // Take (get + remove) the sent-prompt record. Null — no in-channel prompt to report on.
+        // Take (get + remove) the record of the chat. Null — nobody to report the expiry to.
         var reference = await _promptMessageStore.TakeAsync(expired.TransactionId, cancellationToken);
         if (reference is null)
         {
@@ -104,27 +106,27 @@ internal sealed class ChannelPromptExpiryHandler : ITransactionEventHandler
         if (adapter is null)
         {
             _logger.LogWarning(
-                "No adapter for channel {ChannelType} to report the expired prompt. TransactionId: {TransactionId}",
+                "No adapter for channel {ChannelType} to report the expired transaction. TransactionId: {TransactionId}",
                 reference.ChannelType,
                 expired.TransactionId.ToString());
             return;
         }
 
-        // Restore the tenant captured at send time: a background handler has no ambient request
+        // Restore the tenant captured when the record was written: a background handler has no ambient request
         // context, and the adapter resolves its per-tenant client/credentials from ChannelTenantContext.
         // The scope is for the ADAPTER's credentials only — it is no longer the source of the ownership
         // the receipt is worded over: that comes from the stored record below. Tenant is the level the
         // prompt store contracts for (ChannelPromptMessageRef.TenantId), and this receipt is worded at
         // that level on purpose: the expiry event does carry an application id, but it is deliberately
-        // not promoted into the receipt's ownership, so the single record captured at send time stays
+        // not promoted into the receipt's ownership, so the single record captured at the start stays
         // the whole answer here. The ui_config record of an expired transaction cannot be read back
         // at all.
         using (ChannelTenantContext.BeginScope(reference.TenantId))
         {
             // The type of the transaction comes from the event: the publisher of the expiry states it
             // in the context of the event, and the transaction itself is already gone by now. The
-            // surface is the channel the prompt was shown in, the locale is the one captured at send
-            // time; a missing translation falls back to the base text of the wording.
+            // surface is the channel the transaction was started from, the locale is the one captured
+            // on the record; a missing translation falls back to the base text of the wording.
             var address = new OutcomeReceiptAddress(
                 TransactionOutcome.Expired,
                 OutcomeReceiptSurfaces.ForChannel(adapter),
@@ -154,21 +156,41 @@ internal sealed class ChannelPromptExpiryHandler : ITransactionEventHandler
                     // core report for an expiry, and never the clock of the sweep that noticed it.
                     reference.RecipientTimeZone,
                     expired.ExpiresAt,
-                    // The prompt this notice replaces IS the question this recipient was shown, so the
-                    // receipt may name its subject. The values come off the event beside the action type
-                    // of the address, for the same reason: the transaction itself is already gone. The
-                    // attribution of the event carries no initiator context, so a sign-in names its
-                    // application by the client identifier here.
-                    expired.Context is { } eventContext ? TransactionSlotSource.From(eventContext) : null,
+                    // The values come off the event beside the action type of the address, for the same
+                    // reason: the transaction itself is already gone. The attribution of the event
+                    // carries no initiator context, so the application is named by the display name
+                    // the transaction took at its creation, as a confirmation names it everywhere.
+                    expired.Context is { } eventContext ? SlotSourceOf(eventContext, reference) : null,
                     ResolutionContext.ForTenant(reference.TenantId),
                     cancellationToken),
                 // No inbound token on the background path: nobody pressed anything.
                 PromptMessage = reference.Message,
+                // A request still waiting in the chat: the adapter takes away what it offered.
+                PhoneRequestMessage = reference.PhoneRequestMessage,
                 DisplayIntent = displayIntent
             };
 
             await ChannelOutbound.NotifyOutcomeAsync(adapter, notice, _logger, _metrics, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Builds the source of the slots the receipt is worded from. The values the calling party
+    /// supplied are named only where the question was shown in this very channel: a chat that never
+    /// saw the question — it was asked on the web page, or not asked at all — never saw them either.
+    /// </summary>
+    /// <param name="eventContext">Context of the expiry event.</param>
+    /// <param name="reference">Record of the chat the transaction was started from.</param>
+    /// <returns>The source of the slots.</returns>
+    private static TransactionSlotSource SlotSourceOf(
+        TransactionEventContext eventContext,
+        ChannelPromptMessageRef reference)
+    {
+        var source = TransactionSlotSource.From(eventContext);
+
+        return reference.PromptShown
+            ? source
+            : source.WithoutCallerValues();
     }
 
     /// <summary>

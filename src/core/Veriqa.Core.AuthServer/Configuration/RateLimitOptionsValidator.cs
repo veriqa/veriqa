@@ -142,6 +142,26 @@ public sealed class RateLimitOptionsValidator : IValidateOptions<RateLimitOption
             failures.Add("ConfirmationPagesWindowSeconds must be greater than 0.");
         }
 
+        if (options.HopResolvePermitLimit <= 0)
+        {
+            failures.Add("HopResolvePermitLimit must be greater than 0.");
+        }
+
+        if (options.HopResolveWindowSeconds <= 0)
+        {
+            failures.Add("HopResolveWindowSeconds must be greater than 0.");
+        }
+
+        if (options.HopSignalPermitLimit <= 0)
+        {
+            failures.Add("HopSignalPermitLimit must be greater than 0.");
+        }
+
+        if (options.HopSignalWindowSeconds <= 0)
+        {
+            failures.Add("HopSignalWindowSeconds must be greater than 0.");
+        }
+
         if (failures.Count > 0)
         {
             return ValidateOptionsResult.Fail(failures);

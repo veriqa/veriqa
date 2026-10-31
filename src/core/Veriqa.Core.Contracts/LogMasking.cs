@@ -28,7 +28,7 @@ public static class LogMasking
     private const int FingerprintByteLength = 8;
 
     /// <summary>
-    /// Computes a stable, non-reversible fingerprint of an identifier for logging:
+    /// Computes a stable, unsalted fingerprint of an identifier for logging:
     /// the first 8 bytes of its SHA-256, hex-encoded (16 characters).
     /// Records of the same identifier share a fingerprint, so an operator can still
     /// stitch together the steps of a single sign-in.

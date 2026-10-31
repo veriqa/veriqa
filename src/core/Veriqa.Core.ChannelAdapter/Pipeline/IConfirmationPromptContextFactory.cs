@@ -3,6 +3,7 @@
 
 using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.TransactionEngine.Domain;
+using Veriqa.Core.TransactionEngine.MessageTemplates;
 
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
@@ -20,15 +21,18 @@ public interface IConfirmationPromptContextFactory
     /// explicitly and names the reason — the adapter then uses its default text (ICC-042).
     /// </summary>
     /// <param name="transaction">Transaction (source of the InitiatorContextSnapshot).</param>
-    /// <param name="channelType">Confirmation channel type.</param>
-    /// <param name="channelUserId">User identifier within the channel.</param>
+    /// <param name="recipient">The one the question is asked of: the channel it is asked in (named by the
+    /// text) and the account in that channel (the source of the masked identity slots).</param>
     /// <param name="recipientLocale">Recipient locale from channel data (null — from the transaction's ChannelIdentitySnapshot or the base language).</param>
+    /// <param name="surface">Surface the text is shown on — <see cref="MessageSurfaces.InChannel"/> or
+    /// <see cref="MessageSurfaces.CorePage"/>; it decides whether the subject of a confirmation may name the
+    /// account.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Confirmation context, always populated.</returns>
     Task<ConfirmationPromptContext> CreateAsync(
         Transaction transaction,
-        string channelType,
-        string channelUserId,
+        ConfirmationPromptRecipient recipient,
         string? recipientLocale,
+        string surface,
         CancellationToken cancellationToken = default);
 }

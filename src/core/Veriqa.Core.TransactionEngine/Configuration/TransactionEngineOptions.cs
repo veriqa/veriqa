@@ -63,10 +63,11 @@ public sealed class TransactionEngineOptions
     public int CompletedRetentionSeconds { get; set; } = 600;
 
     /// <summary>
-    /// Interval of the background check and cleanup (in seconds).
-    /// Default: 60 seconds. Range: 10–300 seconds.
+    /// Interval of the background check and cleanup (in seconds). It bounds how late an expiry nobody
+    /// answered is noticed — the receipt in the chat and the expired status of a waiting page.
+    /// Default: 15 seconds. Range: 10–300 seconds.
     /// </summary>
-    public int CleanupIntervalSeconds { get; set; } = 60;
+    public int CleanupIntervalSeconds { get; set; } = 15;
 
     /// <summary>
     /// Maximum batch size for the background cleanup.

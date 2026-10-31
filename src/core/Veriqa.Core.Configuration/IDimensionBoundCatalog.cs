@@ -21,8 +21,9 @@ internal interface IDimensionBoundCatalog
 {
     /// <summary>
     /// Address of the level that carries a substitution OUTSIDE its groups, and therefore states
-    /// nothing at an address a walk could read; null when the address has a step that narrows nothing —
-    /// then the walk is kept out by the source of the level, if it is kept out at all.
+    /// nothing at an address a walk could read; null when the address has a step that narrows nothing,
+    /// or when the level is the core one and is walked by the points of that dimension — then the walk
+    /// is kept out by the source of the level, if it is kept out at all.
     /// </summary>
     string? AddressRequiringDimensionValue { get; }
 }

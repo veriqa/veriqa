@@ -4,9 +4,13 @@
 using Veriqa.Core.AuthServer.Configuration;
 using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Constants;
+using Veriqa.Core.AuthServer.HopMode;
 using Veriqa.Core.AuthServer.Infrastructure;
+using Veriqa.Core.AuthServer.UI;
 using Veriqa.Core.AuthServer.UI.Services;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
+using Veriqa.Core.ChannelAdapter.Pipeline;
+using Veriqa.Core.ChannelAdapter.UI;
 using Veriqa.Core.Configuration;
 using Veriqa.Core.TransactionEngine.Common;
 using Veriqa.Core.TransactionEngine.Domain;
@@ -30,6 +34,13 @@ internal sealed record ChannelEntrySet(ChannelEntry Entry, IReadOnlyList<Channel
 internal static class ChannelEntryBuilder
 {
     /// <summary>
+    /// Login confirmation AS THE PRODUCT SHIPS IT — a default-constructed options object, read for one
+    /// thing only: the mode a channel gets when no level states one. The shipped value is taken off the
+    /// options class rather than restated here, so the two cannot drift.
+    /// </summary>
+    private static readonly LoginConfirmationOptions Shipped = new();
+
+    /// <summary>
     /// Builds the channel entries of a transaction.
     /// </summary>
     /// <param name="transaction">Transaction the entries lead to.</param>
@@ -38,6 +49,7 @@ internal static class ChannelEntryBuilder
     /// <param name="request">Current HTTP request — the fallback source of the public base address.</param>
     /// <param name="resolution">Ownership context of the transaction.</param>
     /// <param name="channelDisplayService">Preparer of the per-channel entry material.</param>
+    /// <param name="hopQrContent">The one step that issues the unified hop URL.</param>
     /// <param name="pageSettingsResolver">Resolver of the level-owned page settings (display override).</param>
     /// <param name="qrMatrixSource">Server-side QR generator — the module matrix and pixel scale the
     /// image of the answer is drawn from.</param>
@@ -51,6 +63,7 @@ internal static class ChannelEntryBuilder
         HttpRequest request,
         ResolutionContext resolution,
         IChannelDisplayService channelDisplayService,
+        HopQrContent hopQrContent,
         AuthPageSettingsResolver pageSettingsResolver,
         IQrModuleMatrixSource qrMatrixSource,
         IConfigurationResolver configResolver,
@@ -71,15 +84,17 @@ internal static class ChannelEntryBuilder
 
         var pageSettings = await pageSettingsResolver.ResolveAsync(resolution, cancellationToken);
 
-        var displayOverride = pageSettings.Channels is null && pageSettings.ChannelDisplayMode is null
-            ? null
-            : new ChannelDisplayOverride(pageSettings.Channels, pageSettings.ChannelDisplayMode);
+        var displayOverride = ChannelDisplayOverride.Of(pageSettings);
 
+        // The creation answer is its own projection of the channel QR codes: a hop token it carries lives
+        // as long as the transaction (SPEC-025 HOP-153).
         var displayResult = await channelDisplayService.GetChannelDisplayDataAsync(
             transaction.Id,
+            transaction.ExpiresAt,
             effectiveChannels,
             resolution,
             displayOverride,
+            ChannelQrSurface.CreationAnswer,
             cancellationToken);
 
         if (displayResult.IsFailure)
@@ -93,48 +108,37 @@ internal static class ChannelEntryBuilder
 
         var channels = displayResult.Value;
 
-        // The third condition of L40, and the one that beats the other two: with the question
-        // configured onto the core's own page, a deep link would send the user into a channel where no
-        // prompt is ever going to appear, and the transaction would hang to its TTL. It is read from
-        // the CONFIGURED value of the axis — the surface effective for a channel is not known before a
-        // channel has acted.
-        var confirmationMode = (await configResolver.ResolveAsync(
-            LoginConfirmationConfigKeys.LoginConfirmation,
-            resolution,
-            ConfigDimensionValues.None,
-            cancellationToken)).Value;
-
-        var questionOnCorePage = confirmationMode is LoginConfirmationMode.OnWebPage;
-
         // The list of C52 takes the second and the third condition of L40 and NOT the first: it is the
-        // very form for several channels. With the question on the core's page every deep link would
-        // lead nowhere, so the list is empty; otherwise it keeps the channels with an addressable point,
-        // in the order of the display list the configuration gave.
+        // very form for several channels. It keeps the channels with an addressable point whose question
+        // is not asked on the core's page, in the order of the display list the configuration gave. A
+        // channel whose link only opens the chat is not such a point either: its start is a message with
+        // a code, the answer has no field for one, and the link alone starts nothing — the page of the
+        // core is where the code is shown.
         List<ChannelEntry>? entries = null;
         if (includeChannelEntries)
         {
             entries = [];
-            if (!questionOnCorePage)
+            foreach (var channel in channels)
             {
-                foreach (var channel in channels)
+                if (LeadsIntoChannel(channel) && !await AsksOnCorePageAsync(channel))
                 {
-                    if (IsAbsoluteChannelAddress(channel.DeepLinkUrl))
-                    {
-                        entries.Add(await BuildDeepLinkEntryAsync(channel));
-                    }
+                    entries.Add(await BuildDeepLinkEntryAsync(channel));
                 }
             }
         }
 
         // The second condition is read off the deep link itself rather than off a list of channels: a
         // channel that has no addressable point until the user has typed something answers with a
-        // relative start path (the Email adapter in Pull mode does exactly that).
+        // relative start path (the Email adapter in Pull mode does exactly that). A list built above has
+        // already asked the only channel the same filters, and its outcome is the entry it holds or not: the
+        // channel is not asked twice and the image is not drawn a second time.
         var single = channels.Count is 1 ? channels[0] : null;
 
-        if (!questionOnCorePage && single is not null && IsAbsoluteChannelAddress(single.DeepLinkUrl))
+        if (single is not null
+            && (entries is not null
+                ? entries.Count is 1
+                : LeadsIntoChannel(single) && !await AsksOnCorePageAsync(single)))
         {
-            // The only channel passed the same filters, so the list already holds its entry — the image
-            // is not drawn a second time.
             var deepLinkEntry = entries is [var listed] ? listed : await BuildDeepLinkEntryAsync(single);
 
             return Result<ChannelEntrySet>.Success(new ChannelEntrySet(deepLinkEntry, entries));
@@ -142,30 +146,69 @@ internal static class ChannelEntryBuilder
 
         var pageUrl = BuildEntryPageUrl(transaction, request, serverOptions);
 
+        // The QR code of the page entry carries the unified hop URL when the unified mode applies for the
+        // channel set of this answer, whatever the number of its channels (SPEC-025 HOP-183): the phone
+        // that scans it gets the same channel choice page the url opens. The url and the expiry of the
+        // entry do not change; the token lives as long as the transaction (HOP-153).
+        var unifiedHopUrl = await hopQrContent.IssueUnifiedAsync(
+            transaction.Id,
+            transaction.ExpiresAt,
+            channels.Select(channel => channel.ChannelType).ToList().AsReadOnly(),
+            resolution,
+            ChannelQrSurface.CreationAnswer,
+            cancellationToken);
+
         var pageEntry = new ChannelEntry
         {
             Kind = ChannelEntryKinds.PageUrl,
             // Strictly null: the channel is not chosen yet, and naming one here would be a guess.
             ChannelType = null,
+            DisplayName = null,
             Url = pageUrl,
             // No channel: the pixel scale is a per-channel dimension of its key, and an unnamed
             // channel matches no per-channel step — the flat value of the level answers.
-            Qr = await RenderQrAsync(pageUrl, string.Empty),
+            Qr = await RenderQrAsync(unifiedHopUrl?.Url ?? pageUrl, string.Empty),
             ValidUntil = transaction.ExpiresAt
         };
 
         return Result<ChannelEntrySet>.Success(new ChannelEntrySet(pageEntry, entries));
 
+        // The third condition of L40, and the one that beats the other two: with the question of a
+        // channel configured onto the core's own page, its deep link would send the user into a channel
+        // where no prompt is ever going to appear, and the transaction would hang to its TTL. The mode is
+        // a per-channel setting (CFG-237), so it is asked about the channel of the entry. It is read from
+        // the CONFIGURED value of the axis — the surface effective for a channel is not known before a
+        // channel has acted; a chain no level answers is the mode the product ships with.
+        async Task<bool> AsksOnCorePageAsync(ChannelDisplayInfo channel)
+        {
+            var resolved = await configResolver.ResolveAsync(
+                LoginConfirmationConfigKeys.LoginConfirmation,
+                resolution,
+                ConfigDimensionValues.Of((ConfigDimensionNames.Channel, channel.ChannelType)),
+                cancellationToken);
+
+            var mode = resolved.SourceLevel is null ? Shipped.Mode : resolved.Value;
+
+            return mode is LoginConfirmationMode.OnWebPage;
+        }
+
         // A deep-link entry of one channel — the form shared by the single way in and the list (C20, C52).
+        // The url is always the deep link of the button; the QR code carries a hop URL when hop is on for
+        // the channel, and the link of a direct QR code otherwise.
         async Task<ChannelEntry> BuildDeepLinkEntryAsync(ChannelDisplayInfo channel) =>
             new ChannelEntry
             {
                 Kind = ChannelEntryKinds.DeepLink,
                 ChannelType = channel.ChannelType,
+                DisplayName = ChannelNames.GetChannelName(channel.ChannelType, channel.DisplayName),
                 Url = channel.DeepLinkUrl,
                 // The PNG prepared for the sign-in page (channel.QrCodeBase64) does not go out: the image
-                // of the answer is drawn again over the same address and channel, with the mark.
-                Qr = await RenderQrAsync(channel.DeepLinkUrl, channel.ChannelType),
+                // of the answer is drawn again over the same QR content and channel, with the mark. A
+                // channel whose QR code could not be drawn comes with no content, and its entry carries
+                // the address alone.
+                Qr = string.IsNullOrEmpty(channel.QrContent)
+                    ? null
+                    : await RenderQrAsync(channel.QrContent, channel.ChannelType),
                 ValidUntil = transaction.ExpiresAt
             };
 
@@ -188,19 +231,14 @@ internal static class ChannelEntryBuilder
     }
 
     /// <summary>
-    /// Whether the address of a channel is one a user can be sent to as it is.
+    /// Tells whether the link of a channel is a way in the answer may hand out by itself: an absolute
+    /// address that carries the transaction. A relative start path has no addressable point, and the link
+    /// of a channel that starts by a message with a code opens a chat in which nothing has started.
     /// </summary>
-    /// <remarks>
-    /// A rooted PATH is not: the Email adapter in Pull mode answers with the start path of its own
-    /// page, because until the person has typed an address there is no addressable point to send them
-    /// to. Excluding the <c>file</c> scheme is what makes the check say so on every platform — on Unix
-    /// <see cref="Uri.TryCreate(string?, UriKind, out Uri?)"/> reads a rooted path as an absolute
-    /// <c>file:</c> URI, and that path would otherwise pass for a deep link.
-    /// </remarks>
-    /// <param name="url">Address the channel offered.</param>
-    /// <returns><see langword="true"/> when the address is absolute and addresses a channel.</returns>
-    private static bool IsAbsoluteChannelAddress(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var uri) && !uri.IsFile;
+    /// <param name="channel">Channel display data.</param>
+    /// <returns>true — the link goes out as a deep-link entry.</returns>
+    private static bool LeadsIntoChannel(ChannelDisplayInfo channel) =>
+        !channel.StartsByMessageOnly && ChannelAddress.IsAbsoluteChannelAddress(channel.DeepLinkUrl);
 
     /// <summary>
     /// Builds the absolute URL of the entry page of a transaction.
@@ -209,7 +247,9 @@ internal static class ChannelEntryBuilder
     /// One rule with a deterministic order: the issuer the operator stated is the public address of
     /// the server and wins; without one, the address the current request arrived at is used — behind a
     /// reverse proxy the already wired-up forwarded-headers middleware has corrected it by then. No
-    /// parsing of <c>X-Forwarded-*</c> here and no "public base address" option of our own.
+    /// parsing of <c>X-Forwarded-*</c> here and no "public base address" option of our own. The stated
+    /// issuer is brought to its base the way the base of a hop URL is (surrounding whitespace and a
+    /// trailing slash removed), so one issuer gives one base to every URL built over it.
     /// </remarks>
     /// <param name="transaction">Transaction the page addresses.</param>
     /// <param name="request">Current HTTP request.</param>
@@ -223,7 +263,7 @@ internal static class ChannelEntryBuilder
         var issuer = serverOptions.Issuer;
         var baseAddress = string.IsNullOrWhiteSpace(issuer)
             ? $"{request.Scheme}://{request.Host}{request.PathBase}"
-            : issuer.TrimEnd('/');
+            : issuer.Trim().TrimEnd('/');
 
         var sessionId = Uri.EscapeDataString(SessionIdMapper.ToSessionId(transaction.Id));
 

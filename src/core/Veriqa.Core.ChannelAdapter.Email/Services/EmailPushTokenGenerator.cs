@@ -11,9 +11,9 @@ namespace Veriqa.Core.ChannelAdapter.Email.Services;
 /// <summary>
 /// Single source of the Push-mode correlation token generator (SPEC-016 §5): a high-entropy,
 /// single-use, URL-safe token of <see cref="EmailAdapterConstants.TokenByteLength"/> random bytes.
-/// Two forms of the same entropy: Base64Url for a token carried in the text of a mail (the compose
-/// page and every text-bound call site), lower-case Base32 for a token carried in the recipient
-/// address (direct-mailto), whose case is not preserved on the way (SPEC-016 §5.4).
+/// Two forms of the same entropy: Base64Url for a token carried in the text of a mail or in a link,
+/// lower-case Base32 for a token that is the recipient local part, whose case is not preserved on the
+/// way (SPEC-016 §5.4).
 /// </summary>
 internal static class EmailPushTokenGenerator
 {
@@ -34,7 +34,7 @@ internal static class EmailPushTokenGenerator
     private const int BitsPerByte = 8;
 
     /// <summary>
-    /// Generates a high-entropy token for the recipient local part (direct-mailto): lower-case Base32
+    /// Generates a high-entropy token for the recipient local part: lower-case Base32
     /// without padding of <see cref="EmailAdapterConstants.TokenByteLength"/> random bytes.
     /// </summary>
     /// <returns>The token string.</returns>

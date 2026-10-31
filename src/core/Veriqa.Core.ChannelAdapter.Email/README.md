@@ -1,11 +1,22 @@
 # Veriqa.Core.ChannelAdapter.Email
 
-Email channel adapter for Veriqa — a satellite package. It signs a user in over mail in two shapes:
-a magic link the user opens (Pull) and the one-tap email, a pre-filled letter the user sends (Push). Outbound mail
-goes over SMTP; inbound mail arrives from a provider webhook.
+**Passwordless email login and authentication for your website or app.** Your users confirm the
+sign-in with a magic link, or with the one-tap email — a pre-filled email they send with one tap: no
+password and no code to type. It is the channel for users who have none of the supported messaging
+apps installed, and your application receives the same standard OpenID Connect tokens.
 
-It is the channel for users who have none of the messengers installed, and it is one channel out of
-several: only the mail libraries travel with this package.
+This package is the Email channel of [Veriqa](https://veriqa.app), an open-source
+project for passwordless authentication through popular messaging apps and email, over standard
+OpenID Connect.
+Setup guide: [Email channel](https://veriqa.app/docs/guides/channels#email).
+
+## About this package
+
+The package signs a user in over email in two modes: a magic link the user opens (Pull) and the
+one-tap email, a pre-filled email the user sends (Push). Outbound email goes over SMTP; inbound email
+arrives from a provider webhook or is read by Veriqa itself from a mailbox over IMAP
+(`Inbound:Provider = ImapPolling`) — then no inbound email provider and no public address are
+needed. It is one channel out of several: only the email libraries travel with this package.
 
 ## Install
 

@@ -1,0 +1,3 @@
+#nullable enable
+Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderWebProvidersExtensions
+static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderWebProvidersExtensions.AddWebProviders(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!

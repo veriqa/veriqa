@@ -23,8 +23,8 @@ public static class AuthPageConstants
 
     /// <summary>
     /// HttpContext.Items key carrying the UI locale tag of the transaction whose sign-in is being
-    /// completed, for a page of THIS request that is rendered after the transaction is gone. It is
-    /// written by the authorization endpoint right before the transaction is deleted, and read by the
+    /// completed, for a page of THIS request that is not handed the transaction. It is written by the
+    /// authorization endpoint before it hands the principal to OpenIddict, and read by the
     /// <c>form_post</c> auto-posting page, which the OpenIddict pipeline invokes later in the same
     /// request and hands no argument but the HTTP context (SPEC-007 UI-102). The value is the locale tag
     /// exactly as the sign-in window stated it: a language tag whose primary subtag is the page language,

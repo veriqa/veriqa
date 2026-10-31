@@ -1,0 +1,9 @@
+# The build context of the adapter image is this folder. The state of the WhatsApp sessions, the
+# pairing codes, the store, the filled-in .env and local packages stay out of it: the image copies
+# package.json and src/ only, and nothing of a local run may reach a build layer either.
+data/
+sessions/
+*.pairing-code
+*.sqlite3*
+.env
+node_modules/

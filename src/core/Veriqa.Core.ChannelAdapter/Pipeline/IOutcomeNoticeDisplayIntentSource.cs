@@ -11,7 +11,7 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 /// desired display intent from — the live pipeline and the background expiry path alike, so both
 /// paths of <c>ReportOutcomeAsync</c> state the same intent for the same ownership.
 /// </summary>
-public interface IOutcomeNoticeDisplayIntentSource
+internal interface IOutcomeNoticeDisplayIntentSource
 {
     /// <summary>
     /// Resolves the display intent stated for this notice.

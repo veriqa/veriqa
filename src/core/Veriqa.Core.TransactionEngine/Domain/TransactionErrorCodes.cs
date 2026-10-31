@@ -60,9 +60,22 @@ public static class TransactionErrorCodes
     public const string SecurityPolicyViolation = "security_policy_violation";
 
     /// <summary>
+    /// The sender of a channel event is not admitted by the restriction policy of the deployment.
+    /// The transaction itself is left as it was. The code deliberately says nothing of the rule that
+    /// refused.
+    /// </summary>
+    public const string RestrictionPolicyViolation = "restriction_policy_violation";
+
+    /// <summary>
     /// The transaction was cancelled by the client application.
     /// </summary>
     public const string CancelledByClient = "cancelled_by_client";
+
+    /// <summary>
+    /// The sign-in was closed because the same channel subject began a newer sign-in to the same
+    /// application: the earlier one no longer waits for an answer. Written by the engine itself.
+    /// </summary>
+    public const string SupersededByNewSignIn = "superseded_by_new_sign_in";
 
     /// <summary>
     /// The user declined the action in the channel.
@@ -209,4 +222,32 @@ public static class TransactionErrorCodes
     /// (SPEC-039 C17, C23).
     /// </summary>
     public const string CandidateValueInvalid = "candidate_value_invalid";
+
+    /// <summary>
+    /// The transaction waits for missing claims (SPEC-041 L91): the channel snapshot is frozen, so a
+    /// confirmation or an attachment of channel data is refused and changes nothing. A refusal of the
+    /// engine, never the reason of a terminal state.
+    /// </summary>
+    public const string ClaimCompletionInProgress = "claim_completion_in_progress";
+
+    /// <summary>
+    /// A value or a skip of a missing claim is refused (SPEC-041 C90): the transaction carries no
+    /// completion mark, is not Pending, the claim is not one of the current step, an outcome for it is
+    /// already recorded, or a <c>Required</c> claim is skipped.
+    /// </summary>
+    public const string ClaimCompletionWriteRefused = "claim_completion_write_refused";
+
+    /// <summary>
+    /// A <c>Required</c> claim has no way to be obtained in this transaction (SPEC-041 L48): the phone
+    /// number the channel did not give, while the channel of the transaction cannot ask for it. The
+    /// reason code the transaction is failed with when the user confirms.
+    /// </summary>
+    public const string RequiredClaimUnobtainable = "required_claim_unobtainable";
+
+    /// <summary>
+    /// The transaction is bound to another channel subject (SPEC-007 UI-022, SPEC-039 N34): the action
+    /// of this sender is refused and changes nothing. The refusal names no subject. A refusal of the
+    /// engine, never the reason of a terminal state.
+    /// </summary>
+    public const string ChannelSubjectMismatch = "channel_subject_mismatch";
 }

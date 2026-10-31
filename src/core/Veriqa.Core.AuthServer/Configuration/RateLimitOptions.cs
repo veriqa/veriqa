@@ -89,6 +89,26 @@ public sealed class RateLimitOptions
     public const string ConfirmationPagesPolicyName = "confirmation-pages";
 
     /// <summary>
+    /// Policy name for the hop resolve endpoint (GET {HopPath}/{hop_token}, SPEC-025 HOP-061): the link a
+    /// phone opens after scanning the QR code of a channel. A bucket of its own and global, like
+    /// <see cref="ConfirmationPagesPolicyName"/>: the request carries nothing but an opaque token, and
+    /// the transaction it names is known only once the token is decoded — which is what the limit
+    /// protects. A limit by the address of the scanner belongs to the edge of the deployment; a key of
+    /// "address + token" is not used, since every guessed token would open a fresh bucket.
+    /// </summary>
+    public const string HopResolvePolicyName = "hop-resolve";
+
+    /// <summary>
+    /// Policy name for the receiver of client signals of the launch page (POST {HopPath}/{hop_token},
+    /// SPEC-025 HOP-061, HOP-066b). Its own bucket, apart from <see cref="HopResolvePolicyName"/>: an
+    /// interstitial presentation costs up to two signals on top of the page itself, so a shared bucket would
+    /// have to be sized by a multiplier that silently stops holding when the redirect style or the set of
+    /// signals changes, and an exhausted budget of the receiver refuses signals only, never presentations.
+    /// Global, with the same kind of key as the presentation: no address key and no "address + token" key.
+    /// </summary>
+    public const string HopSignalPolicyName = "hop-signal";
+
+    /// <summary>
     /// Message shown when the request limit is exceeded.
     /// </summary>
     public const string RateLimitExceededMessage = "Too many requests";
@@ -102,9 +122,10 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum authorize requests per period.
-    /// Default: 10.
+    /// Default: 60 — the bucket is one for the whole instance, not one per browser, and every sign-in
+    /// spends one of its requests.
     /// </summary>
-    public int AuthorizePermitLimit { get; set; } = 10;
+    public int AuthorizePermitLimit { get; set; } = 60;
 
     /// <summary>
     /// Window period for authorize requests (seconds).
@@ -150,9 +171,10 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum Callback Endpoint requests per period.
-    /// Default: 10.
+    /// Default: 60 — the bucket is one for the whole instance, not one per browser, and a single sign-in
+    /// spends several of its requests (the callback itself and the actions of its page).
     /// </summary>
-    public int CallbackPermitLimit { get; set; } = 10;
+    public int CallbackPermitLimit { get; set; } = 60;
 
     /// <summary>
     /// Window period for the Callback Endpoint (seconds).
@@ -162,10 +184,10 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum transaction status polling requests per period.
-    /// Default: 60 requests per minute (1 per second).
+    /// Default: 600 requests per minute (10 per second).
     /// SPEC-007 §5.4.
     /// </summary>
-    public int PollingPermitLimit { get; set; } = 60;
+    public int PollingPermitLimit { get; set; } = 600;
 
     /// <summary>
     /// Window period for polling requests (seconds).
@@ -213,8 +235,7 @@ public sealed class RateLimitOptions
     /// <summary>
     /// Maximum requests to the browser pages of the confirmation vertical per period.
     /// Default: 30 — one confirmation costs three requests of this budget (the entry page, the question
-    /// and the answer), so the shipped value admits the same ten walks a minute the sign-in path is
-    /// shipped with (<see cref="AuthorizePermitLimit"/>, <see cref="CallbackPermitLimit"/>).
+    /// and the answer), so the shipped value admits ten walks a minute.
     /// </summary>
     public int ConfirmationPagesPermitLimit { get; set; } = 30;
 
@@ -223,6 +244,32 @@ public sealed class RateLimitOptions
     /// Default: 60.
     /// </summary>
     public int ConfirmationPagesWindowSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Maximum requests to the hop resolve endpoint per period.
+    /// Default: 30 — the budget of the browser pages of the confirmation vertical
+    /// (<see cref="ConfirmationPagesPermitLimit"/>).
+    /// </summary>
+    public int HopResolvePermitLimit { get; set; } = 30;
+
+    /// <summary>
+    /// Window period for the hop resolve endpoint (seconds).
+    /// Default: 60.
+    /// </summary>
+    public int HopResolveWindowSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Maximum requests to the receiver of client signals of the launch page per period.
+    /// Default: 60 — two signals per presentation at the shipped budget of the hop resolve endpoint
+    /// (<see cref="HopResolvePermitLimit"/>).
+    /// </summary>
+    public int HopSignalPermitLimit { get; set; } = 60;
+
+    /// <summary>
+    /// Window period for the receiver of client signals of the launch page (seconds).
+    /// Default: 60.
+    /// </summary>
+    public int HopSignalWindowSeconds { get; set; } = 60;
 
     /// <summary>
     /// Maximum authentication attempts per user per period.
@@ -243,9 +290,11 @@ public sealed class RateLimitOptions
     public int UserAuthQueueLimit { get; set; } = 0;
 
     /// <summary>
-    /// Maximum number of unique partitions in the per-user rate limiter.
-    /// Protects against unbounded memory growth with a large number of unique users.
-    /// New users beyond the limit fall into a shared "overflow" partition.
+    /// Maximum number of CONCURRENTLY ACTIVE users in the per-user rate limiter — not of all users seen
+    /// over the lifetime of the process. A user not seen for a whole limit window (the effective
+    /// <see cref="UserAuthWindowSeconds"/>) leaves the registry and frees its place. Protects against
+    /// unbounded memory growth with a large number of unique users: only a new user arriving while the
+    /// registry is full of users active within the window falls into a shared "overflow" partition.
     /// Default: 50000.
     /// TASK-016, SPEC-007 §6.1.
     /// </summary>

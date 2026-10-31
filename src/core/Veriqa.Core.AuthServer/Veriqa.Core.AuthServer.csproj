@@ -16,8 +16,9 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.AuthServer</PackageId>
     <Authors>Veriqa</Authors>
-    <Description>OpenID Connect provider for ASP.NET Core built on OpenIddict: passwordless sign-in and action approval through messaging apps, on any device. On a computer, TV or kiosk, your users scan a QR code shown by your website or app. On a phone, they tap a button. Either way, they confirm with one tap in Telegram, WhatsApp or another messenger they already have.</Description>
-    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;openid-connect-provider;oidc-server;identity-provider;sso;sms-alternative;human-in-the-loop;ai-agent-security;device-flow;cross-device-authentication;two-factor-authentication;qr-code;aspnetcore</PackageTags>
+    <Title>Passwordless login and OpenID Connect (OIDC) server for ASP.NET Core</Title>
+    <Description>Passwordless login and authentication for ASP.NET Core: an OpenID Connect (OIDC) provider built on OpenIddict, with login through Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX or email, and approval of sensitive actions. On a computer, TV or kiosk, your users scan a QR code shown by your website or app; on a phone, they tap a button. Either way, they confirm with one tap in a messaging app they already have.</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;oauth2;authorization-server;telegram-login;telegram-authentication;whatsapp-login;whatsapp-authentication;email-login;magic-link</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->
@@ -41,6 +42,16 @@
   <ItemGroup>
     <EmbeddedResource Include="UI\Styles\veriqa-auth-page.css"
                       LogicalName="Veriqa.Core.AuthServer.UI.Styles.veriqa-auth-page.css" />
+    <!-- Rules of the countdown, shared by the sign-in window and the page of the claims completion. -->
+    <EmbeddedResource Include="UI\Styles\veriqa-countdown.css"
+                      LogicalName="Veriqa.Core.AuthServer.UI.Styles.veriqa-countdown.css" />
+    <!-- Rules of the block showing the message of the start by a code, shared by the pages that show it. -->
+    <EmbeddedResource Include="UI\Styles\veriqa-start-code.css"
+                      LogicalName="Veriqa.Core.AuthServer.UI.Styles.veriqa-start-code.css" />
+    <!-- Rules of the launch pages of the hop: the heading under the icon of the channel and the spare
+         start code. -->
+    <EmbeddedResource Include="UI\Styles\veriqa-hop-launch.css"
+                      LogicalName="Veriqa.Core.AuthServer.UI.Styles.veriqa-hop-launch.css" />
   </ItemGroup>
 
   <!-- Client script of the sign-in window: shipped inside the assembly and inlined into the
@@ -52,6 +63,21 @@
   <ItemGroup>
     <EmbeddedResource Include="UI\Scripts\veriqa-auth-page.js"
                       LogicalName="Veriqa.Core.AuthServer.UI.Scripts.veriqa-auth-page.js" />
+    <!-- Watcher of the page of the claims completion: inlined the same way, under that page's nonce. -->
+    <EmbeddedResource Include="UI\Scripts\veriqa-claim-completion.js"
+                      LogicalName="Veriqa.Core.AuthServer.UI.Scripts.veriqa-claim-completion.js" />
+    <!-- Drawing function of the countdown: inlined into both pages above, ahead of their own scripts. -->
+    <EmbeddedResource Include="UI\Scripts\veriqa-countdown.js"
+                      LogicalName="Veriqa.Core.AuthServer.UI.Scripts.veriqa-countdown.js" />
+    <!-- Reaction function of the status block of the pages that follow a transaction to its end:
+         inlined into every page carrying the script of the sign-in window and into the launch page,
+         ahead of their own scripts. -->
+    <EmbeddedResource Include="UI\Scripts\veriqa-status-block.js"
+                      LogicalName="Veriqa.Core.AuthServer.UI.Scripts.veriqa-status-block.js" />
+    <!-- Copying function of the block showing the message of the start by a code: inlined into the
+         pages that show it, ahead of their own scripts. -->
+    <EmbeddedResource Include="UI\Scripts\veriqa-start-code.js"
+                      LogicalName="Veriqa.Core.AuthServer.UI.Scripts.veriqa-start-code.js" />
   </ItemGroup>
 
   <!-- Attribution mark under the QR image of the confirmation creation answer: antialiased 8-bit
@@ -107,6 +133,14 @@
     <ProjectReference Include="..\Veriqa.Core.Contracts\Veriqa.Core.Contracts.csproj" />
     <ProjectReference Include="..\Veriqa.Core.ChannelAdapter\Veriqa.Core.ChannelAdapter.csproj" />
     <ProjectReference Include="..\Veriqa.Core.TransactionEngine\Veriqa.Core.TransactionEngine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The white-label probe composes the QR image of the confirmation answer directly: the composer
+         and the module matrix it draws are internal by design, and the probe has to reach the shipped
+         assembly compiled with the white-label symbol rather than a copy of the type. -->
+    <!-- Test friends stay out of the packed assemblies: build/pack-core passes VeriqaPackaging=true. -->
+    <InternalsVisibleTo Include="Veriqa.Core.WhiteLabel.Tests" Condition="'$(VeriqaPackaging)' != 'true'" />
   </ItemGroup>
 
 </Project>

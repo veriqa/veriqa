@@ -75,11 +75,17 @@ internal sealed class SecurityHeadersMiddleware
                 : $"style-src 'self' 'unsafe-inline'";
 
             // form-action: 'self' always, plus the single target a generated page of THIS response
-            // posts to, when one was stated. Only the form_post branches of the authorization response
-            // state it — the page there posts the issued code to the relying party's redirect_uri,
-            // which OpenIddict validated against the client registration before the code existed. Every
-            // other response leaves the key unset and keeps the directive at 'self': the policy of the
-            // sign-in window does not change (SPEC-007 UI-091).
+            // posts to, when one was stated. Four pages state it, all by the same rule of deriving the
+            // source (GetFormActionSource) from the redirect_uri OpenIddict validated against the client
+            // registration when it accepted the authorize request: the auto-posting page of the
+            // form_post branches, which posts the issued code there; the web sign-in confirmation
+            // page, whose "Yes" and "No" posts end on that redirect_uri through a chain of redirects the
+            // browser applies form-action to; the sign-in window that carries the "Cancel sign-in"
+            // button, whose post ends on that redirect_uri the same way; and the page of the claims
+            // completion on the device the sign-in was started on, whose submission and "Cancel sign-in"
+            // end there as well. Every other response leaves the key unset and keeps the directive at
+            // 'self' — a sign-in window rendered without the button and the page of the claims
+            // completion on the device that confirmed the sign-in among them (SPEC-007 UI-091).
             var formActionTarget = context.Items[SecurityHeaderConstants.FormActionTargetItemKey] as string;
             var formAction = !string.IsNullOrEmpty(formActionTarget)
                 ? $"form-action 'self' {formActionTarget}"
@@ -190,7 +196,8 @@ internal sealed class SecurityHeadersMiddleware
 
     /// <summary>
     /// Builds the CSP source expression that allows a generated page to post to the given absolute
-    /// URI — the value the <c>form_post</c> branches state in
+    /// URI — the value the <c>form_post</c> branches, the web sign-in confirmation page and the sign-in
+    /// window carrying the "Cancel sign-in" button state in
     /// <see cref="SecurityHeaderConstants.FormActionTargetItemKey"/>.
     /// </summary>
     /// <remarks>

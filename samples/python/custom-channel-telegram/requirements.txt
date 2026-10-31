@@ -1,0 +1,9 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# Direct dependencies of the adapter, pinned. Licenses: fastapi MIT, uvicorn BSD-3-Clause,
+# httpx BSD-3-Clause, standardwebhooks MIT.
+fastapi==0.141.1
+uvicorn==0.54.0
+httpx==0.28.1
+standardwebhooks==1.1.0

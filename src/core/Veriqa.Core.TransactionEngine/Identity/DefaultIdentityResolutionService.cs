@@ -1,6 +1,7 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,7 +57,7 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
         var channelIdentityId = await StoreChannelIdentityAsync(snapshot, cancellationToken);
 
         // Deterministic subject: channel_type:channel_user_id (CA-022)
-        var subject = $"{snapshot.ChannelType}:{snapshot.ChannelUserId}";
+        var subject = CoreSubject.From(snapshot);
 
         // Build the claims from the snapshot (OIDC-compatible names)
         var claims = BuildClaims(snapshot, _logger);
@@ -127,7 +128,15 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
     /// Builds the OIDC claim set from a <see cref="ChannelIdentitySnapshot"/>.
     /// Includes the mandatory channel claims (SPEC-003 §7.3) and the standard OIDC profile claims.
     /// </summary>
-    private static Dictionary<string, string> BuildClaims(
+    /// <remarks>
+    /// The one projection of "what the channel gave": the claims completion reads it to decide which
+    /// claims are missing (SPEC-041 L43), so the two answers cannot drift apart. A verification mark
+    /// stands next to the value it verifies: <c>email_verified</c> and <c>phone_number_verified</c> are
+    /// issued only with an email or a number the channel gave (<see cref="IsGiven"/>), so a value the
+    /// completion collects in place of a missing one never inherits a mark the channel stated about
+    /// nothing (SPEC-041 L50).
+    /// </remarks>
+    internal static Dictionary<string, string> BuildClaims(
         ChannelIdentitySnapshot snapshot,
         ILogger logger)
     {
@@ -163,12 +172,21 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
             claims[VeriqaClaimTypes.PhoneNumber] = snapshot.PhoneNumber;
         }
 
+        // SPEC-041 R10: the mark goes with every number the channel gave, and it is true only where the
+        // channel proved the number belongs to the sender — a channel that said nothing proved nothing.
+        // The mark is the adapter's statement and is issued as stated: the number's format is the adapter's
+        // duty (SPEC-041 L47), so the core does not second-guess the mark by the spelling of the number.
+        if (IsGiven(snapshot.PhoneNumber))
+        {
+            claims[VeriqaClaimTypes.PhoneNumberVerified] = FormatBooleanClaim(snapshot.PhoneNumberVerified ?? false);
+        }
+
         if (snapshot.Email is not null)
         {
             claims[VeriqaClaimTypes.Email] = snapshot.Email;
         }
 
-        if (snapshot.EmailVerified is not null)
+        if (snapshot.EmailVerified is not null && IsGiven(snapshot.Email))
         {
             claims[VeriqaClaimTypes.EmailVerified] = FormatBooleanClaim(snapshot.EmailVerified.Value);
         }
@@ -191,6 +209,17 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
 
         return claims;
     }
+
+    /// <summary>
+    /// Whether a claim value of the projection is one the channel gave. An empty value is not: the claims
+    /// completion counts that claim missing and may collect it, and the collected value takes its place
+    /// (SPEC-041 L43). The one statement of the rule in the engine — the planner, the projection and the
+    /// merge of the collected values read it here; the built-in claims mapper, in another assembly,
+    /// mirrors it and names this member.
+    /// </summary>
+    /// <param name="value">Claim value; null — the channel did not state the claim.</param>
+    /// <returns>true — a non-empty value.</returns>
+    internal static bool IsGiven([NotNullWhen(true)] string? value) => !string.IsNullOrEmpty(value);
 
     /// <summary>
     /// Merges an adapter's free-form claims into the claim set, dropping every key the adapter does
@@ -304,7 +333,7 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
     /// relying party as a JSON boolean, which the mapper states by typing the names listed in
     /// <see cref="Contracts.VeriqaClaimTypes.BooleanClaims"/>.
     /// </summary>
-    private static string FormatBooleanClaim(bool value) => value ? "true" : "false";
+    internal static string FormatBooleanClaim(bool value) => value ? "true" : "false";
 
     /// <summary>
     /// Computes a stable fingerprint for the channel user id (SHA-256, first 8 bytes as hex).

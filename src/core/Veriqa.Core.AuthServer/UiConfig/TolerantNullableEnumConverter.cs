@@ -46,7 +46,8 @@ public sealed class TolerantNullableEnumConverter<TEnum> : JsonConverter<TEnum?>
         }
 
         // Any other token — ignore as unknown (graceful)
-        reader.Skip();
+        // TrySkip, not Skip: Skip refuses a reader off its final block (a payload read as a stream).
+        _ = reader.TrySkip();
         return null;
     }
 

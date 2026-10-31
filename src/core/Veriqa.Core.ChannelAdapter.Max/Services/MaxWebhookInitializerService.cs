@@ -13,16 +13,29 @@ using Veriqa.Core.ChannelAdapter.Max.Constants;
 using Veriqa.Core.ChannelAdapter.Max.Enums;
 using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
+using Veriqa.Core.ChannelAdapter.Webhooks;
 
 namespace Veriqa.Core.ChannelAdapter.Max.Services;
 
 /// <summary>
 /// MAX bot webhook initialization service (SPEC-003 §11, SPEC-012).
-/// Registers the webhook in the MAX Bot API on startup and deletes it on shutdown.
-/// Active only with <see cref="MaxUpdateMode.Webhook"/>.
+/// Registers the webhook in the MAX Bot API in the background after startup, retrying until the
+/// platform accepts it, and deletes it on shutdown. Active only with <see cref="MaxUpdateMode.Webhook"/>.
 /// </summary>
-internal sealed class MaxWebhookInitializerService : IHostedService
+internal sealed class MaxWebhookInitializerService : ChannelWebhookRegistrationService
 {
+    /// <summary>
+    /// Update types required for the adapter to work. A shared contact — the answer to the phone number
+    /// request — arrives as message_created: without it in the subscription the platform never delivers
+    /// the contact, and the phone step waits until the sign-in expires.
+    /// </summary>
+    private static readonly UpdateType[] SubscribedUpdateTypes =
+    [
+        UpdateType.BotStarted,
+        UpdateType.MessageCallback,
+        UpdateType.MessageCreated
+    ];
+
     /// <summary>
     /// MAX Bot API client.
     /// </summary>
@@ -34,110 +47,75 @@ internal sealed class MaxWebhookInitializerService : IHostedService
     private readonly MaxOptions _options;
 
     /// <summary>
-    /// Logger.
-    /// </summary>
-    private readonly ILogger<MaxWebhookInitializerService> _logger;
-
-    /// <summary>
-    /// Full webhook URL registered at startup.
-    /// Kept for deletion on shutdown.
-    /// </summary>
-    private string? _registeredWebhookUrl;
-
-    /// <summary>
     /// Creates a <see cref="MaxWebhookInitializerService"/> instance.
     /// </summary>
     /// <param name="clientFactory">Per-tenant channel client factory.</param>
     /// <param name="options">MAX adapter settings.</param>
+    /// <param name="state">Webhook registration state the channel health check reads.</param>
+    /// <param name="timeProvider">Clock the pauses between registration attempts run on.</param>
+    /// <param name="lifetime">Lifetime of the host; the first registration attempt waits for its start.</param>
     /// <param name="logger">Logger.</param>
     public MaxWebhookInitializerService(
         IChannelClientFactory clientFactory,
         IOptions<MaxOptions> options,
+        ChannelWebhookRegistrationState state,
+        TimeProvider timeProvider,
+        IHostApplicationLifetime lifetime,
         ILogger<MaxWebhookInitializerService> logger)
+        : base(state, timeProvider, lifetime, logger)
     {
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    /// <summary>
-    /// Registers the webhook in the MAX Bot API at startup.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task StartAsync(CancellationToken cancellationToken)
+    /// <inheritdoc />
+    protected override string ChannelType => ChannelTypes.Max;
+
+    /// <inheritdoc />
+    protected override bool IsWebhookMode => _options.UpdateMode is MaxUpdateMode.Webhook;
+
+    /// <inheritdoc />
+    protected override string WebhookUrl => _options.WebhookBaseUrl.TrimEnd('/') + MaxAdapterConstants.WebhookPath;
+
+    /// <inheritdoc />
+    protected override async Task RegisterAsync(CancellationToken cancellationToken)
     {
-        // The webhook is registered only in the Webhook mode
-        if (_options.UpdateMode is not MaxUpdateMode.Webhook)
-        {
-            _logger.LogInformation(
-                "MAX update mode is {UpdateMode}, webhook registration skipped",
-                _options.UpdateMode);
-
-            return;
-        }
-
-        // Build the full webhook URL
-        _registeredWebhookUrl = _options.WebhookBaseUrl.TrimEnd('/')
-            + MaxAdapterConstants.WebhookPath;
-
-        // Update types required for the adapter to work
-        var updateTypes = new[]
-        {
-            UpdateType.BotStarted,
-            UpdateType.MessageCallback
-        };
-
         // In a valid configuration the secret token is mandatory for the Webhook mode
         // (checked by MaxOptionsValidator at startup)
         // Startup core-only: webhook is registered once at boot; no request tenant here, so this stays a direct core-level read (unlike the per-request adapters migrated to the seam in TASK-072/B4).
         var secretToken = _options.WebhookSecretToken;
 
-        // Register the webhook via the MAX Bot API
-        await (await ResolveClientAsync(cancellationToken)).Subscribe(
-            url: _registeredWebhookUrl,
-            updateTypes: updateTypes,
+        var result = await (await ResolveClientAsync(cancellationToken)).Subscribe(
+            url: WebhookUrl,
+            updateTypes: SubscribedUpdateTypes,
             secret: secretToken,
             cancellationToken: cancellationToken);
 
-        _logger.LogInformation(
-            "MAX webhook registered: {WebhookUrl}",
-            _registeredWebhookUrl);
+        // A refusal comes back as an answer rather than an exception; it is not a registration.
+        if (!result.Success)
+        {
+            throw new InvalidOperationException($"The MAX Bot API refused the webhook subscription: {result.Message}");
+        }
     }
 
-    /// <summary>
-    /// Deletes the webhook from the MAX Bot API on shutdown.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task StopAsync(CancellationToken cancellationToken)
+    /// <inheritdoc />
+    protected override async Task UnregisterAsync(CancellationToken cancellationToken)
     {
-        // The webhook is deleted only if it was registered
-        if (_registeredWebhookUrl is null)
-        {
-            return;
-        }
+        var result = await (await ResolveClientAsync(cancellationToken)).Unsubscribe(
+            url: WebhookUrl,
+            cancellationToken: cancellationToken);
 
-        try
+        // A refusal comes back as an answer rather than an exception; the webhook is still there.
+        if (!result.Success)
         {
-            // Delete the webhook (CancellationToken.None — the token may already be cancelled on host shutdown)
-            await (await ResolveClientAsync(CancellationToken.None)).Unsubscribe(
-                url: _registeredWebhookUrl,
-                cancellationToken: CancellationToken.None);
-
-            _logger.LogInformation("MAX webhook deleted: {WebhookUrl}", _registeredWebhookUrl);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Failed to delete the MAX webhook on service shutdown: {WebhookUrl}",
-                _registeredWebhookUrl);
+            throw new InvalidOperationException($"The MAX Bot API refused to remove the webhook subscription: {result.Message}");
         }
     }
 
     /// <summary>
     /// Resolves the default tenant's client on the ASYNCHRONOUS startup platform. The client is built
     /// from the tenant's credentials, and resolving credentials is asynchronous now — so it happens
-    /// here, in <c>StartAsync</c>/<c>StopAsync</c>, rather than in a constructor a container calls
+    /// here, in the registration and the removal, rather than in a constructor a container calls
     /// synchronously.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>

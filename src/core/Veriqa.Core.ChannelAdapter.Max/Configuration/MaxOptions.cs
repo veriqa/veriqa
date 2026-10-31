@@ -22,6 +22,13 @@ public sealed class MaxOptions
     public const string DefaultDeepLinkBaseUrl = "https://max.ru/";
 
     /// <summary>
+    /// Default MAX Bot API address — the domain the platform asks bots to send their requests to
+    /// since 19 July 2026 (MAX Bot API changelog).
+    /// Used in <see cref="ApiBaseUrl"/> as the default value.
+    /// </summary>
+    public const string DefaultApiBaseUrl = "https://platform-api2.max.ru";
+
+    /// <summary>
     /// Whether the MAX adapter is active.
     /// Disabled by default so that a missing configuration section does not enable the channel implicitly.
     /// </summary>
@@ -47,6 +54,15 @@ public sealed class MaxOptions
     /// Passed in the X-Max-Bot-Api-Secret header.
     /// </summary>
     public string WebhookSecretToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// MAX Bot API address (scheme, host and an optional port) every call of the adapter goes to: the platform client
+    /// (sending, long polling, bot information) and the direct HTTP calls of the adapter alike.
+    /// An installation-level setting, not a tenant one. Default: <see cref="DefaultApiBaseUrl"/>.
+    /// The paths of the API methods are absolute, so the address holds only the scheme, the host and, if
+    /// needed, the port: the validator refuses the start on a path, a query or a fragment.
+    /// </summary>
+    public string ApiBaseUrl { get; set; } = DefaultApiBaseUrl;
 
     /// <summary>
     /// Base URL for the MAX bot deep link.

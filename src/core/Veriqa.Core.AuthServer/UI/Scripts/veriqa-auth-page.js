@@ -3,7 +3,8 @@
 //
 // Client script of the sign-in window of the "Core" contour (rendered by
 // DefaultAuthPageRenderer): the SignalR subscription, the polling fallback, the countdown,
-// the channel tabs, the tooltip and the email form.
+// the channel tabs and the buttons layout, the tooltip, the email form, the
+// signal of the chosen channel and the replacement of the hop QR codes.
 //
 // The file ships as an embedded resource of Veriqa.Core.AuthServer and is INLINED into the
 // generated document inside a <script> tag carrying the page's CSP nonce — it is never served
@@ -44,8 +45,36 @@
     }
 
     var statusEl = document.getElementById("veriqa-status");
+    // The line the page was loaded with, before the script wrote any.
+    var initialStatusText = statusEl.textContent;
     var spinnerEl = document.getElementById("veriqa-spinner");
     var countdownEl = document.getElementById("veriqa-countdown");
+
+    // The form behind the cancel button, by the identifier the server hands over.
+    // A page rendered without the button has no such element.
+    var cancelFormEl = document.getElementById(config.cancelFormElementId);
+
+    // The form is sent once. The first request ends the transaction, so a repeat
+    // of it — a double click, a key held down on a remote — would be answered
+    // with a page saying the transaction is gone instead of its ending. The
+    // repeat is dropped here; the first submit is left exactly as the browser
+    // makes it, and the button is not disabled: a disabled control is a state
+    // some browsers restore together with the page, and this latch is not.
+    var cancelSubmitted = false;
+    if (cancelFormEl) {
+        cancelFormEl.addEventListener("submit", function(event) {
+            if (cancelSubmitted) {
+                event.preventDefault();
+                return;
+            }
+            cancelSubmitted = true;
+            // From here the browser is leaving through the form, and the page
+            // does not leave on its own until this life of it is over: its own
+            // navigation would abort the request that ends the transaction, or
+            // follow it onto a page the cancel has already closed.
+            abandonNavigation();
+        });
+    }
 
     // The moment the countdown runs to, expressed on THIS browser's clock: the
     // server's remainder added to the browser's own reading of "now". A clock
@@ -62,17 +91,36 @@
     // and a fault both arrive as Failed, and only the reason tells them apart
     // (no hardcoding on the client — the code is the server's constant).
     var REASON_DECLINED = config.declinedReasonCode;
+    // The reason code of a sign-in closed because the same user started a newer
+    // one. It arrives as Failed as well, and is shown as an expired session.
+    var REASON_SUPERSEDED = config.supersededReasonCode;
 
     // Statuses from TransactionStatusNames (no hardcoding on the client)
     var STATUS_CONFIRMED = config.statuses.confirmed;
     var STATUS_AWAITING_WEB = config.statuses.awaitingWebConfirmation;
+    var STATUS_CLAIM_COMPLETION = config.statuses.claimCompletion;
     var STATUS_COMPLETED = config.statuses.completed;
     var STATUS_EXPIRED = config.statuses.expired;
     var STATUS_FAILED = config.statuses.failed;
 
-    // Email-specific intermediate statuses (no hardcoding)
-    var CHANNEL_EMAIL = config.emailChannelType;
-    var EMAIL_STATUS_TEXTS = config.emailStatusTexts;
+    // The step and the surfaces of the claims completion that take this page
+    // onto its callback, spelled by the server (no hardcoding on the client).
+    var CLAIM_STEP_PHONE = config.claimCompletion.phoneStep;
+    var CLAIM_SURFACE_INITIATING_PAGE = config.claimCompletion.initiatingPageSurface;
+    var CLAIM_SURFACE_CROSS_DEVICE_PAGE = config.claimCompletion.crossDevicePageSurface;
+
+    // Intermediate channel statuses of any channel: one map of hint texts,
+    // the names of the page's channels for a text that names one, and the
+    // codes that mark the start of the hop (no hardcoding)
+    var CHANNEL_STATUS_TEXTS = config.channelStatusTexts;
+    var CHANNEL_STATUS_TEXTS_BY_CHANNEL = config.channelStatusTextsByChannel;
+    var CHANNEL_NAMES = config.channelNames;
+    var HOP_STATUS_CODES = config.hopStatusCodes;
+
+    // The warning of a hop link opened once more from another browser: the
+    // code that reports it, the live region it goes into and the class of the
+    // label, all spelled by the server (no hardcoding)
+    var HOP_REOPENED = config.hopReopened;
 
     var isTerminal = false;
 
@@ -83,34 +131,118 @@
     // window.location while the browser is already navigating.
     var isNavigating = false;
 
-    // Channel switching (tabs) — via addEventListener, without inline onclick
-    function switchChannel(channel) {
-        document.querySelectorAll('.veriqa-panel').forEach(function(p) { p.style.display = 'none'; });
-        document.querySelectorAll('.veriqa-tab').forEach(function(t) {
-            t.classList.remove('active');
-            t.setAttribute('aria-selected', 'false');
-            t.setAttribute('tabindex', '-1');
+    // The layout of the channels: tabs, or a list of buttons. The stylesheet
+    // decides it; the script only asks the channel container which one is on
+    // screen, by the selector the server hands over, so the device is
+    // established once, by the head script, and never a second time here.
+    var channelsEl = document.getElementById(config.channelsElementId);
+    var isButtonsLayout = !!channelsEl && channelsEl.matches(config.buttonsLayoutSelector);
+
+    // In the buttons layout the tab strip is gone and every panel is on
+    // screen, so a panel is no tab panel: it loses the role, the label pointing
+    // at a hidden tab and its own stop in the tab order. A page the server lays
+    // out as buttons never had them; a phone showing the tab markup as buttons
+    // has them taken off here. The same holds for a phone showing the grid
+    // markup as buttons: its panels are groups labelled by the channel names the
+    // stylesheet hides there, and they lose that role and that label.
+    if (isButtonsLayout) {
+        document.querySelectorAll('.veriqa-panel').forEach(function(p) {
+            p.removeAttribute('role');
+            p.removeAttribute('aria-labelledby');
+            p.removeAttribute('tabindex');
         });
-        var panel = document.getElementById('veriqa-panel-' + channel);
-        if (panel) panel.style.display = 'block';
-        var tab = document.querySelector('.veriqa-tab[data-channel="' + channel + '"]');
-        if (tab) {
-            tab.classList.add('active');
-            tab.setAttribute('aria-selected', 'true');
-            tab.setAttribute('tabindex', '0');
-        }
     }
 
-    // Binding handlers to the channel tabs: click plus roving arrow-key
-    // navigation (WAI-ARIA Tabs pattern, automatic activation — selection follows
-    // focus). ArrowRight/ArrowLeft move focus and selection to the adjacent tab in
-    // DOM order with wrap-around; the switch itself reuses switchChannel (no
-    // duplicated logic). Behavioral parity with the Site-contour preview (bindArrowNav).
-    var channelTabs = document.querySelectorAll('.veriqa-tab');
+    // The "Any channel" tab of a page that shows the unified QR code next to
+    // the QR code of each channel; null — the page has no such tab. While it is
+    // selected the channel container carries the state class named by the
+    // server: the stylesheet shows the unified QR code and every panel as a
+    // button, and the panels carry no tab roles, as in the buttons layout.
+    var anyChannelTab = config.anyChannelTab;
+
+    // The panels of the channel tabs as tab panels, each labelled by its own
+    // tab, or as plain blocks. Only a tab that names a channel controls a
+    // panel; the "Any channel" tab controls the block of the unified QR code.
+    function setTabPanelRoles(asTabPanels) {
+        channelTabs.forEach(function(tab) {
+            if (anyChannelTab && tab.id === anyChannelTab.tabElementId) return;
+            var panel = document.getElementById(tab.getAttribute('aria-controls'));
+            if (!panel) return;
+            if (asTabPanels) {
+                panel.setAttribute('role', 'tabpanel');
+                panel.setAttribute('aria-labelledby', tab.id);
+                panel.setAttribute('tabindex', '0');
+            } else {
+                panel.removeAttribute('role');
+                panel.removeAttribute('aria-labelledby');
+                panel.removeAttribute('tabindex');
+            }
+        });
+    }
+
+    // The lead instruction words the selected tab: every wording carries a
+    // variant per tab, and only those of the selected tab stay on screen. The
+    // others keep their place (the stylesheet hides them by visibility), so the
+    // block does not move; nothing is announced — the reader already says which
+    // tab is selected. Null — the instruction is not worded by tab.
+    var tabWordings = config.tabWordings;
+    function showTabWordings(selected) {
+        if (!tabWordings) return;
+        document.querySelectorAll('.' + tabWordings.wordingClass).forEach(function(el) {
+            if (el.getAttribute(tabWordings.tabAttribute) === selected.id) {
+                el.classList.remove(tabWordings.hiddenClass);
+            } else {
+                el.classList.add(tabWordings.hiddenClass);
+            }
+        });
+    }
+
+    // Tab switching — via addEventListener, without inline onclick.
+    // The panel of an unselected tab is hidden by a class, never by an inline
+    // style, so the stylesheet can still show every panel in the buttons layout
+    // and in the state of the "Any channel" tab. One predicate — the tab being
+    // the selected one — drives the active class, aria-selected and the roving
+    // tabindex, so they can never diverge.
+    function selectTab(selected) {
+        if (anyChannelTab && channelsEl) {
+            var isAnyChannel = selected.id === anyChannelTab.tabElementId;
+            if (isAnyChannel) {
+                channelsEl.classList.add(anyChannelTab.stateClass);
+            } else {
+                channelsEl.classList.remove(anyChannelTab.stateClass);
+            }
+            setTabPanelRoles(!isAnyChannel);
+        }
+        showTabWordings(selected);
+        document.querySelectorAll('.veriqa-panel').forEach(function(p) { p.classList.add('veriqa-panel--inactive'); });
+        channelTabs.forEach(function(t) {
+            var isSelected = t === selected;
+            if (isSelected) {
+                t.classList.add('active');
+            } else {
+                t.classList.remove('active');
+            }
+            t.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            t.setAttribute('tabindex', isSelected ? '0' : '-1');
+        });
+        var channel = selected.getAttribute('data-channel');
+        var panel = channel ? document.getElementById('veriqa-panel-' + channel) : null;
+        if (panel) panel.classList.remove('veriqa-panel--inactive');
+    }
+
+    // Binding handlers to the tabs: click plus roving arrow-key navigation
+    // (WAI-ARIA Tabs pattern, automatic activation — selection follows focus).
+    // ArrowRight/ArrowLeft move focus and selection to the adjacent tab in DOM
+    // order with wrap-around, the "Any channel" tab included; the switch itself
+    // reuses selectTab (no duplicated logic). Behavioral parity with the
+    // Site-contour preview (bindArrowNav).
+    // The buttons layout has no tabs to bind. Neither has the grid layout: the
+    // server renders no tab there, so the list below is empty, nothing calls
+    // selectTab and every panel stays on screen.
+    var channelTabs = isButtonsLayout ? [] : Array.prototype.slice.call(document.querySelectorAll('.veriqa-tab'));
     channelTabs.forEach(function(tab, index) {
         tab.addEventListener('click', function() {
-            var channel = this.getAttribute('data-channel');
-            if (channel) switchChannel(channel);
+            selectTab(this);
         });
         tab.addEventListener('keydown', function(e) {
             var forward = e.key === 'ArrowRight';
@@ -118,8 +250,7 @@
             if (!forward && !backward) return;
             e.preventDefault();
             var next = channelTabs[(index + (forward ? 1 : -1) + channelTabs.length) % channelTabs.length];
-            var channel = next.getAttribute('data-channel');
-            if (channel) switchChannel(channel);
+            selectTab(next);
             next.focus();
         });
     });
@@ -152,7 +283,23 @@
         var shownFor = null;
         function hideTooltip() { bubble.hidden = true; shownFor = null; }
         triggers.forEach(function(trigger) {
+            // The labels the bubble stands in for - a tab that carries the
+            // glyph of a QR code splits its label around it. A label that fits
+            // shows its whole text already, and a bubble repeating it would only
+            // cover the page; the widths are measured on every opening, because
+            // the layout - the tab, the panel, the window - may have changed.
+            var labels = trigger.querySelectorAll('.veriqa-tab-label, .veriqa-btn-label');
+            function isClipped() {
+                for (var i = 0; i < labels.length; i++) {
+                    if (labels[i].scrollWidth > labels[i].clientWidth) return true;
+                }
+                return labels.length === 0;
+            }
             function showTooltip() {
+                if (!isClipped()) {
+                    if (shownFor !== null && shownFor !== trigger) hideTooltip();
+                    return;
+                }
                 bubble.textContent = trigger.getAttribute('data-veriqa-tooltip');
                 bubble.hidden = false;
                 shownFor = trigger;
@@ -185,24 +332,68 @@
         });
     });
 
-    // Email form: sending the magic link via AJAX
+    // Email form: sending the magic link via AJAX. The field stands in a real
+    // form, so the request leaves on its submit — the button and the Enter key
+    // alike — and the form itself is never posted: the page stays.
     var emailSubmitBtn = document.getElementById("veriqa-email-submit");
-    if (emailSubmitBtn) {
-        emailSubmitBtn.addEventListener('click', function() {
+    var emailForm = emailSubmitBtn ? emailSubmitBtn.form : null;
+
+    // The button after an answer of the server. A sent link and a refusal by
+    // the interval between two mails both say for how long another one will
+    // not go out; the button waits that long and comes back by itself, so the
+    // address stays editable and nothing is locked for good. No time stated —
+    // the button is back at once.
+    var emailResendTimer = null;
+    function holdEmailSubmit(seconds) {
+        clearTimeout(emailResendTimer);
+        emailResendTimer = null;
+        if (!(seconds > 0)) {
+            emailSubmitBtn.disabled = false;
+            return;
+        }
+        emailSubmitBtn.disabled = true;
+        emailResendTimer = setTimeout(function() {
+            emailResendTimer = null;
+            emailSubmitBtn.disabled = false;
+        }, seconds * 1000);
+    }
+
+    // How long the server asks to wait, in seconds: the figure of the answer
+    // body where it carries one, otherwise the Retry-After header of a refusal
+    // that came from the request limit and has no such body. Zero — no wait
+    // was stated, or what was stated is not a number of seconds.
+    function emailRetryAfterSeconds(data, retryAfterHeader) {
+        if (data && typeof data.retryAfterSeconds === 'number' && data.retryAfterSeconds > 0) {
+            return data.retryAfterSeconds;
+        }
+        var fromHeader = parseInt(retryAfterHeader, 10);
+        return fromHeader > 0 ? fromHeader : 0;
+    }
+
+    if (emailForm) {
+        emailForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+
             // A terminal page sends nothing. The form is hidden by the state
             // attribute, but hiding is a rule of the stylesheet and this is the
-            // handler's own guard: a click that still reaches it — a keyboard
+            // handler's own guard: a submit that still reaches it — a keyboard
             // activation racing the status, an integrator's custom CSS — must
             // not start a transaction the server has already closed.
             if (isTerminal) return;
 
+            // A request is in flight or the button is being held: the Enter
+            // key must not send what the button would not.
+            if (emailSubmitBtn.disabled) return;
+
             var emailInput = document.getElementById("veriqa-email-input");
             var msgEl = document.getElementById("veriqa-email-msg");
             var emailVal = emailInput ? emailInput.value.trim() : '';
-            var sid = this.getAttribute('data-session-id') || '';
+            var sid = emailSubmitBtn.getAttribute('data-session-id') || '';
 
             if (!emailVal) return;
 
+            clearTimeout(emailResendTimer);
+            emailResendTimer = null;
             emailSubmitBtn.disabled = true;
             msgEl.style.display = 'none';
             msgEl.className = 'veriqa-email-msg';
@@ -213,37 +404,173 @@
                 body: JSON.stringify({ email: emailVal, session_id: sid })
             })
             .then(function(resp) {
-                if (!resp.ok) {
-                    var ct = resp.headers.get('content-type') || '';
-                    if (ct.indexOf('application/json') !== -1) {
-                        return resp.json().then(function(d) { return { _err: true, data: d }; });
-                    }
-                    return resp.text().then(function(t) { return { _err: true, data: { error: t || config.texts.emailError } }; });
+                var retryAfterHeader = resp.headers.get('Retry-After');
+                function answer(data) {
+                    return { status: resp.status, retryAfterHeader: retryAfterHeader, data: data };
                 }
-                return resp.json();
+                var ct = resp.headers.get('content-type') || '';
+                if (ct.indexOf('application/json') !== -1) {
+                    return resp.json().then(answer);
+                }
+                return answer({ error: config.texts.emailError });
             })
-            .then(function(data) {
-                if (data._err) { data = data.data; }
+            .then(function(result) {
+                var data = result.data || {};
                 if (data.success) {
+                    // The next press sends another mail, and the button says so.
+                    emailSubmitBtn.textContent = config.texts.emailSendAgain;
+                    holdEmailSubmit(emailRetryAfterSeconds(data, null));
+                    // A mail that carries a code is answered on the same place:
+                    // the step of the code takes the place of the address.
+                    if (data.code_expected && showEmailCodeStep(data.maskedEmail || emailVal)) return;
                     msgEl.textContent = config.texts.emailSent
                         .replace('{0}', data.maskedEmail || emailVal);
                     msgEl.className = 'veriqa-email-msg';
                     msgEl.style.display = 'block';
-                    emailSubmitBtn.disabled = true;
-                    if (emailInput) emailInput.disabled = true;
                 } else {
                     msgEl.textContent = data.error || config.texts.emailError;
                     msgEl.className = 'veriqa-email-msg error';
                     msgEl.style.display = 'block';
-                    emailSubmitBtn.disabled = false;
+                    // Only a refusal for asking too soon holds the button; any
+                    // other one leaves it ready for the next attempt.
+                    holdEmailSubmit(result.status === 429
+                        ? emailRetryAfterSeconds(data, result.retryAfterHeader)
+                        : 0);
                 }
             })
             .catch(function() {
                 msgEl.textContent = config.texts.emailError;
                 msgEl.className = 'veriqa-email-msg error';
                 msgEl.style.display = 'block';
-                emailSubmitBtn.disabled = false;
+                holdEmailSubmit(0);
             });
+        });
+    }
+
+    // The step of the code of the email form: shown on the place of the
+    // address once the start says the mail went out with a code. Rendered
+    // only for a mail that carries one, and hidden: a page whose script did
+    // not run never asks for a code.
+    var EMAIL_CODE = config.emailCode;
+    var emailCodeStep = EMAIL_CODE ? document.getElementById("veriqa-email-code-step") : null;
+    var emailCodeInput = emailCodeStep ? document.getElementById("veriqa-email-code") : null;
+    var emailCodeBtn = emailCodeStep ? document.getElementById("veriqa-email-code-submit") : null;
+    var emailCodeSentEl = emailCodeStep ? document.getElementById("veriqa-email-code-sent") : null;
+    var emailResendLink = emailCodeStep ? document.getElementById("veriqa-email-resend") : null;
+    // A code is being checked: a status that would take the page away or
+    // tell the person where the question is waits for the answer, which may
+    // name the page to go to instead (see handleStatus).
+    var emailCodePending = false;
+    var deferredEmailStatus = null;
+    // The code was accepted: the page follows the status from here.
+    var emailCodeAccepted = false;
+
+    // The address step and the step of the code take turns on one place.
+    function setEmailCodeStep(shown) {
+        var emailInput = document.getElementById("veriqa-email-input");
+        if (emailInput) emailInput.hidden = shown;
+        emailSubmitBtn.hidden = shown;
+        emailCodeStep.hidden = !shown;
+    }
+
+    function showEmailCodeStep(maskedAddress) {
+        if (!emailCodeStep || isTerminal) return false;
+        var msgEl = document.getElementById("veriqa-email-msg");
+        msgEl.style.display = 'none';
+        emailCodeSentEl.textContent = EMAIL_CODE.codeSent
+            .replace(EMAIL_CODE.addressSlot, function() { return maskedAddress; });
+        emailCodeInput.value = '';
+        emailCodeInput.disabled = false;
+        emailCodeBtn.disabled = false;
+        setEmailCodeStep(true);
+        emailCodeInput.focus();
+        return true;
+    }
+
+    function showEmailCodeError(text) {
+        var msgEl = document.getElementById("veriqa-email-msg");
+        msgEl.textContent = text;
+        msgEl.className = 'veriqa-email-msg error';
+        msgEl.style.display = 'block';
+    }
+
+    // The answer of the code is in: a status held back for it is applied
+    // now, unless the page is already leaving for the place the answer named.
+    function releaseEmailStatus() {
+        emailCodePending = false;
+        var held = deferredEmailStatus;
+        deferredEmailStatus = null;
+        if (held && !isNavigating) handleStatus.apply(null, held);
+    }
+
+    function submitEmailCode() {
+        if (isTerminal || emailCodePending || emailCodeAccepted) return;
+        var code = emailCodeInput.value.replace(/\s+/g, '');
+        if (!code) return;
+        emailCodePending = true;
+        emailCodeBtn.disabled = true;
+        document.getElementById("veriqa-email-msg").style.display = 'none';
+
+        fetch(withBase(EMAIL_CODE.url), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: emailSubmitBtn.getAttribute('data-session-id') || '', code: code })
+        })
+        .then(function(resp) {
+            var ct = resp.headers.get('content-type') || '';
+            return ct.indexOf('application/json') !== -1
+                ? resp.json()
+                : { error: EMAIL_CODE.checkError };
+        })
+        .then(function(data) {
+            data = data || {};
+            if (data.success) {
+                // The code did what the link of the same mail does. A named
+                // place is where the page goes by itself — the path carries the
+                // path base already; without one the page follows the status.
+                emailCodeAccepted = true;
+                emailCodeInput.disabled = true;
+                if (emailResendLink) emailResendLink.hidden = true;
+                if (data.next_url && navigateTo(data.next_url, 0, true)) spinnerEl.style.display = "block";
+            } else {
+                showEmailCodeError(data.error || EMAIL_CODE.checkError);
+                emailCodeBtn.disabled = false;
+                emailCodeInput.focus();
+                emailCodeInput.select();
+            }
+            releaseEmailStatus();
+        })
+        .catch(function() {
+            showEmailCodeError(EMAIL_CODE.checkError);
+            emailCodeBtn.disabled = false;
+            releaseEmailStatus();
+        });
+    }
+
+    if (emailCodeStep && emailForm) {
+        // The field keeps the digits of a code and no more of them than a
+        // code has; a code pasted from the mail with spaces is taken whole.
+        emailCodeInput.addEventListener('input', function() {
+            var digits = emailCodeInput.value.replace(/\D+/g, '').slice(0, EMAIL_CODE.length);
+            if (digits !== emailCodeInput.value) emailCodeInput.value = digits;
+        });
+        // Enter in the field checks the code: the field stands in the form of
+        // the address, whose own button would send the address once more.
+        emailCodeInput.addEventListener('keydown', function(event) {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            submitEmailCode();
+        });
+        emailCodeBtn.addEventListener('click', submitEmailCode);
+        // "Send again" brings the address step back with the address in its
+        // field; the button of that step sends the next mail once the interval
+        // between two mails allows.
+        emailResendLink.addEventListener('click', function() {
+            if (emailCodePending) return;
+            document.getElementById("veriqa-email-msg").style.display = 'none';
+            setEmailCodeStep(false);
+            var emailInput = document.getElementById("veriqa-email-input");
+            if (emailInput) emailInput.focus();
         });
     }
 
@@ -261,8 +588,530 @@
     if (showPushBtn && pushSection && pullSection) {
         showPushBtn.addEventListener('click', function() {
             pullSection.style.display = 'none';
-            pushSection.style.display = 'block';
+            // Back to the display of the stylesheet, which lays the section out
+            // as two columns on the split card and as a block elsewhere.
+            pushSection.style.display = '';
         });
+    }
+
+    // The Email button of the buttons layout: it reveals the email form in
+    // place (a disclosure). The script flips aria-expanded and nothing else —
+    // the stylesheet shows or hides the form on that state. Opening moves the
+    // focus into the field, so the address can be typed without another tap.
+    var emailRevealBtn = document.getElementById("veriqa-email-reveal");
+    if (emailRevealBtn) {
+        emailRevealBtn.addEventListener('click', function() {
+            var opening = this.getAttribute('aria-expanded') !== 'true';
+            this.setAttribute('aria-expanded', opening ? 'true' : 'false');
+            if (!opening) return;
+            var emailField = document.getElementById("veriqa-email-input");
+            if (emailField) emailField.focus();
+        });
+    }
+
+    // The signal of the chosen channel: a tap on a channel link that carries
+    // the attribute named by the server tells the core which channel the
+    // user went into. The beacon goes to the address of this document without
+    // its query and fragment, before the browser follows the link, and holds
+    // nothing up: a failure of its own is swallowed, the navigation is not
+    // delayed, and every tap sends — once-only is the server's business. The
+    // names of the fields and the value of the signal come from the server;
+    // the channel type comes from the link itself.
+    var channelLaunch = config.channelLaunch;
+    var sendsChannelLaunch = !!channelLaunch && typeof navigator.sendBeacon === 'function';
+    function sendChannelLaunched(link) {
+        var body = {};
+        body[channelLaunch.signalField] = channelLaunch.signal;
+        body[channelLaunch.channelField] = link.getAttribute(channelLaunch.attribute);
+        try {
+            navigator.sendBeacon(window.location.pathname, JSON.stringify(body));
+        } catch (e) {
+            // The signal is best-effort: its failure must not stop the
+            // browser from following the channel link.
+        }
+    }
+    if (sendsChannelLaunch && channelsEl) {
+        channelsEl.querySelectorAll('[' + channelLaunch.attribute + ']').forEach(function(link) {
+            link.addEventListener('click', function() { sendChannelLaunched(link); });
+        });
+    }
+
+    // The mail-client button: its link is the mail itself (mailto:), no page
+    // of the channel opens in between, so nothing but this page can tell the
+    // user what to do next, and the line is put on a tap, locally. A page that
+    // has ended or is leaving keeps its last line, and a page showing a line of
+    // a state keeps that line.
+    var emailOpenLink = pushSection ? pushSection.querySelector('a.veriqa-btn-email') : null;
+    // The channel this page has shown that line for, when the tap is also
+    // reported as the signal of the chosen channel: the status that signal
+    // comes back as would replace the instruction with the weaker "opening"
+    // line. Only the status of that very channel is held back — a channel
+    // launched afterwards gets its line as usual.
+    var ownEmailLaunchChannel = null;
+    function onEmailOpened() {
+        if (isTerminal || isNavigating) return;
+        // The tap is a press of the Email channel either way; a page
+        // without the line keeps its status line and holds back no status
+        // of the channel, since there is no instruction to keep.
+        notePress({ email: true, channel: null });
+        var text = config.emailMailOpenedText;
+        if (!text) return;
+        clearTimeout(hopOpenedTimer);
+        if (!stateLineShown) {
+            statusEl.textContent = text;
+            statusEl.className = "veriqa-status confirmed";
+        }
+        if (channelLaunch && emailOpenLink.hasAttribute(channelLaunch.attribute)) {
+            ownEmailLaunchChannel = emailOpenLink.getAttribute(channelLaunch.attribute);
+        }
+    }
+
+    // The page that opens the mail by itself, once per tab: the script of
+    // that launch, placed after this one, announces each transition by a
+    // document event, and is told of a tap on the button the same way so
+    // that it does not open the mail a second time. A transition it begins
+    // is a tap on the button in all but the tap: the same line, the same
+    // press and the same signal of the chosen channel. One made before this
+    // document was shown — back to the page, restored from the cache or
+    // reloaded — puts the wait for the confirmation in the place of the line
+    // of the opened mail or of the line the page was loaded with; a line of a
+    // state, an ending or a page that is leaving keeps its own. The names of
+    // the events and of the field come from the server.
+    var HOP_TRANSITION = config.hopTransition;
+    function announceEmailPress() {
+        if (!HOP_TRANSITION) return;
+        try {
+            document.dispatchEvent(new CustomEvent(HOP_TRANSITION.pressEventName));
+        } catch (e) {
+            // A launch that is not told opens the mail once more at worst.
+        }
+    }
+
+    // The person is back from the mail: the wait for the confirmation takes
+    // the place of the line of the opened mail — only that very line, since a
+    // status heard meanwhile has said more — and, after a transition made
+    // before this document was shown, of the line the page was loaded with
+    // as well. A page that has ended or is leaving changes nothing.
+    function showEmailReturnWait(overInitialLine) {
+        if (isTerminal || isNavigating || !config.emailMailOpenedText) return;
+        var shown = statusEl.textContent;
+        if (shown !== config.emailMailOpenedText && !(overInitialLine && shown === initialStatusText)) return;
+        statusEl.textContent = config.emailReturnWaitText;
+        statusEl.className = "veriqa-status confirmed";
+    }
+
+    if (emailOpenLink) {
+        emailOpenLink.addEventListener('click', function() {
+            announceEmailPress();
+            onEmailOpened();
+        });
+        if (HOP_TRANSITION) {
+            document.addEventListener(HOP_TRANSITION.eventName, function(event) {
+                if (event.detail && event.detail[HOP_TRANSITION.returnedField]) {
+                    showEmailReturnWait(true);
+                    return;
+                }
+                if (sendsChannelLaunch && emailOpenLink.hasAttribute(channelLaunch.attribute)) {
+                    sendChannelLaunched(emailOpenLink);
+                }
+                onEmailOpened();
+            });
+        }
+    }
+
+    // The way back from the instruction of the hop to the channel choice. The
+    // start of the hop is a mark on the root and nothing else, so taking the
+    // mark off brings the choice back: the server is not asked and the
+    // transaction is the same one. The focus follows the content that returned.
+    // A hop QR code the page stopped replacing while it was hidden is asked
+    // for again. The next hop code — from the same phone included — starts the
+    // hop on the page once more, as a pass of its own: the launch the previous
+    // pass showed holds back no line of the next one.
+    var hopChooseAnotherBtn = document.getElementById(config.hopChooseAnotherElementId);
+    // The way back is taken off the page for good once a channel has answered:
+    // that channel works, and the transaction is now bound to its subject, so
+    // another channel could only lead into a refusal. A focus standing on the
+    // button moves onto the block it stood in.
+    function dropHopChooseAnother() {
+        if (!hopChooseAnotherBtn) return;
+        if (hopChooseAnotherBtn === document.activeElement && hopChooseAnotherBtn.parentNode) {
+            hopChooseAnotherBtn.parentNode.focus();
+        }
+        hopChooseAnotherBtn.style.display = "none";
+    }
+    if (hopChooseAnotherBtn) {
+        hopChooseAnotherBtn.addEventListener('click', function() {
+            if (isTerminal) return;
+            document.documentElement.removeAttribute(config.hopStartedAttribute);
+            forgetSpareTransitions();
+            hideHopChannelHints();
+            clearTimeout(hopOpenedTimer);
+            hopLaunchShown = false;
+            if (channelsEl) channelsEl.focus();
+            reissueHopQr();
+        });
+    }
+
+    // The hints of the channels in the block of the started hop, one line per
+    // channel the server worded a hint for. A hint is shown at once when a hop
+    // code names its channel, and a hop code naming any channel — one with no
+    // hint included — hides the hints of the other channels: the phone is on
+    // one way only; the way back to the channel
+    // choice hides them all, and none is shown again once a channel has
+    // answered. The lines and their channels come from the server.
+    var HOP_HINT_IDS = config.hopChannelHints || {};
+    var hopChannelHintEls = {};
+    Object.keys(HOP_HINT_IDS).forEach(function(channelType) {
+        var el = document.getElementById(HOP_HINT_IDS[channelType]);
+        if (el) hopChannelHintEls[channelType] = el;
+    });
+    function noteHopChannelHint(channelType) {
+        if (channelAnswered || !channelType) return;
+        hideOtherHopChannelHints(channelType);
+        if (Object.prototype.hasOwnProperty.call(hopChannelHintEls, channelType)) {
+            hopChannelHintEls[channelType].hidden = false;
+        }
+    }
+    function hideOtherHopChannelHints(channelType) {
+        Object.keys(hopChannelHintEls).forEach(function(other) {
+            if (other !== channelType) hopChannelHintEls[other].hidden = true;
+        });
+    }
+    function hideHopChannelHints() {
+        hideOtherHopChannelHints(null);
+    }
+
+    // The spare start code of a channel: the message to send when the link of
+    // the channel opened the chat and nothing started there. The stylesheet
+    // keeps every such code out of sight on a mark the head sets, and a code is
+    // shown by a class put on its element here. The names and both delays
+    // come from the server (no hardcoding). Showing a code never moves the
+    // focus. A code is offered only while the bot of a channel has not
+    // answered: the answer closes every code and none is opened after it.
+    var SPARE_CODE = config.spareCode;
+    var hopSpareScope = document.getElementById(config.hopInstructionElementId);
+
+    // The bot of a channel answered the start: set once, for as long as the
+    // document lives.
+    var channelAnswered = false;
+    // The timer that opens the codes of the panels of a page nobody has left.
+    var spareIdleTimer = null;
+
+    // The page is on a phone: the scanner page by itself, any other page by the
+    // mark the head set. A phone opens no code of a panel; it offers the code
+    // of the channel the person came back from, behind a link.
+    var onPhone = !!SPARE_CODE && (SPARE_CODE.phoneByPage
+        || document.documentElement.getAttribute(SPARE_CODE.deviceAttribute) === SPARE_CODE.phoneDeviceValue);
+
+    // The codes of one channel inside a part of the page.
+    function openSpareCode(scope, channelType) {
+        if (!SPARE_CODE || !scope || channelAnswered) return;
+        scope.querySelectorAll(SPARE_CODE.selector).forEach(function(el) {
+            if (el.getAttribute(SPARE_CODE.channelAttribute) === channelType) {
+                el.classList.add(SPARE_CODE.openClass);
+            }
+        });
+    }
+
+    // The channels a transition into which this page has seen begin, each with
+    // the timer that opens its code. Own keys only: a channel type is a value
+    // of a message.
+    var spareTransitions = {};
+    function hasSpareTransition(channelType) {
+        return Object.prototype.hasOwnProperty.call(spareTransitions, channelType);
+    }
+
+    // A transition into a channel began: its code is opened in "scope" once the
+    // delay has passed. Only the first such moment per channel counts.
+    function noteSpareTransition(scope, channelType) {
+        if (channelAnswered) return;
+        if (!SPARE_CODE || !scope || !channelType || hasSpareTransition(channelType)) return;
+        spareTransitions[channelType] = setTimeout(function() {
+            openSpareCode(scope, channelType);
+        }, SPARE_CODE.afterTransitionDelayMs);
+    }
+
+    // Closes every code inside a part of the page — but those of "keptChannel",
+    // when one is given. A focus standing inside a code that leaves the screen
+    // is not dropped: it moves onto that part when the part takes a focus,
+    // otherwise onto the channel button the code stands under.
+    function closeSpareCodes(scope, keptChannel) {
+        if (!SPARE_CODE || !scope) return;
+        var focusTarget = null;
+        scope.querySelectorAll(SPARE_CODE.selector).forEach(function(el) {
+            if (keptChannel && el.getAttribute(SPARE_CODE.channelAttribute) === keptChannel) return;
+            if (el.contains(document.activeElement)) {
+                focusTarget = scope.hasAttribute('tabindex') || !el.parentNode
+                    ? scope
+                    : el.parentNode.querySelector(SPARE_CODE.channelButtonSelector);
+            }
+            el.classList.remove(SPARE_CODE.openClass);
+        });
+        if (focusTarget) focusTarget.focus();
+    }
+
+    // A transition into a channel began: the person has left every other
+    // channel, so their codes in the block of the started hop are closed and
+    // their transitions forgotten — a code opened or still to be opened there
+    // is of a chat nobody is in. The hints of the other channels go with them.
+    // The transition into the channel itself keeps its count.
+    function forgetOtherSpareTransitions(channelType) {
+        if (!channelType) return;
+        hideOtherHopChannelHints(channelType);
+        if (!SPARE_CODE || !hopSpareScope) return;
+        Object.keys(spareTransitions).forEach(function(other) {
+            if (other === channelType) return;
+            clearTimeout(spareTransitions[other]);
+            delete spareTransitions[other];
+        });
+        closeSpareCodes(hopSpareScope, channelType);
+    }
+
+    // The way back to the channel choice: the codes of the block of the
+    // started hop are closed and the transitions forgotten, so the next hop
+    // starts its count anew. The codes of the panels keep the state the delay
+    // from the load gave them.
+    function forgetSpareTransitions() {
+        if (!SPARE_CODE || !hopSpareScope) return;
+        Object.keys(spareTransitions).forEach(function(channelType) {
+            clearTimeout(spareTransitions[channelType]);
+        });
+        spareTransitions = {};
+        closeSpareCodes(hopSpareScope);
+    }
+
+    // The block under the status line of a phone: its link, and under it the
+    // copies of the codes, of which the link opens the one of the channel the
+    // person came back from. Hidden until then.
+    var spareReturnEl = SPARE_CODE ? document.getElementById(SPARE_CODE.returnElementId) : null;
+    var spareReturnLink = SPARE_CODE ? document.getElementById(SPARE_CODE.returnLinkElementId) : null;
+    var spareReturnChannel = null;
+
+    // The link is offered for one channel: an opened code of another one is
+    // closed first. The block already offered for that very channel is left
+    // as it stands — the person comes back from the channel its copied code
+    // opened, and the code they have just used stays open.
+    function showSpareReturn(channelType) {
+        if (!spareReturnEl || !spareReturnLink || channelAnswered) return;
+        if (!spareReturnEl.hidden && spareReturnChannel === channelType) return;
+        closeSpareCodes(spareReturnEl);
+        spareReturnChannel = channelType;
+        spareReturnLink.setAttribute('aria-expanded', 'false');
+        spareReturnEl.hidden = false;
+    }
+
+    // The block leaves the screen. A focus standing inside it moves onto the
+    // channel choice when that takes a focus and is on screen, otherwise onto
+    // the status line — the choice is out of sight once a channel was chosen.
+    function hideSpareReturn() {
+        if (!spareReturnEl || !spareReturnLink) return;
+        var hadFocus = spareReturnEl.contains(document.activeElement);
+        closeSpareCodes(spareReturnEl);
+        spareReturnChannel = null;
+        spareReturnLink.setAttribute('aria-expanded', 'false');
+        spareReturnEl.hidden = true;
+        if (!hadFocus) return;
+        if (channelsEl && channelsEl.hasAttribute('tabindex') && isRendered(channelsEl)) {
+            channelsEl.focus();
+        } else {
+            statusEl.focus();
+        }
+    }
+
+    if (spareReturnLink) {
+        spareReturnLink.addEventListener('click', function() {
+            if (!spareReturnChannel || channelAnswered || isTerminal) return;
+            openSpareCode(spareReturnEl, spareReturnChannel);
+            spareReturnLink.setAttribute('aria-expanded', 'true');
+        });
+    }
+
+    // The last way into a channel this page sent the person by — the
+    // mail-client button, or a channel button of a panel together with the
+    // channel of the spare start code standing beside it — and whether the
+    // page has been off screen since. Nothing of it outlives the document.
+    var lastPress = null;
+    var awaySincePress = false;
+    function notePress(press) {
+        lastPress = press;
+        awaySincePress = false;
+        hideSpareReturn();
+    }
+
+    if (SPARE_CODE && channelsEl) {
+        var spareButtons = [];
+        channelsEl.querySelectorAll(SPARE_CODE.selector).forEach(function(el) {
+            var channelButton = el.parentNode
+                ? el.parentNode.querySelector(SPARE_CODE.channelButtonSelector)
+                : null;
+            if (channelButton) {
+                spareButtons.push({ button: channelButton, channel: el.getAttribute(SPARE_CODE.channelAttribute) });
+            }
+        });
+        channelsEl.querySelectorAll(SPARE_CODE.channelButtonSelector).forEach(function(channelButton) {
+            // The mail-client button notes its own press above.
+            if (channelButton === emailOpenLink) return;
+            var channel = null;
+            spareButtons.forEach(function(entry) {
+                if (entry.button === channelButton) channel = entry.channel;
+            });
+            channelButton.addEventListener('click', function() {
+                notePress({ email: false, channel: channel });
+            });
+        });
+    }
+
+    // The state of the chosen channel: a tap on a link into a channel shows
+    // the heading of that channel and puts the attribute named by the server
+    // on the root, on which the stylesheet takes the title, the lead
+    // instruction and the channel choice away and shows the way back. The
+    // headings are in the markup; the script only picks one. A focus left in
+    // the choice moves onto the way back, or onto the status line when the way
+    // back is gone. The way back asks the server nothing: it brings the choice
+    // back, takes the block of the spare start code away and forgets the tap,
+    // so a return to the page offers nothing until the next tap.
+    var CHOSEN = config.chosenChannel;
+    var chosenHeadingsEl = CHOSEN ? document.getElementById(CHOSEN.headingsElementId) : null;
+    var chosenBackBtn = CHOSEN ? document.getElementById(CHOSEN.backElementId) : null;
+
+    // The status block of the page, built once over the shared reaction
+    // function: it alone writes the line of the way back to the sign-in
+    // window, of the confirmation being processed and of every ending, and
+    // takes the heading of the chosen channel and the way back to the choice
+    // away with it. The texts are the ones the server gave this page; a page
+    // without a chosen channel hands over neither element. The row of the
+    // action under the outcome is the server's too, on a page that offers it;
+    // its id is emitted from OutcomeCloseAction.ElementId — renamed together.
+    var statusBlock = window.veriqaStatusBlock({
+        status: statusEl,
+        heading: chosenHeadingsEl,
+        controls: chosenBackBtn ? [chosenBackBtn] : [],
+        close: document.getElementById("veriqa-outcome-close")
+    }, {
+        returnToWindow: config.returnToSignInWindowText,
+        answerInLinkBrowser: config.answerInLinkBrowserText,
+        processing: msgConfirmed,
+        completed: msgSuccess,
+        expired: msgExpired,
+        declined: msgDeclined,
+        error: msgError
+    });
+
+    // Shows the heading of one channel and hides the others; null hides all.
+    function showChosenHeading(channelType) {
+        chosenHeadingsEl.querySelectorAll('[' + CHOSEN.channelAttribute + ']').forEach(function(el) {
+            el.hidden = el.getAttribute(CHOSEN.channelAttribute) !== channelType;
+        });
+    }
+
+    if (chosenHeadingsEl && channelsEl) {
+        channelsEl.querySelectorAll('[' + CHOSEN.channelAttribute + ']').forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (isTerminal) return;
+                var focusInChoice = channelsEl.contains(document.activeElement);
+                showChosenHeading(link.getAttribute(CHOSEN.channelAttribute));
+                document.documentElement.setAttribute(CHOSEN.stateAttribute, "");
+                if (!focusInChoice) return;
+                if (chosenBackBtn && isRendered(chosenBackBtn)) {
+                    chosenBackBtn.focus();
+                } else {
+                    statusEl.focus();
+                }
+            });
+        });
+    }
+    if (chosenHeadingsEl && chosenBackBtn) {
+        chosenBackBtn.addEventListener('click', function() {
+            if (isTerminal) return;
+            document.documentElement.removeAttribute(CHOSEN.stateAttribute);
+            showChosenHeading(null);
+            lastPress = null;
+            awaySincePress = false;
+            hideSpareReturn();
+            if (channelsEl) channelsEl.focus();
+        });
+    }
+
+    // The way back is taken off the page for good once a channel has
+    // answered, as the one of the started hop is, and by AwaitingWebConfirmation
+    // — on a page that leaves for the confirming question as well, which shows
+    // no line of its own — without leaning on a page state the stylesheet may
+    // not get. The heading shown stays here: the answer of the bot is awaited
+    // in the channel. The heading leaves, together with the way back, with the
+    // first line of the status block — back to the sign-in window, confirmed
+    // and processing, or an ending (statusBlock above). A focus standing on
+    // the way back moves onto the status line: the channel choice is out of
+    // sight in this state.
+    function dropChosenBack() {
+        if (!chosenBackBtn) return;
+        if (chosenBackBtn === document.activeElement) statusEl.focus();
+        chosenBackBtn.style.display = "none";
+    }
+
+    document.addEventListener("visibilitychange", function() {
+        if (lastPress && document.visibilityState === "hidden") awaySincePress = true;
+    });
+
+    // The person is back on the page after a press that sent them away. After
+    // the mail-client button the line telling them to send the mail gives way
+    // to the one telling them to wait for its confirmation (showEmailReturnWait).
+    // After the button of a channel with a spare start code, a phone offers its
+    // link. A page that has ended or is leaving changes nothing.
+    function onReturnFromChannel() {
+        if (!lastPress || !awaySincePress) return;
+        awaySincePress = false;
+        if (isTerminal || isNavigating) return;
+        if (lastPress.email) {
+            showEmailReturnWait(false);
+            return;
+        }
+        if (onPhone && lastPress.channel) showSpareReturn(lastPress.channel);
+    }
+
+    // The bot of a channel answered the start — heard as it happens or
+    // replayed to a page that subscribed afterwards. It is acted on once: both
+    // kinds of timers stop, every opened code is closed, the link of a phone
+    // and the hints of the channels leave, and no code is opened
+    // again, the way back to the channel choice included. The code of the
+    // status and the lines come from the server.
+    var CHANNEL_ANSWER = config.channelAnswer;
+    function onChannelAnswered() {
+        if (channelAnswered) return false;
+        channelAnswered = true;
+        dropHopChooseAnother();
+        dropChosenBack();
+        hideHopChannelHints();
+        hideSpareReturn();
+        clearTimeout(spareIdleTimer);
+        Object.keys(spareTransitions).forEach(function(channelType) {
+            clearTimeout(spareTransitions[channelType]);
+        });
+        closeSpareCodes(channelsEl);
+        closeSpareCodes(hopSpareScope);
+        return true;
+    }
+
+    // On a computer or a tablet the codes of the panels open by the delay from
+    // the load — except the code of a channel whose QR code is a hop QR code:
+    // that one is offered in the block of the hop once the phone went into the
+    // channel.
+    if (SPARE_CODE && channelsEl && !onPhone) {
+        spareIdleTimer = setTimeout(function() {
+            if (channelAnswered) return;
+            channelsEl.querySelectorAll(SPARE_CODE.selector).forEach(function(el) {
+                if (SPARE_CODE.hopQrChannels.indexOf(el.getAttribute(SPARE_CODE.channelAttribute)) === -1) {
+                    el.classList.add(SPARE_CODE.openClass);
+                }
+            });
+        }, SPARE_CODE.idleDelayMs);
+    }
+
+    // The message of the start by a code: the buttons that copy it are bound by
+    // the function the pages showing such a message share, inlined ahead of this
+    // script on a page that has one. A page without the message carries neither
+    // the settings nor the function.
+    if (config.startMessage) {
+        window.veriqaStartMessage(document, config.startMessage);
     }
 
     // Fallback-polling configuration. The polled URL is fetched
@@ -286,38 +1135,14 @@
     // already zero verifies with the status URL on its very first tick, and a
     // start placed above these declarations would read them unassigned.
     //
-    // The deadline is a MOMENT, so what is left of it is kept in milliseconds.
-    // The figure on screen is whole seconds and stays so, but the decision to
-    // ask the server is not: a remainder counted in whole seconds is zero for
-    // the whole last second, and a tick almost never lands on the deadline
-    // exactly (the first remainder is a fraction, and every timeout drifts
-    // late). A page deciding by the figure would ask about an expiry that has
-    // not happened, be told "alive, 0.4 s left", replan to the same instant and
-    // ask again — a burst of status requests at the speed of the round trip, at
-    // the end of every ordinary transaction.
+    // The figure and the next tick are drawn by the function the page shares
+    // with the other page that counts down (inlined above this script); what
+    // this page keeps is the deadline, a MOMENT in milliseconds, and what zero
+    // on the clock does: it asks the server, and the figure stays on screen
+    // while the check is in flight.
     function updateCountdown() {
         if (isTerminal) return;
-        var left = deadline - Date.now();
-        var diff = Math.max(0, Math.floor(left / 1000));
-        var min = Math.floor(diff / 60);
-        var sec = diff % 60;
-        countdownEl.textContent = (min > 0 ? min + ":" : "") + (sec < 10 ? "0" : "") + sec;
-        // The warning is a property of the CURRENT remainder, so it is written
-        // in both directions: a deadline replanned back above the threshold by
-        // the server's own remainder must lose the error colouring it took.
-        countdownEl.className = diff <= 30
-            ? "veriqa-countdown warning"
-            : "veriqa-countdown";
-        // Zero on the clock is a QUESTION for the server, not an answer: the
-        // countdown is rendered first, so the page shows the zero it reached
-        // while the check is in flight instead of blanking or lying.
-        if (left <= 0) {
-            verifyExpiry();
-            return;
-        }
-        // Never past the deadline, and never more than a second from the next
-        // figure to draw — whichever of the two comes first.
-        setTimeout(updateCountdown, Math.min(1000, left));
+        window.veriqaCountdown(countdownEl, deadline - Date.now(), verifyExpiry, updateCountdown);
     }
 
     // Whether a verification is already in flight. Without it the poll loop and
@@ -418,16 +1243,21 @@
 
     function handleExpired() {
         isTerminal = true;
+        // The line goes first, while the way back is still on screen: a focus
+        // standing on it is seen there and follows to the status line.
+        statusBlock.show("expired");
         // The state of the page, written where every path into expiry passes:
         // the verification above, the SignalR status and the 404 of the poll
         // loop. The stylesheet drops every way IN from the page on this one
         // attribute and shows the way OUT — one decision, one place.
         document.documentElement.setAttribute(
             config.pageStateAttribute, config.expiredPageState);
-        statusEl.textContent = msgExpired;
-        statusEl.className = "veriqa-status error";
         countdownEl.style.display = "none";
-        stopWaitingIfStaying();
+        // Put out on every page, the one that navigates included: expiry takes
+        // no page to the callback, so this screen is the last one here too, and
+        // a spinner left on by an earlier confirmation would keep promising a
+        // sign-in next to the line saying it is over.
+        spinnerEl.style.display = "none";
     }
 
     // Where a status may take this page. In the mode with the callback — wherever
@@ -440,60 +1270,177 @@
         return status === STATUS_AWAITING_WEB ? CONFIRM_URL : "";
     }
 
-    // The only place that takes the browser off this page. Guarded, so the first
-    // caller wins and every later tick/message is a no-op; a page with no target
-    // for this status stops here as well.
+    // The navigation this page has taken and not made yet: the timer between
+    // the status that sends it away and the assignment of window.location.
+    var navigationTimer = null;
+
+    // The only place where the script takes the browser off this page. Guarded,
+    // so the first caller wins and every later tick/message is a no-op; a page
+    // with no target for this status stops here as well, and so does a page
+    // whose "Cancel sign-in" has been sent — the form is taking it away.
     // Answers whether the navigation was TAKEN, so that a caller can tell the user
     // "hold on, we are moving you" only when the page really is about to move.
-    function navigateTo(url, delayMs) {
-        if (isNavigating || !url) return false;
+    function navigateTo(url, delayMs, carriesBase) {
+        if (isNavigating || cancelSubmitted || !url) return false;
         isNavigating = true;
-        setTimeout(function() {
+        navigationTimer = setTimeout(function() {
+            navigationTimer = null;
             // Every navigation target reaching this point is root-relative —
             // a URL from a SignalR message (built by the background handler
             // without HttpContext) and the deterministic callback used by
-            // polling alike — so the path base is applied here, once.
-            window.location.href = withBase(url);
+            // polling alike — so the path base is applied here, once. The one
+            // exception is the place named by the answer to the code of the
+            // email form, which the server built with the path base.
+            window.location.href = carriesBase ? url : withBase(url);
         }, delayMs);
         return true;
     }
 
-    // A page that never leaves shows its terminal state as the last screen, so
-    // nothing on it may keep promising movement: the spinner turned on by an
-    // earlier, non-terminal status is put out here. On a page that does navigate
-    // the terminal screen lives only for the moment before the callback takes
-    // over, and its behaviour is left exactly as it is.
-    function stopWaitingIfStaying() {
-        if (!NAVIGATES_AWAY) { spinnerEl.style.display = "none"; }
+    // Takes back a navigation that was taken and not made yet, when "Cancel
+    // sign-in" is sent. The timer is dropped rather than left to check the
+    // submit when it fires: a timer the browser freezes together with the page
+    // fires in the page's next life, after the submit latch has been lifted,
+    // and would make the very navigation the cancel called off.
+    // The navigation latch is lifted with it, and is not raised by the submit:
+    // a submit the user stopped leaves the page on screen, and it has to go on
+    // tracking the status there.
+    function abandonNavigation() {
+        clearTimeout(navigationTimer);
+        navigationTimer = null;
+        isNavigating = false;
+    }
+
+    // Whether an element holding the focus is on screen at all: the body is
+    // no holder, and an element inside a hidden part has no box.
+    function isRendered(el) {
+        return !!el && el !== document.body && el.getClientRects().length > 0;
+    }
+
+    // The answer is no longer given on this page: the question waits on the
+    // window that started the sign-in, or in the chat of a channel's bot. The
+    // transaction is bound to a subject by then, so the stylesheet takes every
+    // way into a channel away on the state the server names; the status line,
+    // the countdown and "Cancel sign-in" stay. A focus standing in the part
+    // that leaves moves onto the status line, which stays on every page; a
+    // focus anywhere else stays where the user put it.
+    function markAnswerElsewhere() {
+        var focused = document.activeElement;
+        var focusShown = isRendered(focused);
+        document.documentElement.setAttribute(
+            config.pageStateAttribute, config.answerElsewherePageState);
+        if (focusShown && !isRendered(focused)) statusEl.focus();
+    }
+
+    // The line sending the person back to the window that started the
+    // sign-in, given only to a page with nowhere to go when the core asks the
+    // question on its own page. Shown once.
+    var RETURN_HINT = config.returnToSignInWindowText;
+    // The line of a question that takes its answer from the browser the link of
+    // the letter was opened in, and from no other: the question is open there
+    // already, and this page stays on its own screen.
+    var ANSWER_IN_LINK_BROWSER = config.answerInLinkBrowserText;
+    var returnHintShown = false;
+    // A line of a state of the transaction is on the status line — back to
+    // the window, or confirmed and processing; the endings stop the page
+    // altogether. From then on no channel status, no answer of the bot, no
+    // held line and no tap of the page words the status line, as on the
+    // launch page; the lifecycle statuses still do.
+    var stateLineShown = false;
+    function showReturnHint(state, text) {
+        if (!text || returnHintShown || isNavigating || cancelSubmitted) return;
+        returnHintShown = true;
+        stateLineShown = true;
+        // A line held back for a moment would land on top of this one.
+        clearTimeout(hopOpenedTimer);
+        markAnswerElsewhere();
+        statusBlock.show(state);
     }
 
     // Applying the transaction lifecycle status to the UI.
     // Shared function: called both from the SignalR notification and from fallback
     // polling. The reason code is the third argument because a Failed status alone
     // does not say whether the user refused; both delivery paths already carry it.
-    function handleStatus(status, redirectUrl, reasonCode) {
+    // The fourth argument is the step of the claims completion — { step, surface } —
+    // and is read only for that status. The fifth tells, with AwaitingWebConfirmation,
+    // that the question takes its answer from one other browser only.
+    function handleStatus(status, redirectUrl, reasonCode, completion, answerBrowserBound) {
         if (isTerminal) return;
 
+        // A code of the email form is being checked, and its answer may name
+        // the page to go to — the question in this very browser, the form of
+        // the claims completion. A status that would send the page elsewhere
+        // or put up the line of where the question waits is held until then.
+        if (emailCodePending && (status === STATUS_AWAITING_WEB || status === STATUS_CLAIM_COMPLETION)) {
+            deferredEmailStatus = [status, redirectUrl, reasonCode, completion, answerBrowserBound];
+            return;
+        }
+        // The page is leaving for the place the accepted code named: no status
+        // words this page any more.
+        if (emailCodeAccepted && isNavigating) return;
+
         if (status === STATUS_CONFIRMED) {
-            statusEl.textContent = msgConfirmed;
-            statusEl.className = "veriqa-status confirmed";
+            // A line held back for a moment would land on top of this one.
+            clearTimeout(hopOpenedTimer);
+            stateLineShown = true;
+            statusBlock.show("processing");
             spinnerEl.style.display = "block";
         } else if (status === STATUS_AWAITING_WEB) {
             // The core took the confirming question onto its own page: leave for
             // it right away. The transaction is not terminal — the answer is
-            // still ahead — so the countdown and the state are left alone; the
-            // navigation guard is what stops the polling loop from repeating this.
-            // The status line is not rewritten either: the user has confirmed
+            // still ahead — so the countdown is left alone; the navigation guard
+            // is what stops the polling loop from repeating this. A page that
+            // leaves does not rewrite the status line: the user has confirmed
             // nothing yet, and the page they are about to see asks that question.
             // The spinner follows the navigation: a page that stays put keeps
             // waiting for the outcome instead of announcing a move it will not
             // make, and the status tracking goes on — the answer is given
-            // elsewhere and comes back here.
-            spinnerEl.style.display = navigateTo(targetFor(status, redirectUrl), 0) ? "block" : "none";
+            // elsewhere and comes back here. A page the server gave the line of
+            // the way back sends the person to that place: the line goes on the
+            // status line and the channel choice leaves, once. The way back to
+            // the channel choice leaves either way: the answer is no longer a
+            // channel's to give.
+            // A question bound to the browser the link of the letter was opened
+            // in is open there already and would refuse this one: the page stays
+            // and says where the question is.
+            dropChosenBack();
+            var leaving = !answerBrowserBound && navigateTo(targetFor(status, redirectUrl), 0);
+            spinnerEl.style.display = leaving ? "block" : "none";
+            if (!leaving) {
+                if (answerBrowserBound) showReturnHint("answerInLinkBrowser", ANSWER_IN_LINK_BROWSER);
+                else showReturnHint("returnToWindow", RETURN_HINT);
+            }
+        } else if (status === STATUS_CLAIM_COMPLETION) {
+            // The user confirmed, and the core now waits for missing claims. A page
+            // without a callback has no page of the completion to go to and ignores
+            // the status. A page with one leaves for its callback — the page of the
+            // completion lives there — when the step is the phone (its instruction
+            // is on that page), when the web step is shown on this device (the form
+            // is that page), or when it is shown on the device that confirmed: the
+            // callback then shows the page that waits for the form, and the QR code
+            // and the channels of this one have nothing left to offer. With the
+            // surface not chosen yet the page keeps waiting, and a later message
+            // names it. The navigation guard is what makes a repeated message or
+            // poll tick a no-op.
+            // The status line is not rewritten: the sign-in is not complete yet, and
+            // "confirmed" would promise an ending the page cannot keep.
+            if (!NAVIGATES_AWAY || !completion) return;
+            if (completion.step === CLAIM_STEP_PHONE
+                || completion.surface === CLAIM_SURFACE_INITIATING_PAGE
+                || completion.surface === CLAIM_SURFACE_CROSS_DEVICE_PAGE) {
+                if (navigateTo(CALLBACK_URL, 0)) { spinnerEl.style.display = "block"; }
+            }
         } else if (status === STATUS_COMPLETED) {
             isTerminal = true;
-            statusEl.textContent = msgSuccess;
-            statusEl.className = "veriqa-status success";
+            // The line goes first, ahead of the state, for the focus — as on
+            // expiry.
+            statusBlock.show("completed");
+            // A page that ends here takes its channel choice away and leaves
+            // the success line as the whole screen; the stylesheet does it on
+            // the state attribute, as it does for the expired state.
+            if (config.completedPageState) {
+                document.documentElement.setAttribute(
+                    config.pageStateAttribute, config.completedPageState);
+            }
             countdownEl.style.display = "none";
             // Terminal and final: the spinner covers the pause before the
             // navigation and has nothing to cover without one — on a page that
@@ -502,13 +1449,40 @@
         } else if (status === STATUS_EXPIRED) {
             handleExpired();
         } else if (status === STATUS_FAILED) {
+            // A sign-in the user replaced with a newer one is over without an
+            // ending to report: the client is not told, so the page stays here
+            // and shows the expired screen — no callback, no error line.
+            if (reasonCode === REASON_SUPERSEDED) {
+                handleExpired();
+                return;
+            }
             isTerminal = true;
             // A refusal is told from a fault by the reason and by nothing else: a
             // failure that names no reason is not the user's refusal to state.
-            statusEl.textContent = (reasonCode === REASON_DECLINED) ? msgDeclined : msgError;
-            statusEl.className = "veriqa-status error";
+            statusBlock.show((reasonCode === REASON_DECLINED) ? "declined" : "error");
             countdownEl.style.display = "none";
-            stopWaitingIfStaying();
+            // A sign-in that failed is the client's to learn, and the callback is
+            // what tells it — a refusal as a refusal, a fault as a server error:
+            // a page with one leaves for it once, whatever the reason and whenever
+            // it came — on the confirming question or during the claims
+            // completion. It is on its way out and writes no page state, so the
+            // button with nothing left to cancel is taken away here. That holds
+            // as well when the navigation was not taken by this call — one is
+            // already under way, or "Cancel sign-in" has been sent and the form
+            // is taking the page away: the page is leaving all the same, and
+            // its screen is left as it stands.
+            if (CALLBACK_URL) {
+                if (cancelFormEl) { cancelFormEl.style.display = "none"; }
+                if (navigateTo(CALLBACK_URL, 0)) { spinnerEl.style.display = "block"; }
+                return;
+            }
+            // The last screen of this page — one with no callback to leave for.
+            // The stylesheet drops everything that belonged to the sign-in that
+            // did not happen on this one attribute, as it does on expiry; the
+            // spinner goes for the reason it does there.
+            document.documentElement.setAttribute(
+                config.pageStateAttribute, config.failedPageState);
+            spinnerEl.style.display = "none";
         }
     }
 
@@ -556,9 +1530,12 @@
                 // the deterministic callback built on the server from session_id.
                 // "The core is waiting for the answer on its page" is not a
                 // state-machine state, so it arrives as its own field rather
-                // than inside "state".
-                if (data && data.awaiting_web_confirmation) {
-                    handleStatus(STATUS_AWAITING_WEB, CALLBACK_URL, data.reason_code);
+                // than inside "state". The step of the claims completion is not a
+                // state either, and arrives the same way.
+                if (data && data.claim_completion) {
+                    handleStatus(STATUS_CLAIM_COMPLETION, CALLBACK_URL, data.reason_code, data.claim_completion);
+                } else if (data && data.awaiting_web_confirmation) {
+                    handleStatus(STATUS_AWAITING_WEB, CALLBACK_URL, data.reason_code, null, data.answer_browser_bound);
                 } else if (data && data.state) {
                     handleStatus(data.state, CALLBACK_URL, data.reason_code);
                 }
@@ -645,6 +1622,11 @@
                 // the transaction's current status.
                 return connection.invoke(config.hub.joinMethod, sessionId);
             })
+            .then(function() {
+                // A replacement of a QR code that fell due while the socket was
+                // down is asked for now.
+                reissueHopQr();
+            })
             .catch(function() {
                 // The hub is not coming back for this page — the tier below it
                 // keeps the transaction tracked.
@@ -654,6 +1636,7 @@
 
     document.addEventListener("visibilitychange", function() {
         if (document.visibilityState !== "visible") return;
+        onReturnFromChannel();
         reconcileStatus();
         resumeTransport();
     });
@@ -674,9 +1657,155 @@
         // the polling fallback alike, and the restored page would sit on a frozen
         // countdown until the TTL ran out — the one ending no transport may lead to.
         isNavigating = false;
+        // The same goes for the submit of "Cancel sign-in": it was sent in the
+        // life that ended, and whether this sign-in is still open to cancel is
+        // what the reconciliation below finds out. Lifting it gives the page its
+        // own navigation back as well — the submit took it away, and left no
+        // timer behind to make it late.
+        cancelSubmitted = false;
+        // A page restored after a press that sent the person away has been
+        // away by definition.
+        if (lastPress) awaySincePress = true;
+        onReturnFromChannel();
         reconcileStatus();
         resumeTransport();
     });
+
+    // Replacement of the hop QR codes before their tokens run out. It happens
+    // over the live hub connection only: a page on the polling fallback
+    // replaces nothing and keeps its QR codes as they are, and a page the
+    // server gave nothing to replace never starts any of it.
+    var hopQrReissue = config.hopQrReissue;
+
+    // One record per QR code the page replaces: the entry the hub is asked by,
+    // the moment the replacement is due at and whether the last attempt failed.
+    // The moment is a share of the remainder the server sent, counted on THIS
+    // browser's clock from the arrival of that remainder — the same reason the
+    // countdown needs no shared clock.
+    var hopQrEntries = [];
+    var hopQrTimer = null;
+    var hopQrCallPending = false;
+
+    function hopQrDueAt(remainingMs) {
+        return Date.now() + hopQrReissue.fraction * remainingMs;
+    }
+
+    if (hopQrReissue) {
+        hopQrReissue.entries.forEach(function(item) {
+            hopQrEntries.push({ entry: item.entry, dueAt: hopQrDueAt(item.remainingMs), failed: false });
+        });
+    }
+
+    function findHopQrEntry(entry) {
+        for (var i = 0; i < hopQrEntries.length; i++) {
+            if (hopQrEntries[i].entry === entry) return hopQrEntries[i];
+        }
+        return null;
+    }
+
+    function dropHopQrEntry(entry) {
+        hopQrEntries = hopQrEntries.filter(function(record) { return record.entry !== entry; });
+    }
+
+    // A failure says nothing about the QR code: the picture stays, and the
+    // entry is asked for again after the delay the server set.
+    function failHopQrEntry(record) {
+        record.failed = true;
+        record.dueAt = Date.now() + hopQrReissue.retryDelayMs;
+    }
+
+    // The next look at the entries, planned for the earliest moment among
+    // them. A throttled timer of a hidden tab fires late, and the look it
+    // makes then is the same one.
+    function planHopQrReissue() {
+        if (hopQrTimer !== null) {
+            clearTimeout(hopQrTimer);
+            hopQrTimer = null;
+        }
+        if (isTerminal || hopQrEntries.length === 0) return;
+        var earliest = hopQrEntries[0].dueAt;
+        hopQrEntries.forEach(function(record) { earliest = Math.min(earliest, record.dueAt); });
+        hopQrTimer = setTimeout(function() {
+            hopQrTimer = null;
+            reissueHopQr();
+        }, Math.max(0, earliest - Date.now()));
+    }
+
+    // Every image of the entry takes the new picture; nothing else of the
+    // page is touched.
+    function replaceHopQrImages(entry, qrCodeBase64) {
+        document.querySelectorAll('[' + hopQrReissue.imageAttribute + ']').forEach(function(img) {
+            if (img.getAttribute(hopQrReissue.imageAttribute) === entry) {
+                img.src = hopQrReissue.pngDataUriPrefix + qrCodeBase64;
+            }
+        });
+    }
+
+    // The answer of the hub. A replaced QR code is planned again from its new
+    // remainder while its token still runs out before the transaction; an
+    // entry the answer leaves out — an empty answer included — is not replaced
+    // any more, and its picture stays.
+    function applyHopQrAnswer(asked, items) {
+        var answered = [];
+        (items || []).forEach(function(item) {
+            if (!item || asked.indexOf(item.entry) === -1) return;
+            var record = findHopQrEntry(item.entry);
+            if (!record) return;
+            answered.push(item.entry);
+            if (item.failed) {
+                failHopQrEntry(record);
+                return;
+            }
+            replaceHopQrImages(item.entry, item.qrCodeBase64);
+            if (item.expiresBeforeTransaction) {
+                record.failed = false;
+                record.dueAt = hopQrDueAt(item.remainingMs);
+            } else {
+                dropHopQrEntry(item.entry);
+            }
+        });
+        asked.forEach(function(entry) {
+            if (answered.indexOf(entry) === -1) dropHopQrEntry(entry);
+        });
+    }
+
+    // Asks the hub, in one call, for every QR code whose moment has come and
+    // for every one whose last attempt failed. Nothing is asked on a page that
+    // is over or leaving, while no hop QR code is visible on it, or while the
+    // connection is not up: a moment that comes then waits for the connection
+    // to come back, and the reconnect and the revival of the socket ask again.
+    function reissueHopQr() {
+        if (!hopQrReissue || hopQrCallPending || hopQrEntries.length === 0) return;
+        if (isTerminal || isNavigating) return;
+        var hubStates = window.signalR && window.signalR.HubConnectionState;
+        if (!connection || !hubStates || connection.state !== hubStates.Connected) return;
+        if (document.documentElement.matches(hopQrReissue.notVisibleSelector)) return;
+        var now = Date.now();
+        var asked = hopQrEntries
+            .filter(function(record) { return record.failed || record.dueAt <= now; })
+            .map(function(record) { return record.entry; });
+        if (asked.length === 0) {
+            planHopQrReissue();
+            return;
+        }
+        // Released on either outcome, so that no answer can leave the page
+        // unable to ask again.
+        function finish() {
+            hopQrCallPending = false;
+            planHopQrReissue();
+        }
+        hopQrCallPending = true;
+        connection.invoke(config.hub.reissueHopQrMethod, sessionId, asked)
+            .then(function(items) {
+                applyHopQrAnswer(asked, items);
+            }, function() {
+                asked.forEach(function(entry) {
+                    var record = findHopQrEntry(entry);
+                    if (record) failHopQrEntry(record);
+                });
+            })
+            .then(finish, finish);
+    }
 
     // SignalR connection. If the client library failed
     // to load → immediately and transparently degrade to REST polling
@@ -692,20 +1821,142 @@
         .build();
 
     connection.on(config.hub.statusMethod, function(message) {
-        handleStatus(message.status, message.redirectUrl, message.errorCode);
+        handleStatus(message.status, message.redirectUrl, message.errorCode,
+            { step: message.completionStep, surface: message.completionSurface },
+            message.answerBrowserBound);
     });
 
-    // Email-specific intermediate statuses.
-    // An additive channel: does not affect the lifecycle handling above.
+    // The automatic launch of the intermediate page reports the opened page and
+    // the start of the transition into the channel within milliseconds of each
+    // other, as two requests whose order of arrival is not guaranteed. Shown as
+    // they come, the two lines would flicker, so the line of the opened page is
+    // held back for a moment and gives way to the line of the transition
+    // whenever that one is shown — before the hold runs out or ahead of it.
+    var HOP_LAUNCH_CODES = config.hopLaunchCodes;
+    var HOP_OPENED_HOLD_MS = 1000;
+    var hopOpenedTimer = null;
+    var hopLaunchShown = false;
+    // The line of the answer of the bot is on the status line: the codes of
+    // the hop family leave that line alone from then on.
+    var answerLineShown = false;
+
+    // Intermediate channel statuses of any channel — the Email statuses and
+    // the hop codes alike. An additive channel: does not affect the lifecycle
+    // handling above. The last code to arrive is the one shown; the order of
+    // arrival is not restored, except for the pair above.
     connection.on(config.hub.channelStatusMethod, function(message) {
-        if (isTerminal) return;
-        if (!message || message.channelType !== CHANNEL_EMAIL) return;
-        var text = EMAIL_STATUS_TEXTS[message.channelStatus];
-        if (text) {
-            statusEl.textContent = text;
+        if (isTerminal || !message) return;
+        var code = message.channelStatus;
+        // The answer of the bot is no step of the hop. The first one closes the
+        // spare start codes and, for a channel the server gave a line for, puts
+        // that line on the status line; a repeated one changes nothing. A page
+        // that is leaving ignores it. The line takes the channel choice off the
+        // page with it: the question waits in that chat now. A page without the
+        // line keeps its screen, and so does a page already showing a line of a
+        // state.
+        if (code === CHANNEL_ANSWER.statusCode) {
+            if (isNavigating || !onChannelAnswered()) return;
+            if (stateLineShown) return;
+            var answerLine = Object.prototype.hasOwnProperty.call(CHANNEL_ANSWER.lines, message.channelType)
+                ? CHANNEL_ANSWER.lines[message.channelType]
+                : "";
+            if (!answerLine) return;
+            clearTimeout(hopOpenedTimer);
+            answerLineShown = true;
+            markAnswerElsewhere();
+            statusEl.textContent = answerLine;
             statusEl.className = "veriqa-status confirmed";
+            return;
         }
+        // The first hop code switches the page to the instruction block; the
+        // stylesheet does the switching on the root attribute, and setting it
+        // again changes nothing. A focus left inside the channel choice would
+        // drop to the body with it, so it moves onto the block that takes the
+        // choice's place; a focus anywhere else stays where the user put it.
+        // A page with the block turned off keeps its channel choice on screen
+        // and only shows the code on the status line below. A page already
+        // showing a line of a state is not switched by a late code.
+        if (!config.hopInstructionDisabled && !stateLineShown && HOP_STATUS_CODES.indexOf(code) !== -1) {
+            var focusInChoice = !!channelsEl && channelsEl.contains(document.activeElement);
+            document.documentElement.setAttribute(config.hopStartedAttribute, "");
+            var hopInstructionEl = document.getElementById(config.hopInstructionElementId);
+            if (focusInChoice && hopInstructionEl) hopInstructionEl.focus();
+            // A hop code that names a channel is the phone on its way into it —
+            // the reopening of the link apart, which is no step of that way.
+            if (code !== HOP_REOPENED.statusCode) {
+                if (code === HOP_LAUNCH_CODES.channelLaunched) forgetOtherSpareTransitions(message.channelType);
+                noteSpareTransition(hopSpareScope, message.channelType);
+                noteHopChannelHint(message.channelType);
+            }
+        }
+        // The reopening of the hop link puts its warning into the live region
+        // that stands empty on the page from the load, so the filling is
+        // announced; the status line keeps the hint of the hop. A page without
+        // the region (the scanner page) ignores the code. The server reports it
+        // once per transaction; a repeated code finds the label already there.
+        if (code === HOP_REOPENED.statusCode) {
+            var reopenedEl = document.getElementById(HOP_REOPENED.elementId);
+            if (!reopenedEl || reopenedEl.firstChild) return;
+            var badge = document.createElement('div');
+            badge.className = HOP_REOPENED.badgeClass;
+            badge.textContent = config.texts.hopReopened;
+            reopenedEl.appendChild(badge);
+            return;
+        }
+        // Once the line of the answer of the bot is shown, a hop code no longer
+        // words the status line: the person is already in the chat. Once a
+        // line of a state is shown, no code does.
+        if (answerLineShown && HOP_STATUS_CODES.indexOf(code) !== -1) return;
+        if (stateLineShown) return;
+        var text = channelStatusText(code, message.channelType);
+        if (!text) return;
+        // A text with the {0} slot names the channel of the event, so an event
+        // without one leaves the line alone. A channel outside the page is named
+        // by its own type. The replacement is a function so that no "$" pattern
+        // of a name is expanded.
+        if (text.indexOf('{0}') !== -1) {
+            var channelType = message.channelType;
+            if (!channelType) return;
+            var channelName = Object.prototype.hasOwnProperty.call(CHANNEL_NAMES, channelType)
+                ? CHANNEL_NAMES[channelType]
+                : channelType;
+            text = text.replace('{0}', function() { return channelName; });
+        }
+        // A line that is shown takes the place of a held one.
+        clearTimeout(hopOpenedTimer);
+        if (code === HOP_LAUNCH_CODES.interstitialOpened) {
+            if (hopLaunchShown) return;
+            hopOpenedTimer = setTimeout(function() {
+                // The page has ended, is leaving or shows a line of a state
+                // meanwhile: its last line stays.
+                if (isTerminal || isNavigating || stateLineShown) return;
+                statusEl.textContent = text;
+                statusEl.className = "veriqa-status confirmed";
+            }, HOP_OPENED_HOLD_MS);
+            return;
+        }
+        if (code === HOP_LAUNCH_CODES.channelLaunched) {
+            // The page's own tap on the mail-client button, coming back: its
+            // line already says what to do with the opened mail.
+            if (ownEmailLaunchChannel && message.channelType === ownEmailLaunchChannel) return;
+            hopLaunchShown = true;
+        }
+        statusEl.textContent = text;
+        statusEl.className = "veriqa-status confirmed";
     });
+
+    // The line of a channel status: the one the server worded for the channel
+    // of the event where it gave one, otherwise the line of the code. Own keys
+    // only: a code or a channel type such as "constructor" must not read the
+    // prototype of a map and put a function on the status line.
+    function channelStatusText(code, channelType) {
+        var hasOwn = Object.prototype.hasOwnProperty;
+        if (channelType && hasOwn.call(CHANNEL_STATUS_TEXTS_BY_CHANNEL, code)) {
+            var byChannel = CHANNEL_STATUS_TEXTS_BY_CHANNEL[code];
+            if (hasOwn.call(byChannel, channelType)) return byChannel[channelType];
+        }
+        return hasOwn.call(CHANNEL_STATUS_TEXTS, code) ? CHANNEL_STATUS_TEXTS[code] : "";
+    }
 
     // Final connection drop (after auto-reconnect is exhausted) —
     // degrade to polling instead of a dead end.
@@ -713,9 +1964,15 @@
         if (!isTerminal) { startPolling(); }
     });
 
+    // The replacement of the hop QR codes runs on this connection alone.
+    planHopQrReissue();
+
     connection.start()
         .then(function() {
             return connection.invoke(config.hub.joinMethod, sessionId);
+        })
+        .then(function() {
+            reissueHopQr();
         })
         .catch(function(err) {
             console.error("SignalR error:", err);
@@ -724,8 +1981,16 @@
         });
 
     // Heartbeat / reconnect: after an automatic reconnect the connection is back
-    // on the wire but out of the transaction group, so it joins the group again
+    // on the wire but out of the transaction group, so it joins the group again,
+    // and a replacement of a QR code that fell due meanwhile is asked for then.
+    // A join that fails leaves the connection up but outside the group: no
+    // broadcast is addressed to it and nothing else would resubscribe it, so the
+    // tier below takes over the tracking instead of the page waiting out the TTL.
     connection.onreconnected(function() {
-        connection.invoke(config.hub.joinMethod, sessionId).catch(function(){});
+        connection.invoke(config.hub.joinMethod, sessionId)
+            .catch(function() { startPolling(); })
+            .then(function() {
+                reissueHopQr();
+            });
     });
 })();

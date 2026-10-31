@@ -6,7 +6,8 @@ using Veriqa.Core.ChannelAdapter.Constants;
 namespace Veriqa.Core.ChannelAdapter.Domain;
 
 /// <summary>
-/// Terminal outcome of a transaction as shown to the user (SPEC-003 §6.2).
+/// What the core tells the user about a transaction (SPEC-003 §6.2): one of its terminal outcomes
+/// or the non-terminal state of a claims completion (<see cref="AwaitingClaims"/>).
 /// An extensible value rather than a closed enum: a new outcome does not break already compiled
 /// adapters, which must show the status text generically instead of failing on an unknown value.
 /// </summary>
@@ -24,7 +25,7 @@ public readonly record struct TransactionOutcome(string Value)
     /// </summary>
     /// <remarks>
     /// Expression-bodied on purpose: a static auto-property without an initializer would be
-    /// <c>default</c>, and all four outcomes would compare equal to each other.
+    /// <c>default</c>, and all the outcomes would compare equal to each other.
     /// </remarks>
     public static TransactionOutcome Confirmed => new(TransactionOutcomeCodes.Confirmed);
 
@@ -45,6 +46,14 @@ public readonly record struct TransactionOutcome(string Value)
     /// </summary>
     /// <remarks>Expression-bodied for the same reason as <see cref="Confirmed"/>.</remarks>
     public static TransactionOutcome Failed => new(TransactionOutcomeCodes.Failed);
+
+    /// <summary>
+    /// The user confirmed, and the transaction is not over: it waits for the claims the sign-in
+    /// still lacks. The only value that is not terminal — see
+    /// <see cref="TransactionOutcomeNotice.IsTerminal"/>.
+    /// </summary>
+    /// <remarks>Expression-bodied for the same reason as <see cref="Confirmed"/>.</remarks>
+    public static TransactionOutcome AwaitingClaims => new(TransactionOutcomeCodes.AwaitingClaims);
 
     /// <summary>
     /// Rejects an empty code so that a constructed outcome can never collide with <c>default</c>.

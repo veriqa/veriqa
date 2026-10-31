@@ -1,7 +1,9 @@
-# WhatsApp passwordless login for ASP.NET Core — OpenID Connect in Docker
+# WhatsApp login for ASP.NET Core — passwordless WhatsApp authentication over OpenID Connect (OIDC)
 
-Passwordless sign-in through WhatsApp for an ASP.NET Core app: a standard OpenID Connect (OIDC)
-provider in one Docker container, plus a minimal client app that signs in against it.
+Sign in with WhatsApp for an ASP.NET Core app, with no password: a standard OpenID Connect (OIDC)
+provider in one Docker container, plus a minimal client app that signs in against it. Login with
+WhatsApp works the same way on any other stack with an OIDC library: QR code login on a computer and
+one tap on a phone instead of a password or an SMS code.
 
 ## What you get
 
@@ -10,20 +12,20 @@ your phone; on the phone itself you tap a button. WhatsApp opens with a prepared
 business number, you send it with one tap — and you are back in the app, signed in, looking at the
 claims the provider issued. No password, no form, no SMS code.
 
-The provider is [Veriqa](https://veriqa.app): an OpenID Connect server built on OpenIddict that
-confirms sign-ins in messaging apps — Telegram, WhatsApp, other channels or Email. WhatsApp runs
-over the Meta Cloud API. The client knows nothing about Veriqa: it is the stock ASP.NET Core OpenID
-Connect handler (Authorization Code + PKCE), so the same setup works for any stack with an OIDC
-library.
+The provider is [Veriqa](https://veriqa.app): an open-source OpenID Connect provider built on
+OpenIddict that confirms sign-ins in messaging apps — Telegram, WhatsApp, Instagram, Messenger,
+WeChat, Viber, other channels or Email. WhatsApp runs over the Meta Cloud API. The client knows
+nothing about Veriqa: it is the stock ASP.NET Core OpenID Connect handler (Authorization Code +
+PKCE), so the same setup works for any stack with an OIDC library.
 
-Each folder next to `rp/` is one way to connect WhatsApp, with a stand of its own; they share the
-client app in `rp/`. `built-in/` uses the WhatsApp channel built into Veriqa.
+Each folder next to `clients/` is one way to connect WhatsApp, with a stand of its own; they share the
+client app in `clients/dotnet/`. `built-in/` uses the WhatsApp channel built into Veriqa.
 
 ```
 built-in/            the stand with the WhatsApp channel built into Veriqa
   docker-compose.yml   Veriqa from the published image, WhatsApp channel only
   .env.example         the values you fill in
-rp/                  the client app (ASP.NET Core, Microsoft.AspNetCore.Authentication.OpenIdConnect)
+clients/dotnet/      the client app (ASP.NET Core, Microsoft.AspNetCore.Authentication.OpenIdConnect)
 ```
 
 ## Before you start
@@ -79,7 +81,7 @@ but the messages users send never reach it, so no sign-in completes.
 **5. Start the client.**
 
 ```bash
-dotnet run --project ../rp -- --Oidc:Channel whatsapp
+dotnet run --project ../clients/dotnet -- --Oidc:Channel whatsapp
 ```
 
 **6. Sign in.** Open `https://localhost:7020`, scan the QR code with your phone and send the
@@ -103,7 +105,7 @@ only Meta needs the public address. What else differs between a local stand and 
 
 ## How it fits together
 
-- `rp/` asks the provider for a sign-in with `acr_values=channel:whatsapp`, so the sign-in page goes
+- `clients/dotnet/` asks the provider for a sign-in with `acr_values=channel:whatsapp`, so the sign-in page goes
   straight to WhatsApp. Without `--Oidc:Channel` it offers every enabled channel.
 - `built-in/docker-compose.yml` registers the client (`rp`, redirect
   `https://localhost:7020/signin-oidc`), sets the issuer to `https://localhost:8443` and enables the

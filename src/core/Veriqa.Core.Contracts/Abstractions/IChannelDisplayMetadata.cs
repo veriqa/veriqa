@@ -12,9 +12,13 @@ namespace Veriqa.Core.ChannelAdapter.Abstractions;
 public interface IChannelDisplayMetadata
 {
     /// <summary>
-    /// Channel name shown on the sign-in button. A single non-localizable string — a brand name
-    /// (like "Telegram") is not translated. Localizable CTA phrasing for third-party channels
-    /// is out of scope of this SPI version. A blank value — or one longer than
+    /// Channel name the pages of the core show on its button and its tab and in the instruction. The value
+    /// is the base text of a Natural Key, <c>"&lt;DisplayName&gt; | channel"</c>: a locale file of the host
+    /// translates the name by that key, and an entry of <c>AuthPage.Texts</c> overrides it, as well as the
+    /// phrases of the button that carry it (<c>Sign in with &lt;DisplayName&gt;</c>,
+    /// <c>Confirm in &lt;DisplayName&gt;</c>); without either the name is shown as declared. A name carrying
+    /// <c>:</c> is translated but not overridable, since no configuration level addresses such an entry.
+    /// A blank value — or one longer than
     /// <see cref="Veriqa.Core.ChannelAdapter.Constants.CustomChannelContract.MaxDisplayNameLength"/>,
     /// which would break the sign-in window layout — degrades to the raw
     /// <see cref="IChannelAdapter.ChannelType"/>:

@@ -7,7 +7,9 @@ namespace Veriqa.Core.ChannelAdapter.MultiTenancy;
 /// Core-level facts of ONE channel, declared by the channel's own registration. The channel contour
 /// reads them from here rather than from the channel's <c>Options</c> by name: the set of channels the
 /// core level makes available (<c>channels_enabled</c>, SPEC-003 §17.7) and whether the channel runs
-/// in polling mode (SPEC-003 §17.4, CA-171/CA-172).
+/// in polling mode (SPEC-003 §17.4, CA-171/CA-172). A registration may state two more facts, fixed at
+/// start: the tenant that owns it and whether answers to its events take only its own prompt
+/// reference — read here by the parts of the core that sit below the package of the channel.
 /// </summary>
 /// <remarks>
 /// Both facts live in one declaration because they come from one source — the channel's global
@@ -61,4 +63,21 @@ public sealed class CoreChannelDeclaration
     /// Whether the channel runs in polling mode at the core level right now.
     /// </summary>
     public bool UsesPolling => _usesPolling();
+
+    /// <summary>
+    /// Tenant that owns the registration of the channel and is the only one it serves (SPEC-042 R60):
+    /// the route, the transactions its events name, the entries into the channel built for a tenant
+    /// and the transactions created with it as the requested channel. Compared ordinally.
+    /// <c>null</c> — the registration of the operator, serving every tenant and the implicit one; the
+    /// channels shipped with the product state no owner.
+    /// </summary>
+    public string? OwnerTenantId { get; init; }
+
+    /// <summary>
+    /// Whether an answer to an event of this channel takes only a prompt reference stored by this
+    /// same channel type (SPEC-042 L62): a reference another channel stored for the transaction stays
+    /// in the store, and the answer carries none. <c>false</c> — the reference is taken whichever
+    /// channel stored it, the behaviour of the channels shipped with the product.
+    /// </summary>
+    public bool TakesOwnPromptReferenceOnly { get; init; }
 }

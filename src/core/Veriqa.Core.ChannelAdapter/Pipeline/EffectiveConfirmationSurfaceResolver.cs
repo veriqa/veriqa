@@ -14,13 +14,21 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 /// <summary>
 /// Implementation of effective confirmation surface resolution (SPEC-012 §4.4.2). Consumes
 /// the canonical level resolver (anti-fork CFG-202 — builds no precedence of its own):
-/// key <see cref="LoginConfirmationConfigKeys.LoginConfirmation"/> → expansion of the
+/// key <see cref="LoginConfirmationConfigKeys.LoginConfirmation"/> asked about the adapter's channel →
+/// the shipped mode when no level states one → expansion of the
 /// <c>ChannelDefault</c> sentinel from the channel's single confirmation fact → routing of an
 /// in-channel confirmation the channel cannot perform to the core's own surface, with a WARNING
 /// (CFG-049a).
 /// </summary>
 internal sealed class EffectiveConfirmationSurfaceResolver : IEffectiveConfirmationSurfaceResolver
 {
+    /// <summary>
+    /// Login confirmation AS THE PRODUCT SHIPS IT — a default-constructed options object, read for one
+    /// thing only: the mode applied when no level states one. The shipped value is taken off the
+    /// options class rather than restated here, so the two cannot drift.
+    /// </summary>
+    private static readonly LoginConfirmationOptions Shipped = new();
+
     /// <summary>
     /// Canonical level resolver from TASK-040.
     /// </summary>
@@ -53,15 +61,20 @@ internal sealed class EffectiveConfirmationSurfaceResolver : IEffectiveConfirmat
         ArgumentNullException.ThrowIfNull(transaction);
         ArgumentNullException.ThrowIfNull(adapter);
 
-        // 1. Resolve the effective value along the ownership ladder (§10.3). Core default = ChannelDefault.
+        // 1. Resolve the effective value along the ownership ladder (§10.3), asked about the adapter's
+        //    channel: inside each level the per-channel entry is tried before the plain member (CFG-236).
         //    The application level is the transaction's application attribution (self-hosted = global 1:1).
         var context = TransactionResolutionContext.For(transaction);
 
-        var requested = (await _resolver.ResolveAsync(
+        var resolved = await _resolver.ResolveAsync(
             LoginConfirmationConfigKeys.LoginConfirmation,
             context,
-            ConfigDimensionValues.None,
-            cancellationToken)).Value;
+            ConfigDimensionValues.Of((ConfigDimensionNames.Channel, adapter.ChannelType)),
+            cancellationToken);
+
+        // The key declares no answer for a deployment in which no level states the mode, so an
+        // unanswered chain is read as the mode the product ships with (ChannelDefault).
+        var requested = resolved.SourceLevel is null ? Shipped.Mode : resolved.Value;
 
         // 1a. "Confirm nowhere" is a decision about SIGNING IN, and a transaction whose subject IS the
         //     confirmation has no such reading: honouring it would complete the action the relying

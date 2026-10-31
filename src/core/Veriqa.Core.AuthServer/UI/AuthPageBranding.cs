@@ -30,16 +30,21 @@ internal static class AuthPageBranding
     }
 
     /// <summary>
-    /// Converts the design settings into the branding of the window. The preset is passed in rather
-    /// than resolved here: the window already resolved it for its own markup, and resolving it twice
-    /// is how the markup and the branding would start to disagree.
+    /// Converts the design settings into the branding of the window. The preset and the theme are
+    /// passed in rather than resolved here: the window already resolved them for its own markup, and
+    /// resolving them twice is how the markup and the branding would start to disagree.
     /// </summary>
     /// <param name="design">Effective design settings.</param>
     /// <param name="preset">Preset resolved for the same <paramref name="design"/>.</param>
+    /// <param name="theme">Value of the <c>data-theme</c> attribute resolved for the same
+    /// <paramref name="design"/> — the one that goes into the window's own markup.</param>
+    /// <param name="channelButtonColors">Colors of the buttons of the window's channels; null — none.</param>
     /// <returns>Branding for the render points.</returns>
     public static CorePageBranding ToCoreBranding(
         AuthPageDesignOptions design,
-        DesignPreset preset)
+        DesignPreset preset,
+        string theme,
+        IReadOnlyDictionary<string, string>? channelButtonColors)
     {
         // The brand color is cut by theme, and the preset rule applies to both values alike: a page
         // that is not Branded shows the neutral canon in either theme.
@@ -48,7 +53,9 @@ internal static class AuthPageBranding
             CustomCssPath = design.CustomCssPath,
             CssSriHash = design.CssSriHash,
             PrimaryColor = CorePageBrandingRules.BrandPrimary(preset, design.GetPrimaryColor(CorePageThemes.Light)),
-            PrimaryColorDark = CorePageBrandingRules.BrandPrimary(preset, design.GetPrimaryColor(CorePageThemes.Dark))
+            PrimaryColorDark = CorePageBrandingRules.BrandPrimary(preset, design.GetPrimaryColor(CorePageThemes.Dark)),
+            Theme = theme,
+            ChannelButtonColors = channelButtonColors
         };
     }
 }

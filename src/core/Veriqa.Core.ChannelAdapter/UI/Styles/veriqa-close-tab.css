@@ -1,0 +1,19 @@
+/*
+ * Copyright (c) Dmitrii Erusov
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * Rules of the button that closes the tab of a page of the "Core" contour. Loaded after the
+ * rules of the service pages, next to the rules of the page itself.
+ * The file is inlined into the generated document, not served over a URL. Every comment of it
+ * therefore reaches the end user's browser verbatim: the norms these rules implement are named
+ * in CorePageCloseAction (C#), not here.
+ */
+/* The line telling the tab can be closed by hand takes a row of its own under the buttons,
+   however much room they leave beside them. */
+.veriqa-actions > .veriqa-close-hint { flex-basis: 100%; }
+/* A row of the button under a status plate stands off it as a standalone action stands off what
+   follows it. */
+.veriqa-status + .veriqa-actions { margin-top: var(--veriqa-spacing-md); }
+
+/* The row under the line of an outcome stands off what is above it, whatever stands there. */
+.veriqa-close-outcome { margin-top: var(--veriqa-spacing-md); }

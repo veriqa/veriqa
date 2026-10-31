@@ -17,6 +17,10 @@
   var API_PURCHASE = '/api/catalog/{id}/purchase';
   var API_PURCHASE_RESULT = '/api/purchases/';
 
+  /* The query parameter the server puts on the address when a sign-in ended in an error (SampleRoutes.SignInFailed). */
+  var SIGN_IN_PARAM = 'signin';
+  var SIGN_IN_FAILED = 'failed';
+
   /* How often the page asks the backend whether the confirmation has ended. */
   var POLL_INTERVAL_MS = 2000;
 
@@ -34,6 +38,12 @@
 
   /* Enter, and the OK button of a remote, which the platforms deliver as the same key code. */
   var KEY_ENTER = 13;
+
+  /* The refusal of a purchase the viewer's age closes (SampleErrors.AgeRestricted on the server). */
+  var ERROR_AGE_RESTRICTED = 'age_restricted';
+
+  /* The channel type of Email as the session reports it (ChannelTypes.Email in the core). */
+  var CHANNEL_EMAIL = 'email';
 
   var state = {
     profile: null,
@@ -120,6 +130,41 @@
     container.appendChild(initials);
   }
 
+  /* What the viewer told Veriqa on its form during the sign-in, as one line: "Age 34 · Likes Sci-Fi".
+     The page is given the age and never the date it was worked out from; either part may be missing,
+     and with both missing the line is empty. */
+  function traitsOf(profile) {
+    var parts = [];
+
+    if (profile.age !== null && profile.age !== undefined) {
+      parts.push('Age ' + profile.age);
+    }
+
+    if (profile.preferredGenre) {
+      parts.push('Likes ' + profile.preferredGenre);
+    }
+
+    return parts.join(' · ');
+  }
+
+  /* The username line of the card. A messenger hands over a handle, shown as "@handle". Email hands
+     over the alias of the sender ("Anna <anna@example.com>") or, with no alias, the part of the
+     address before "@" — that one only repeats the address, and neither is a handle. */
+  function usernameText(profile) {
+    if (!profile.username) {
+      return null;
+    }
+
+    if (profile.channelType !== CHANNEL_EMAIL) {
+      return '@' + profile.username;
+    }
+
+    var address = String(profile.email || profile.displayName || '');
+    var localPart = address.substring(0, address.lastIndexOf('@'));
+
+    return profile.username === localPart ? null : profile.username;
+  }
+
   /* The card of the person, one line per field the channel actually gave. A field that came back
      null is left out entirely rather than drawn as an empty line. */
   function renderProfileFields(container, profile) {
@@ -134,14 +179,16 @@
     var lines = [
       { text: fullName, className: 'field' },
       { text: profile.channelType, className: 'field field-channel' },
-      { text: profile.username ? '@' + profile.username : null, className: 'field' },
+      { text: usernameText(profile), className: 'field' },
       { text: profile.channelUserIdMasked ? 'ID ' + profile.channelUserIdMasked : null, className: 'field' },
       { text: profile.phoneMasked, className: 'field' },
-      { text: profile.email, className: 'field' }
+      { text: profile.email, className: 'field' },
+      { text: traitsOf(profile), className: 'field' }
     ];
 
     lines.forEach(function (line) {
-      if (!line.text) {
+      /* A field equal to the name above is not drawn twice: Email gives its address as both. */
+      if (!line.text || line.text === profile.displayName) {
         return;
       }
 
@@ -213,6 +260,15 @@
       cover.innerHTML = coverSvg(title);
       tile.appendChild(cover);
 
+      /* The server has already put the titles of the viewer's favourite genre first; the badge says
+         why they are there. */
+      if (title.recommended) {
+        var badge = document.createElement('span');
+        badge.className = 'tile-badge';
+        badge.textContent = '★ For you';
+        tile.appendChild(badge);
+      }
+
       var body = document.createElement('div');
       body.className = 'tile-body';
 
@@ -223,7 +279,8 @@
 
       var meta = document.createElement('p');
       meta.className = 'tile-meta';
-      meta.textContent = title.genre + ' · ' + title.year;
+      meta.textContent = title.genre + ' · ' + title.year
+        + (title.minimumAge > 0 ? ' · ' + title.minimumAge + '+' : '');
       body.appendChild(meta);
 
       if (title.owned) {
@@ -231,6 +288,18 @@
         owned.className = 'tile-owned';
         owned.textContent = '✓ In your library';
         body.appendChild(owned);
+      } else if (title.restricted) {
+        /* Still a control the remote lands on — a tile the focus skipped would look broken — but it
+           explains instead of buying. The server refuses the purchase whatever is drawn here. */
+        var locked = document.createElement('button');
+        locked.className = 'tile-locked';
+        locked.type = 'button';
+        locked.setAttribute('data-focusable', '');
+        locked.textContent = title.minimumAge + '+ only';
+        locked.addEventListener('click', function () {
+          showRestricted(title);
+        });
+        body.appendChild(locked);
       } else {
         var buy = document.createElement('button');
         buy.className = 'tile-buy';
@@ -267,12 +336,14 @@
       state.welcomeSeen = session.welcomeSeen;
 
       if (!session.authenticated) {
+        byId('signin-failed').hidden = new URLSearchParams(window.location.search).get(SIGN_IN_PARAM) !== SIGN_IN_FAILED;
         showScreen('screen-splash');
         return null;
       }
 
       renderAvatar(byId('catalog-avatar'), session.profile);
       byId('catalog-viewer').textContent = session.profile.displayName;
+      byId('catalog-traits').textContent = traitsOf(session.profile);
 
       if (session.welcomeSeen) {
         return enterCatalog();
@@ -306,8 +377,36 @@
     status.textContent = text;
   }
 
+  /* Why a title is closed to this viewer. Two different reasons read differently: an age below the
+     limit, and no age at all — the sign-in gave no date of birth the service could use. */
+  function restrictionText(title) {
+    var age = state.profile ? state.profile.age : null;
+
+    if (age === null || age === undefined) {
+      return '“' + title.title + '” is for viewers aged ' + title.minimumAge
+        + ' and over, and Nova Stream does not know your age.';
+    }
+
+    return '“' + title.title + '” is for viewers aged ' + title.minimumAge + ' and over.';
+  }
+
+  /* The window of a closed title: the same box as a purchase, with no code to scan. */
+  function showRestricted(title) {
+    byId('modal-title').textContent = title.title + ' — ' + title.minimumAge + '+';
+    byId('modal-qr').hidden = true;
+    setStatus(restrictionText(title), 'warn');
+
+    var actions = byId('modal-actions');
+    clear(actions);
+    actions.appendChild(modalButton('Close', closeModal));
+
+    byId('modal').hidden = false;
+    focusFirst();
+  }
+
   function openModal(title) {
     byId('modal-title').textContent = 'Buy “' + title.title + '” — ' + title.price + ' ' + title.currency;
+    byId('modal-qr').hidden = false;
     clear(byId('modal-qr'));
     setStatus('Creating the confirmation…', null);
 
@@ -352,7 +451,7 @@
       qr.appendChild(empty);
     }
 
-    setStatus('Scan the code and confirm in ' + (started.channelType || 'your messenger') + '…', null);
+    setStatus('Scan the code and confirm in ' + (started.channelType || 'your messaging app') + '…', null);
   }
 
   function startPurchase(title) {
@@ -366,6 +465,13 @@
       .catch(function (error) {
         if (error.status === 409) {
           setStatus('You already own this title.', 'warn');
+        } else if (error.status === 403 && error.body && error.body.error === ERROR_AGE_RESTRICTED) {
+          /* The page offered the purchase and the server refused it: what is on screen is older than
+             the session (it changed in another tab). The catalogue is read again so the tile shows
+             the title as closed. */
+          byId('modal-qr').hidden = true;
+          setStatus(restrictionText(title), 'warn');
+          loadCatalog();
         } else {
           setStatus('The confirmation could not be created.', 'bad');
         }

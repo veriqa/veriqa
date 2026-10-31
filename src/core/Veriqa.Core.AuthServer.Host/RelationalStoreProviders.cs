@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Veriqa.Core.AuditTrail.Store.EfCore;
 using Veriqa.Core.AuthServer.Constants;
+using Veriqa.Core.TransactionEngine.CollectedClaims.EfCore;
 
 namespace Veriqa.Core.AuthServer.Host;
 
@@ -27,7 +28,13 @@ internal enum RelationalStore
     /// <summary>
     /// Audit journal sink (Veriqa:Logging:Store, SPEC-012 CFG-252).
     /// </summary>
-    Audit
+    Audit,
+
+    /// <summary>
+    /// Collected claims store (Veriqa:CollectedClaims:Store, SPEC-041 C37). Lives on the connection string
+    /// and in the migrations assembly of the transaction store, with a migration history table of its own.
+    /// </summary>
+    CollectedClaims
 }
 
 /// <summary>
@@ -48,6 +55,9 @@ internal sealed record RelationalStoreMigrations(string Transactions, string Ope
         RelationalStore.Transactions => Transactions,
         RelationalStore.OpenIddict => OpenIddict,
         RelationalStore.Audit => Audit,
+
+        // The collected claims store ships its migrations in the transaction store's assemblies.
+        RelationalStore.CollectedClaims => Transactions,
         _ => throw new ArgumentOutOfRangeException(nameof(store), store, null)
     };
 }
@@ -120,8 +130,9 @@ internal sealed class RelationalStoreProvider
 
     /// <summary>
     /// Builds the EF Core configurator of a store on this provider: the provider call with the
-    /// connection string, the migrations assembly of the store and, for the audit journal, its own
-    /// migration history table — the journal may share a database with the transaction store. The
+    /// connection string, the migrations assembly of the store and, for the audit journal and the collected
+    /// claims store, a migration history table of their own — each may share a database with the
+    /// transaction store. The
     /// provider's availability check runs here, so a store selected on a provider that cannot run in this
     /// process stops the startup instead of failing at the first query.
     /// </summary>
@@ -133,9 +144,12 @@ internal sealed class RelationalStoreProvider
         _ensureAvailable?.Invoke();
 
         var migrationsAssembly = _migrations.For(store);
-        var migrationsHistoryTable = store is RelationalStore.Audit
-            ? AuditMigrationDefaults.MigrationsHistoryTable
-            : null;
+        var migrationsHistoryTable = store switch
+        {
+            RelationalStore.Audit => AuditMigrationDefaults.MigrationsHistoryTable,
+            RelationalStore.CollectedClaims => CollectedClaimsMigrationDefaults.MigrationsHistoryTable,
+            _ => null
+        };
 
         return ef => _useProvider(ef, connectionString, migrationsAssembly, migrationsHistoryTable);
     }
@@ -187,7 +201,14 @@ internal static class RelationalStoreProviders
             Audit: "Veriqa.Core.AuditTrail.Migrations.PostgreSql"),
         useProvider: static (ef, connectionString, migrationsAssembly, migrationsHistoryTable) =>
             ef.UseNpgsql(connectionString, npgsql =>
-                ApplyMigrations(npgsql, migrationsAssembly, migrationsHistoryTable)),
+            {
+                npgsql.MigrationsAssembly(migrationsAssembly);
+
+                if (migrationsHistoryTable is not null)
+                {
+                    npgsql.MigrationsHistoryTable(migrationsHistoryTable);
+                }
+            }),
         addHealthCheck: static (checks, connectionString, name) =>
             checks.AddNpgSql(
                 connectionString: connectionString,
@@ -207,7 +228,14 @@ internal static class RelationalStoreProviders
             Audit: "Veriqa.Core.AuditTrail.Migrations.SqlServer"),
         useProvider: static (ef, connectionString, migrationsAssembly, migrationsHistoryTable) =>
             ef.UseSqlServer(connectionString, sqlServer =>
-                ApplyMigrations(sqlServer, migrationsAssembly, migrationsHistoryTable)),
+            {
+                sqlServer.MigrationsAssembly(migrationsAssembly);
+
+                if (migrationsHistoryTable is not null)
+                {
+                    sqlServer.MigrationsHistoryTable(migrationsHistoryTable);
+                }
+            }),
         addHealthCheck: static (checks, connectionString, name) =>
             checks.AddSqlServer(
                 connectionString: connectionString,
@@ -248,28 +276,4 @@ internal static class RelationalStoreProviders
     public static RelationalStoreProvider Resolve(string key, string value) =>
         Find(value)
         ?? throw new InvalidOperationException($"Unsupported value '{key}' = '{value}'. Allowed: {AllowedNames}.");
-
-    /// <summary>
-    /// Applies the migrations assembly and, when given, the migration history table to a relational
-    /// provider options builder. Shared by every entry: the members live on the common relational base.
-    /// </summary>
-    /// <typeparam name="TBuilder">Provider options builder type.</typeparam>
-    /// <typeparam name="TExtension">Provider options extension type.</typeparam>
-    /// <param name="builder">Provider options builder.</param>
-    /// <param name="migrationsAssembly">Migrations assembly name.</param>
-    /// <param name="migrationsHistoryTable">Migration history table, or null for the provider default.</param>
-    private static void ApplyMigrations<TBuilder, TExtension>(
-        RelationalDbContextOptionsBuilder<TBuilder, TExtension> builder,
-        string migrationsAssembly,
-        string? migrationsHistoryTable)
-        where TBuilder : RelationalDbContextOptionsBuilder<TBuilder, TExtension>
-        where TExtension : RelationalOptionsExtension, new()
-    {
-        builder.MigrationsAssembly(migrationsAssembly);
-
-        if (migrationsHistoryTable is not null)
-        {
-            builder.MigrationsHistoryTable(migrationsHistoryTable);
-        }
-    }
 }

@@ -21,6 +21,15 @@ public static class TransactionStatusNames
     public const string AwaitingWebConfirmation = "AwaitingWebConfirmation";
 
     /// <summary>
+    /// The user confirmed the sign-in and the core now waits for missing claims (SPEC-041 L91): the
+    /// message names the current step of the claims completion and the surface of the web step. Not a
+    /// lifecycle state — the transaction stays Pending. The sign-in window goes to its callback, where the
+    /// page of the completion lives, on the phone step or on the web step shown on the initiating page;
+    /// otherwise it stays where it is.
+    /// </summary>
+    public const string ClaimCompletion = "ClaimCompletion";
+
+    /// <summary>
     /// Authentication completed successfully.
     /// </summary>
     public const string Completed = "Completed";

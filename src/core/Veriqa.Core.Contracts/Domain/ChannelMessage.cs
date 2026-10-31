@@ -24,4 +24,25 @@ public sealed record ChannelMessage
     /// Content kind; plain text by default.
     /// </summary>
     public ChannelMessageKind Kind { get; init; } = ChannelMessageKind.PlainText;
+
+    /// <summary>
+    /// Content of a phone number request — set exactly when <see cref="Kind"/> is
+    /// <see cref="ChannelMessageKind.PhoneNumberRequest"/>, and null for every other kind. The request
+    /// text itself is <see cref="Text"/>.
+    /// </summary>
+    public PhoneNumberRequestContent? PhoneNumberRequest { get; init; }
+
+    /// <summary>
+    /// Content of a link to the claim completion form — set exactly when <see cref="Kind"/> is
+    /// <see cref="ChannelMessageKind.ClaimFormLink"/>, and null for every other kind. The text shown
+    /// above the button is <see cref="Text"/>.
+    /// </summary>
+    public ClaimFormLinkContent? ClaimFormLink { get; init; }
+
+    /// <summary>
+    /// Buttons of an action message — set exactly when <see cref="Kind"/> is
+    /// <see cref="ChannelMessageKind.ActionButtons"/>, and null for every other kind. The text shown
+    /// above the buttons is <see cref="Text"/>.
+    /// </summary>
+    public ActionButtonsContent? ActionButtons { get; init; }
 }

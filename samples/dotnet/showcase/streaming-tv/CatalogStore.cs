@@ -12,9 +12,28 @@ namespace Veriqa.Sample.DotNet.Showcase.StreamingTv;
 /// <param name="Year">Year of release.</param>
 /// <param name="Price">Price, already formatted for display.</param>
 /// <param name="Currency">Currency of <paramref name="Price"/>.</param>
-public sealed record CatalogTitle(string Id, string Title, string Genre, int Year, string Price, string Currency);
+/// <param name="MinimumAge">Age a viewer has to have reached to buy it; zero — no limit.</param>
+public sealed record CatalogTitle(
+    string Id,
+    string Title,
+    string Genre,
+    int Year,
+    string Price,
+    string Currency,
+    int MinimumAge)
+{
+    /// <summary>
+    /// Whether the title is closed to a viewer of this age. An unknown age closes every title that
+    /// has a minimum one: a limit that lets through whoever gave no date of birth limits nothing.
+    /// </summary>
+    /// <param name="age">Age of the viewer in full years, or null when it is not known.</param>
+    public bool IsRestrictedFor(int? age) => MinimumAge > 0 && (age is null || age < MinimumAge);
+}
 
-/// <summary>A title as one viewer sees it: the catalogue entry plus whether they own it.</summary>
+/// <summary>
+/// A title as one viewer sees it: the catalogue entry plus what this viewer's purchases, age and
+/// favourite genre make of it.
+/// </summary>
 /// <param name="Id">Identifier used in the URLs.</param>
 /// <param name="Title">Name shown on the card.</param>
 /// <param name="Genre">Genre shown on the card.</param>
@@ -22,6 +41,9 @@ public sealed record CatalogTitle(string Id, string Title, string Genre, int Yea
 /// <param name="Price">Price, already formatted for display.</param>
 /// <param name="Currency">Currency of <paramref name="Price"/>.</param>
 /// <param name="Owned">True when this viewer has already bought it.</param>
+/// <param name="MinimumAge">Age a viewer has to have reached to buy it; zero — no limit.</param>
+/// <param name="Restricted">True when this viewer's age — or the lack of one — closes the title.</param>
+/// <param name="Recommended">True when the title is of this viewer's favourite genre.</param>
 public sealed record CatalogTitleView(
     string Id,
     string Title,
@@ -29,7 +51,10 @@ public sealed record CatalogTitleView(
     int Year,
     string Price,
     string Currency,
-    bool Owned);
+    bool Owned,
+    int MinimumAge,
+    bool Restricted,
+    bool Recommended);
 
 /// <summary>What the backend decided about a purchase once its confirmation ended.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<PurchaseState>))]
@@ -73,18 +98,28 @@ public sealed class CatalogStore
     /// <summary>Outcome of a confirmation that has not ended yet.</summary>
     public const string PendingOutcome = "pending";
 
+    /// <summary>Minimum age of a title anyone may buy.</summary>
+    private const int AllAges = 0;
+
+    /// <summary>Minimum age of a title for adults only.</summary>
+    private const int AdultsOnly = 18;
+
     private readonly Lock _gate = new();
 
+    // The genres are one half of a declaration whose other half is the list of options of the
+    // preferred_genre claim in appsettings.json (Veriqa:ScopesClaims): a viewer picks their favourite
+    // genre from that list, and the value is compared with the genre here letter for letter. A genre
+    // added or renamed on one side only is a favourite that recommends nothing.
     private readonly List<CatalogTitle> _titles =
     [
-        new("deep-field", "Deep Field", "Sci-Fi", 2024, "4.99", "EUR"),
-        new("northern-lines", "Northern Lines", "Drama", 2023, "3.49", "EUR"),
-        new("the-quiet-harbour", "The Quiet Harbour", "Documentary", 2025, "2.99", "EUR"),
-        new("salt-and-iron", "Salt and Iron", "Thriller", 2022, "3.99", "EUR"),
-        new("paper-satellites", "Paper Satellites", "Animation", 2024, "4.49", "EUR"),
-        new("last-train-west", "Last Train West", "Western", 2021, "2.49", "EUR"),
-        new("glass-orchard", "Glass Orchard", "Fantasy", 2025, "5.49", "EUR"),
-        new("the-long-signal", "The Long Signal", "Sci-Fi", 2023, "3.99", "EUR")
+        new("deep-field", "Deep Field", "Sci-Fi", 2024, "4.99", "EUR", AllAges),
+        new("northern-lines", "Northern Lines", "Drama", 2023, "3.49", "EUR", AllAges),
+        new("the-quiet-harbour", "The Quiet Harbour", "Documentary", 2025, "2.99", "EUR", AllAges),
+        new("salt-and-iron", "Salt and Iron", "Thriller", 2022, "3.99", "EUR", AdultsOnly),
+        new("paper-satellites", "Paper Satellites", "Animation", 2024, "4.49", "EUR", AllAges),
+        new("last-train-west", "Last Train West", "Western", 2021, "2.49", "EUR", AdultsOnly),
+        new("glass-orchard", "Glass Orchard", "Fantasy", 2025, "5.49", "EUR", AllAges),
+        new("the-long-signal", "The Long Signal", "Sci-Fi", 2023, "3.99", "EUR", AllAges)
     ];
 
     private readonly Dictionary<string, HashSet<string>> _ownedBySubject = new(StringComparer.Ordinal);
@@ -111,22 +146,48 @@ public sealed class CatalogStore
         }
     }
 
-    /// <summary>The catalogue as this viewer sees it, with their own titles marked as owned.</summary>
+    /// <summary>
+    /// The catalogue as this viewer sees it: their own titles marked as owned, the titles their age
+    /// closes marked as restricted, and the titles of their favourite genre marked and moved to the
+    /// front. Within the recommended titles and within the rest the order of the catalogue is kept,
+    /// so a viewer with no favourite genre sees the catalogue as it is.
+    /// </summary>
     /// <param name="subject">The <c>sub</c> claim of the viewer.</param>
-    public IReadOnlyList<CatalogTitleView> CatalogueFor(string subject)
+    /// <param name="age">Age of the viewer in full years, or null when it is not known.</param>
+    /// <param name="preferredGenre">Favourite genre of the viewer, or null when they named none.</param>
+    public IReadOnlyList<CatalogTitleView> CatalogueFor(string subject, int? age, string? preferredGenre)
     {
         lock (_gate)
         {
             var owned = _ownedBySubject.GetValueOrDefault(subject);
 
-            return [.. _titles.Select(title => new CatalogTitleView(
-                title.Id,
-                title.Title,
-                title.Genre,
-                title.Year,
-                title.Price,
-                title.Currency,
-                owned?.Contains(title.Id) is true))];
+            // OrderByDescending is a stable sort: titles that compare equal keep their order.
+            return [.. _titles
+                .Select(title => new CatalogTitleView(
+                    title.Id,
+                    title.Title,
+                    title.Genre,
+                    title.Year,
+                    title.Price,
+                    title.Currency,
+                    owned?.Contains(title.Id) is true,
+                    title.MinimumAge,
+                    title.IsRestrictedFor(age),
+                    string.Equals(title.Genre, preferredGenre, StringComparison.Ordinal)))
+                .OrderByDescending(view => view.Recommended)];
+        }
+    }
+
+    /// <summary>
+    /// A genre as the catalogue knows it, or null. The favourite genre arrives as a claim, and a
+    /// claim is outside data: a value that names no genre of the catalogue is treated as no value.
+    /// </summary>
+    /// <param name="genre">Genre to look up, or null.</param>
+    public string? KnownGenre(string? genre)
+    {
+        lock (_gate)
+        {
+            return _titles.Find(title => string.Equals(title.Genre, genre, StringComparison.Ordinal))?.Genre;
         }
     }
 

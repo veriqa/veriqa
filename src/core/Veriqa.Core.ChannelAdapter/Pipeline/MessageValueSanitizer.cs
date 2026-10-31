@@ -8,11 +8,12 @@ using Veriqa.Core.TransactionEngine.MessageTemplates;
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
 /// <summary>
-/// Sanitizes a value before it is substituted into a channel message (ICC-051, TPL-034): control
-/// characters (including line breaks) become spaces, the value is truncated at a code-point boundary and
-/// trimmed. Messages are sent as plain text (no parse_mode/markup), so neutralizing control characters is
-/// sufficient — markup escaping is the caller's concern (e.g. the HTML mail body). This is the single
-/// source of that logic,
+/// Sanitizes a value before it is substituted into a channel message (ICC-051, TPL-127): control
+/// characters (including line breaks) become spaces, the value is truncated at a code-point boundary to
+/// the cap the caller passes and trimmed. The cap is the caller's decision: a value the core computes
+/// itself is passed with no cap, since a truncated link or code is no longer itself. Messages are sent
+/// as plain text (no parse_mode/markup), so neutralizing control characters is sufficient — markup
+/// escaping is the caller's concern (e.g. the HTML mail body). This is the single source of that logic,
 /// shared by <see cref="ConfirmationPromptRenderer"/> and <see cref="MessageTextRenderer"/> — the
 /// second echelon that runs on ALL value sources, including pre-validated caller values (defense in depth).
 /// The same logic also cleans values that leave the adapter without being rendered into a message at all

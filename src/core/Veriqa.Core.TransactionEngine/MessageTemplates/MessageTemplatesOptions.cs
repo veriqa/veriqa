@@ -96,6 +96,20 @@ public sealed class MessageTemplateKindOptions
     /// <summary>Declarations narrowed by the channel.</summary>
     public IDictionary<string, MessageTemplateKindOptions> ByChannel { get; init; } =
         new Dictionary<string, MessageTemplateKindOptions>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Declarations narrowed by the purpose of the link the message is placed in. The group refines
+    /// the channel and stands under a channel entry only.
+    /// </summary>
+    public IDictionary<string, MessageTemplateKindOptions> ByLinkPurpose { get; init; } =
+        new Dictionary<string, MessageTemplateKindOptions>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Declarations narrowed by the type of the device the transaction was started on. The group
+    /// stands under any node and is the innermost one: nothing nests below a device entry.
+    /// </summary>
+    public IDictionary<string, MessageTemplateKindOptions> ByDevice { get; init; } =
+        new Dictionary<string, MessageTemplateKindOptions>(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>

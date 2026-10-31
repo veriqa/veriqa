@@ -16,8 +16,8 @@ namespace Veriqa.Core.AuthServer.Hubs;
 /// The transaction is read the way the polling surface reads it: the deadline first — the domain
 /// pair "is the TTL still what ends this one" plus "has it passed", the same pair
 /// <c>ITransactionService.GetTransactionAsync</c> asks — and then <c>State</c>,
-/// <c>StateReasonCode</c> and <c>IsAwaitingWebConfirmation()</c>, named with the same constants the
-/// broadcast uses. Both transports of SPEC-007 UI-087 therefore end the page on the same fact about
+/// <c>StateReasonCode</c>, <c>IsCompletingClaims()</c> and <c>IsAwaitingWebConfirmation()</c>, named
+/// with the same constants the broadcast uses. Both transports of SPEC-007 UI-087 therefore end the page on the same fact about
 /// the same transaction. What they do NOT share is how the answer travels: an expired transaction is
 /// a 404 on the polling surface (SPEC-007 UI-094) and the <c>Expired</c> status of the message model
 /// (§5.3) here — one page ending, reached over two wires.
@@ -59,6 +59,19 @@ internal static class TransactionStatusMessageFactory
             };
         }
 
+        // Asked before the web-confirmation question, which it displaces: once the user has answered,
+        // the transaction waits for missing claims instead, still Pending and still carrying the
+        // channel data (SPEC-041 L91). All missing claims already having an outcome while Confirm is
+        // not written yet leaves no step to name: that is waiting, and Completed comes next.
+        if (transaction.IsCompletingClaims())
+        {
+            var step = transaction.GetCurrentClaimCompletionStep();
+
+            return step is null
+                ? null
+                : ForClaimCompletionStep(sessionId, step.Value, transaction.ClaimCompletion!.Surface);
+        }
+
         // Asked before the state itself: "the core is waiting for the answer on its own page" is
         // not a state-machine state — the transaction stays Pending — so the state alone would
         // report this one as ordinary waiting (SPEC-007 UI-087).
@@ -68,7 +81,8 @@ internal static class TransactionStatusMessageFactory
             {
                 SessionId = sessionId,
                 Status = TransactionStatusNames.AwaitingWebConfirmation,
-                RedirectUrl = BuildCallbackUrl(sessionId)
+                RedirectUrl = BuildCallbackUrl(sessionId),
+                AnswerBrowserBound = transaction.SubjectBinding is { AnswerBrowserBound: true }
             };
         }
 
@@ -104,6 +118,31 @@ internal static class TransactionStatusMessageFactory
             _ => null
         };
     }
+
+    /// <summary>
+    /// Builds the status message of a step of the claims completion (SPEC-041 L91) — the one place the
+    /// step and the surface are turned into the names the page reads, for the broadcast and the replay
+    /// alike.
+    /// </summary>
+    /// <remarks>
+    /// No redirect: whether the page goes to its callback on this status depends on the step and the
+    /// surface, and the page decides it from them with the callback it already has. Nothing of the claims
+    /// or of the account travels with it (SPEC-007 UI-095) — only which step is on and where.
+    /// </remarks>
+    /// <param name="sessionId">Session identifier.</param>
+    /// <param name="step">Current step of the claims completion.</param>
+    /// <param name="surface">Surface of the web step; null — the web step has not begun.</param>
+    /// <returns>Status message.</returns>
+    public static TransactionStatusMessage ForClaimCompletionStep(
+        string sessionId,
+        ClaimCompletionStep step,
+        WebStepSurface? surface) => new()
+        {
+            SessionId = sessionId,
+            Status = TransactionStatusNames.ClaimCompletion,
+            CompletionStep = step.ToString(),
+            CompletionSurface = surface?.ToString()
+        };
 
     /// <summary>
     /// Builds the callback URL for redirection after successful authentication.

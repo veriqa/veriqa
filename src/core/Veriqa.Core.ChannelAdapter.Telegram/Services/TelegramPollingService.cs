@@ -1,6 +1,7 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using Telegram.Bot;
@@ -12,10 +13,6 @@ using Veriqa.Core.ChannelAdapter.DependencyInjection;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
 using Veriqa.Core.ChannelAdapter.Pipeline;
 using Veriqa.Core.ChannelAdapter.Telegram.Constants;
-using Veriqa.Core.TransactionEngine.Events;
-using Veriqa.Core.TransactionEngine.Identity;
-using Veriqa.Core.TransactionEngine.Services;
-using Veriqa.Core.TransactionEngine.Store;
 
 namespace Veriqa.Core.ChannelAdapter.Telegram.Services;
 
@@ -41,65 +38,11 @@ internal sealed class TelegramPollingService : PerTenantPollingSupervisor
     private readonly TelegramChannelAdapter _channelAdapter;
 
     /// <summary>
-    /// Transaction service for pipeline processing.
+    /// Scope factory: every update is processed in a scope of its own, and the processing with its
+    /// collaborators comes from that scope — this loop is a singleton, and a collaborator the host
+    /// registered as scoped must not be captured by it.
     /// </summary>
-    private readonly ITransactionService _transactionService;
-
-    /// <summary>
-    /// Transaction store: the pipeline reads a reported decision through it, past the TTL gate of the
-    /// service, so a press that arrives after the deadline is answered by what happened to the
-    /// transaction (SPEC-003 CA-192).
-    /// </summary>
-    private readonly ITransactionStore _transactionStore;
-
-    /// <summary>
-    /// Clock the pipeline reads the deadline of a transaction against. There is no HttpContext on a
-    /// polling loop, so it comes from the container and travels onwards as a parameter.
-    /// </summary>
-    private readonly TimeProvider _timeProvider;
-
-    /// <summary>
-    /// Channel identity resolution service (TASK-002).
-    /// </summary>
-    private readonly IIdentityResolutionService _identityResolutionService;
-
-    /// <summary>
-    /// Per-user rate limiter (optional — may be absent in dev/test).
-    /// </summary>
-    private readonly IUserAuthRateLimiter? _userAuthRateLimiter;
-
-    /// <summary>
-    /// Component metrics: this loop drives the same pipeline as the webhook route, and a failed user
-    /// notification on it is counted into the same instrument. There is no HttpContext on a polling
-    /// loop, so the instrument comes from the container and travels as a parameter.
-    /// </summary>
-    private readonly ChannelAdapterMetrics _metrics;
-
-    /// <summary>
-    /// Confirmation prompt orchestrator. Registered by the same call that registers this hosted
-    /// service, hence mandatory: a loop running without it would answer every confirmation
-    /// transaction by dropping the decision, and it would do so silently (SPEC-039 E41).
-    /// </summary>
-    private readonly IConfirmationPromptOrchestrator _confirmationPromptOrchestrator;
-
-    /// <summary>
-    /// Channel message localizer. Registered by the same call as this hosted service, hence mandatory:
-    /// absent, it would leave every status text of this loop in the base language unannounced.
-    /// </summary>
-    private readonly IConfirmationPromptLocalizer _promptLocalizer;
-
-    /// <summary>
-    /// Terminal text of the transaction: this loop states the address of the receipt and the core
-    /// answers with the wording, exactly as the webhook route does (SPEC-036 TPL-123).
-    /// </summary>
-    private readonly IOutcomeReceiptText _receiptText;
-
-    /// <summary>
-    /// Store of sent-prompt coordinates: the outcome of a press whose event carried no message
-    /// coordinates is shown by editing the stored prompt, exactly as on the webhook route.
-    /// Registered by the same call that registers this hosted service, hence not optional.
-    /// </summary>
-    private readonly IChannelPromptMessageStore _promptMessageStore;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     /// <summary>
     /// Texts this channel declared at its registration. The loop drives the very same pipeline as the
@@ -109,77 +52,37 @@ internal sealed class TelegramPollingService : PerTenantPollingSupervisor
     private readonly ChannelReplyTexts _replyTexts;
 
     /// <summary>
-    /// Bus the refusals of the interaction surface are written to (SPEC-039 E48). There is no
-    /// HttpContext on a polling loop, so it comes from the container and travels as a parameter.
-    /// </summary>
-    private readonly ITransactionEventPublisher _eventPublisher;
-
-    /// <summary>
-    /// How the deployment wants the receipt of a terminal outcome to appear in the conversation. This
-    /// loop drives the very same pipeline as the webhook route, so it states the very same intent;
-    /// there is no HttpContext here, so it comes from the container and travels as a parameter.
-    /// </summary>
-    private readonly IOutcomeNoticeDisplayIntentSource _displayIntentSource;
-
-    /// <summary>
     /// Creates a <see cref="TelegramPollingService"/> instance.
     /// </summary>
+    /// <remarks>
+    /// The constructor resolves the processing of an update once, in a probe scope: a composition
+    /// without the collaborators of the in-chat question, or without the journal of the refusals, is
+    /// refused while the hosted services are resolved, with the name of the missing type — not
+    /// discovered as a loop that starts and never asks its question (SPEC-039 E41).
+    /// </remarks>
     /// <param name="clientFactory">Channel client factory (per-tenant bot client).</param>
     /// <param name="tenantSource">Source of active polling tenants.</param>
     /// <param name="channelAdapters">Registered channel adapters.</param>
-    /// <param name="transactionService">Transaction service.</param>
-    /// <param name="transactionStore">Transaction store a reported decision is read through.</param>
-    /// <param name="timeProvider">Clock the deadline of a transaction is read against.</param>
-    /// <param name="identityResolutionService">Channel identity resolution service.</param>
     /// <param name="logger">Logger.</param>
-    /// <param name="promptMessageStore">Store of sent-prompt coordinates.</param>
-    /// <param name="metrics">Component metrics of the channel contour.</param>
-    /// <param name="receiptText">Terminal text of the transaction.</param>
-    /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator.</param>
-    /// <param name="promptLocalizer">Channel message localizer.</param>
     /// <param name="channels">Registry the channel's own declared reply texts are read from.</param>
-    /// <param name="eventPublisher">Bus the refusals of the interaction surface are written to.</param>
-    /// <param name="displayIntentSource">Port the desired display intent of the receipt comes from.</param>
-    /// <param name="userAuthRateLimiter">Per-user rate limiter (null — no limiting).</param>
+    /// <param name="scopeFactory">Scope factory the scope of each update is created by.</param>
     public TelegramPollingService(
         IChannelClientFactory clientFactory,
         IPollingTenantSource tenantSource,
         IEnumerable<IChannelAdapter> channelAdapters,
-        ITransactionService transactionService,
-        ITransactionStore transactionStore,
-        TimeProvider timeProvider,
-        IIdentityResolutionService identityResolutionService,
         ILogger<TelegramPollingService> logger,
-        IChannelPromptMessageStore promptMessageStore,
-        ChannelAdapterMetrics metrics,
-        IOutcomeReceiptText receiptText,
-        IConfirmationPromptOrchestrator confirmationPromptOrchestrator,
-        IConfirmationPromptLocalizer promptLocalizer,
         CustomChannelRegistry channels,
-        ITransactionEventPublisher eventPublisher,
-        IOutcomeNoticeDisplayIntentSource displayIntentSource,
-        IUserAuthRateLimiter? userAuthRateLimiter = null)
+        IServiceScopeFactory scopeFactory)
         : base(tenantSource, logger)
     {
         // Initialize the dependencies and explicitly pick the Telegram adapter
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _channelAdapter = ResolveTelegramAdapter(channelAdapters);
-        _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
-        _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
-        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-        _identityResolutionService = identityResolutionService ?? throw new ArgumentNullException(nameof(identityResolutionService));
-        _promptMessageStore = promptMessageStore ?? throw new ArgumentNullException(nameof(promptMessageStore));
-        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
-        _receiptText = receiptText ?? throw new ArgumentNullException(nameof(receiptText));
-        ArgumentNullException.ThrowIfNull(confirmationPromptOrchestrator);
-        ArgumentNullException.ThrowIfNull(promptLocalizer);
-        _confirmationPromptOrchestrator = confirmationPromptOrchestrator;
-        _promptLocalizer = promptLocalizer;
         ArgumentNullException.ThrowIfNull(channels);
         _replyTexts = channels.ReplyTextsOf(ChannelTypes.Telegram);
-        _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
-        _displayIntentSource = displayIntentSource ?? throw new ArgumentNullException(nameof(displayIntentSource));
-        _userAuthRateLimiter = userAuthRateLimiter;
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+
+        PollingInboundProcessing.EnsureComposed(_scopeFactory, logger);
     }
 
     /// <inheritdoc />
@@ -227,7 +130,7 @@ internal sealed class TelegramPollingService : PerTenantPollingSupervisor
             // No token in the logs (core-rules §10): only the resolution error code/message.
             Logger.LogWarning(
                 "Failed to create the tenant {TenantId} Telegram client: {ErrorCode} — {ErrorMessage}. Loop not started",
-                tenantId ?? "<default>",
+                tenantId ?? ChannelTenantContext.DefaultTenantDisplayName,
                 clientResult.Error.Code,
                 clientResult.Error.Message);
             return;
@@ -267,7 +170,7 @@ internal sealed class TelegramPollingService : PerTenantPollingSupervisor
                 Logger.LogError(
                     ex,
                     "Error in the Telegram polling loop of tenant {TenantId}. Retrying in {DelayMs} ms",
-                    tenantId ?? "<default>",
+                    tenantId ?? ChannelTenantContext.DefaultTenantDisplayName,
                     TelegramAdapterConstants.RetryBaseDelayMs);
 
                 // Local delay before retrying (one tenant's failure does not bring down the others)
@@ -309,24 +212,8 @@ internal sealed class TelegramPollingService : PerTenantPollingSupervisor
             // Routing via the pipeline (similar to webhook processing). The terminal wording comes
             // from the core through the receipt port; the texts the channel states for itself come
             // from its registration, the same source the webhook route reads them from.
-            await ChannelWebhookPipeline.ProcessInboundResultAsync(
-                result.Value,
-                _channelAdapter,
-                _transactionService,
-                _transactionStore,
-                _timeProvider,
-                _identityResolutionService,
-                Logger,
-                _metrics,
-                _userAuthRateLimiter,
-                _confirmationPromptOrchestrator,
-                _promptLocalizer,
-                _promptMessageStore,
-                _receiptText,
-                _displayIntentSource,
-                _eventPublisher,
-                _replyTexts,
-                cancellationToken);
+            await PollingInboundProcessing.ProcessAsync(
+                _scopeFactory, result.Value, _channelAdapter, _replyTexts, cancellationToken);
         }
         catch (Exception ex)
         {

@@ -12,15 +12,16 @@ using Veriqa.Core.ChannelAdapter.Telegram.Constants;
 using Veriqa.Core.ChannelAdapter.Telegram.Enums;
 using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
+using Veriqa.Core.ChannelAdapter.Webhooks;
 
 namespace Veriqa.Core.ChannelAdapter.Telegram.Services;
 
 /// <summary>
 /// Telegram bot webhook initialization service (SPEC-012 §6.9).
-/// On startup it registers the webhook in the Telegram Bot API; on shutdown it deletes it.
-/// Active only when <see cref="TelegramUpdateMode.Webhook"/>.
+/// Registers the webhook in the Telegram Bot API in the background after startup, retrying until the
+/// platform accepts it, and deletes it on shutdown. Active only when <see cref="TelegramUpdateMode.Webhook"/>.
 /// </summary>
-internal sealed class TelegramWebhookInitializerService : IHostedService
+internal sealed class TelegramWebhookInitializerService : ChannelWebhookRegistrationService
 {
     /// <summary>
     /// Telegram Bot API client.
@@ -33,93 +34,60 @@ internal sealed class TelegramWebhookInitializerService : IHostedService
     private readonly TelegramOptions _options;
 
     /// <summary>
-    /// Logger.
-    /// </summary>
-    private readonly ILogger<TelegramWebhookInitializerService> _logger;
-
-    /// <summary>
     /// Creates an instance of <see cref="TelegramWebhookInitializerService"/>.
     /// </summary>
     /// <param name="clientFactory">Per-tenant channel client factory.</param>
     /// <param name="options">Telegram adapter settings.</param>
+    /// <param name="state">Webhook registration state the channel health check reads.</param>
+    /// <param name="timeProvider">Clock the pauses between registration attempts run on.</param>
+    /// <param name="lifetime">Lifetime of the host; the first registration attempt waits for its start.</param>
     /// <param name="logger">Logger.</param>
     public TelegramWebhookInitializerService(
         IChannelClientFactory clientFactory,
         IOptions<TelegramOptions> options,
+        ChannelWebhookRegistrationState state,
+        TimeProvider timeProvider,
+        IHostApplicationLifetime lifetime,
         ILogger<TelegramWebhookInitializerService> logger)
+        : base(state, timeProvider, lifetime, logger)
     {
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    /// <summary>
-    /// Registers the webhook in the Telegram Bot API on startup.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task StartAsync(CancellationToken cancellationToken)
+    /// <inheritdoc />
+    protected override string ChannelType => ChannelTypes.Telegram;
+
+    /// <inheritdoc />
+    protected override bool IsWebhookMode => _options.UpdateMode is TelegramUpdateMode.Webhook;
+
+    /// <inheritdoc />
+    protected override string WebhookUrl => _options.WebhookBaseUrl.TrimEnd('/') + TelegramAdapterConstants.WebhookPath;
+
+    /// <inheritdoc />
+    protected override async Task RegisterAsync(CancellationToken cancellationToken)
     {
-        // The webhook is registered only in the Webhook mode
-        if (_options.UpdateMode is not TelegramUpdateMode.Webhook)
-        {
-            _logger.LogInformation(
-                "Update mode is {UpdateMode}, webhook registration skipped",
-                _options.UpdateMode);
-
-            return;
-        }
-
-        // Build the full webhook URL
-        var webhookUrl = _options.WebhookBaseUrl.TrimEnd('/')
-            + TelegramAdapterConstants.WebhookPath;
-
         // In a valid configuration for the Webhook mode the secret token is required
         // (checked by TelegramOptionsValidator at startup)
         // Startup core-only: webhook is registered once at boot; no request tenant here, so this stays a direct core-level read (unlike the per-request adapters migrated to the seam in TASK-072/B4).
         var secretToken = _options.WebhookSecretToken;
 
-        // Register the webhook via the Telegram Bot API
         await (await ResolveClientAsync(cancellationToken)).SetWebhook(
-            url: webhookUrl,
+            url: WebhookUrl,
             secretToken: secretToken,
             cancellationToken: cancellationToken);
-
-        _logger.LogInformation(
-            "Telegram webhook registered: {WebhookUrl}",
-            webhookUrl);
     }
 
-    /// <summary>
-    /// Deletes the webhook from the Telegram Bot API on shutdown.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task StopAsync(CancellationToken cancellationToken)
+    /// <inheritdoc />
+    protected override async Task UnregisterAsync(CancellationToken cancellationToken)
     {
-        // The webhook is deleted only if it was registered
-        if (_options.UpdateMode is not TelegramUpdateMode.Webhook)
-        {
-            return;
-        }
-
-        try
-        {
-            // Delete the webhook (CancellationToken.None — on host shutdown the token may already be cancelled)
-            await (await ResolveClientAsync(CancellationToken.None)).DeleteWebhook(cancellationToken: CancellationToken.None);
-
-            _logger.LogInformation("Telegram webhook deleted");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Failed to delete the Telegram webhook on service shutdown");
-        }
+        await (await ResolveClientAsync(cancellationToken)).DeleteWebhook(cancellationToken: cancellationToken);
     }
 
     /// <summary>
     /// Resolves the default tenant's client on the ASYNCHRONOUS startup platform. The client is built
     /// from the tenant's credentials, and resolving credentials is asynchronous now — so it happens
-    /// here, in <c>StartAsync</c>/<c>StopAsync</c>, rather than in a constructor a container calls
+    /// here, in the registration and the removal, rather than in a constructor a container calls
     /// synchronously.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>

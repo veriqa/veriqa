@@ -1,0 +1,42 @@
+#nullable enable
+const Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.DefaultApiBaseUrl = "https://chatapi.viber.com" -> string!
+const Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.SectionName = "Veriqa:Channels:Viber" -> string!
+override Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderViberExtensions.AddViber(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!
+static Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberConfigKeys.Credentials.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials!>!
+static Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.operator !=(Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials? left, Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials? right) -> bool
+static Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.operator ==(Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials? left, Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials? right) -> bool
+Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderViberExtensions
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberConfigKeys
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.ApiBaseUrl.get -> string!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.ApiBaseUrl.set -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.AuthToken.get -> string!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.AuthToken.set -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.BotUri.get -> string!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.BotUri.set -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.Enabled.get -> bool
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.Enabled.set -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.GetTenantCredentials() -> Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.SenderName.get -> string!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.SenderName.set -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.ViberOptions() -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.WebhookBaseUrl.get -> string!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions.WebhookBaseUrl.set -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptionsValidator
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptionsValidator.Validate(string? name, Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptions! options) -> Microsoft.Extensions.Options.ValidateOptionsResult!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberOptionsValidator.ViberOptionsValidator() -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.<Clone>$() -> Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.AuthToken.get -> string!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.AuthToken.init -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.BotUri.get -> string!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.BotUri.init -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.Deconstruct(out string! AuthToken, out string! BotUri, out string! SenderName) -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.Equals(Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials? other) -> bool
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.SenderName.get -> string!
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.SenderName.init -> void
+Veriqa.Core.ChannelAdapter.Viber.Configuration.ViberTenantCredentials.ViberTenantCredentials(string! AuthToken, string! BotUri, string! SenderName) -> void

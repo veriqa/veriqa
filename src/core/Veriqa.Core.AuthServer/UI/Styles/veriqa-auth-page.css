@@ -22,7 +22,6 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
     background: var(--veriqa-bg);
     color: var(--veriqa-text);
 }
@@ -80,7 +79,7 @@ body {
     font-size: 0.6875rem;
     line-height: 1.6;
     margin-top: var(--veriqa-spacing-sm);
-    text-align: left;
+    text-align: center;
 }
 
 /* Channel tabs */
@@ -112,6 +111,9 @@ body {
     transition: background var(--veriqa-transition-fast), color var(--veriqa-transition-fast);
     color: var(--veriqa-muted);
     min-width: fit-content;
+    /* A tab with a text label alone is the lowest control of the card: in a short window, where the
+       scale of the page shrinks its text and padding, this floor keeps it a target of full size. */
+    min-height: var(--veriqa-target-min-size);
 }
 .veriqa-tab:hover { background: var(--veriqa-surface-container); color: var(--veriqa-text); }
 /* The only inset focus outline of the contour: the tab strip clips its content
@@ -119,7 +121,7 @@ body {
 .veriqa-tab:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: -2px; }
 .veriqa-tab.active { background: var(--veriqa-bg); color: var(--veriqa-text); }
 
-/* 4 channels (all messengers + Email): a symmetric 2×2 grid instead of a cramped
+/* 4+ tabs (four channels, or three with the "Any channel" tab): a symmetric 2×2 grid instead of a cramped
    row / an asymmetric "3+1" wrap on a narrow screen. Thin separators —
    via gap: 1px over the container background (--veriqa-surface-variant). */
 .veriqa-tabs--grid {
@@ -130,9 +132,19 @@ body {
 }
 .veriqa-tabs--grid .veriqa-tab { min-width: 0; }
 
-/* The channel panel is focusable by its own tabindex (WAI-ARIA Tabs pattern), so it carries the
-   focus indicator of the contour instead of the browser default one. */
+/* The strip of a page with the "Any channel" tab: that tab, the first one, takes a row of its own, and the
+   channel tabs stand two to a row under it. The last channel tab of an odd number of them stands at an
+   even position of the strip and takes its row whole, so no cell of the grid is left empty. */
+.veriqa-tabs--any-channel .veriqa-tab:first-child,
+.veriqa-tabs--any-channel .veriqa-tab:last-child:nth-child(even) { grid-column: 1 / -1; }
+
+/* In the tab layout the channel panel is focusable by its own tabindex (WAI-ARIA Tabs pattern), so it
+   carries the focus indicator of the contour instead of the browser default one. */
 .veriqa-panel:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; }
+
+/* The panel of an unselected tab. It is hidden by a class and not by an inline style, so the buttons
+   layout below can show every panel with an ordinary rule. */
+.veriqa-panel--inactive { display: none; }
 
 /* Label of a tab / CTA button of a THIRD-PARTY channel only. Such a label comes
    from the SPI, so the width must never be driven by its length: the label is
@@ -153,6 +165,10 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+/* The base button floors its width at fit-content so a wrapping label is never squeezed; for a
+   label that does not wrap that floor is the whole text, and the button would grow past the card
+   instead of clipping it. A button with a clipped label gives the floor up. */
+.veriqa-btn:has(> .veriqa-btn-label) { min-width: 0; }
 
 /* Tooltip of a clipped third-party label. The bubble is anchored to the host
    rather than to the trigger for two reasons: the tab strip clips its own content
@@ -199,21 +215,20 @@ body {
 .veriqa-tab-icon { width: 14px; height: 14px; flex-shrink: 0; fill: currentColor; }
 .veriqa-btn-icon { width: 16px; height: 16px; flex-shrink: 0; fill: currentColor; margin-inline-end: var(--veriqa-spacing-sm); }
 
-/* QR visibility (setting Veriqa:AuthPageDesign:QrCode:ShowQrCode). The server renders the same
-   markup for every value of the key and hands the value itself over in data-qr-visibility on the
-   root element; the decision is the page's, because only the browser knows the device.
-   "never" hides with no script involved at all. "desktoponly" additionally requires data-device,
+/* QR visibility (setting Veriqa:AuthPageDesign:QrCode:ShowQrCode). For "never" the server renders
+   no channel QR code at all, so there is nothing here to hide. For "desktoponly" it renders the QR
+   and hands the value over in data-qr-visibility on the root element; the decision is the page's,
+   because only the browser knows the device. "desktoponly" requires data-device,
    which the page script sets only after two independent signals agree on a phone — an absent
    marker (script blocked, a signal missed) therefore leaves the QR visible, which is the safe
    direction: a page whose only way in is a button the user cannot reach is worse than a QR shown
    where it is useless. The attribute values are the lower-cased names of QrCodeVisibility.
    display: none — not a visual offset — so that the text alternative of the image leaves the
    accessibility tree together with the block it describes. */
-[data-qr-visibility="never"] .veriqa-qr,
 [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-qr { display: none; }
 
 /* The wording follows the QR. Page text that mentions the code (the instruction, the "back to QR
-   code" link) is rendered in both wordings — .veriqa-if-qr and .veriqa-if-no-qr — switched by the
+   code" link) is rendered in the wordings of both cases — .veriqa-if-qr and .veriqa-if-no-qr — switched by the
    same two conditions as the block above, so the page can never promise a QR it does not show. The
    switch is here and not in a script for the same reason the QR's is: one decision, one place. The
    QR wording is the default state, and display: revert returns its counterpart to whatever display
@@ -228,30 +243,372 @@ body {
 [data-qr-visibility="never"] .veriqa-if-no-qr,
 [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-if-no-qr { display: inline; display: revert; }
 
+/* Channel button visibility (setting Veriqa:AuthPageDesign:ChannelButton:ShowChannelButton) - the
+   counterpart of the QR visibility above, handed over in data-channel-button-visibility on the root
+   element; the attribute values are the lower-cased names of ChannelButtonVisibility. Its subject is
+   a button that takes the user INTO a channel: the "Sign in with ..." / "Confirm in ..." link of a channel and the "open mail
+   client" link of Email. The button revealing the email form carries the same channel class but
+   leads nowhere - it opens a form on this very page - so it is excluded by name; the form itself and
+   the links switching the two Email sections are no channel buttons at all.
+   "never" hides the button on every device. "mobileonly" hides it wherever data-device does not say
+   "mobile": the button is shown on a phone the head script recognised and nowhere else - a tablet, a
+   desktop, a television, and a browser that ran no script and so set no marker. The server hands
+   over neither value where the page settings together would hide both the QR and the button on a
+   device: there the attribute reads "always", and no rule below applies.
+   display: none, like the QR: a hidden link leaves the tab order and the accessibility tree. */
+[data-channel-button-visibility="never"] .veriqa-btn-channel:not(.veriqa-email-reveal),
+[data-channel-button-visibility="mobileonly"]:not([data-device="mobile"]) .veriqa-btn-channel:not(.veriqa-email-reveal) { display: none; }
+
+/* The Push section of Email offers its address form under the mail-client button: the "OR" divider and
+   the link that opens the form. The pair follows the button - where the button is hidden, so is the way
+   around it - under the two conditions of the button rule above, spelled the same way; the id outranks
+   the rules that lay the divider out on the split card. The panel of Email Pull - its form and the button
+   revealing it - is not touched: there the form is the only way in. */
+[data-channel-button-visibility="never"] #veriqa-push-section .veriqa-divider,
+[data-channel-button-visibility="never"] #veriqa-show-pull,
+[data-channel-button-visibility="mobileonly"]:not([data-device="mobile"]) #veriqa-push-section .veriqa-divider,
+[data-channel-button-visibility="mobileonly"]:not([data-device="mobile"]) #veriqa-show-pull { display: none; }
+
+/* The wording follows the button as it follows the QR. The instruction of the page is rendered in
+   three wordings, and the two conditions - of the QR above, of the button here - leave exactly one
+   on screen: "the QR code or the button" carries .veriqa-if-qr and .veriqa-if-button and shows
+   while both are there; "the QR code" carries .veriqa-if-qr and .veriqa-if-no-button and shows
+   while the QR is there and the button is not; "the button" carries .veriqa-if-no-qr alone, because
+   page settings that hide the QR always show the button - the server hands over no pair of values
+   that hides both on a device, so the rules of the two conditions never meet on one wording. A single
+   panel can still be left with neither - a channel whose QR code could not be drawn, under settings
+   that hide the buttons: the server renders that panel no instruction at all, so no rule here is involved.
+   The conditions are the two of the button rule above, spelled the same way: a browser that ran no
+   script sets no data-device and, under "mobileonly", reads the wording of a page without the
+   button - the page it actually gets. display: revert and the inline before it - as for the QR. */
+.veriqa-if-no-button { display: none; }
+[data-channel-button-visibility="never"] .veriqa-if-button,
+[data-channel-button-visibility="mobileonly"]:not([data-device="mobile"]) .veriqa-if-button { display: none; }
+[data-channel-button-visibility="never"] .veriqa-if-no-button,
+[data-channel-button-visibility="mobileonly"]:not([data-device="mobile"]) .veriqa-if-no-button { display: inline; display: revert; }
+
+/* The channel a page with one channel names in its instruction: the brand icon of the tab and the
+   name, which a line break never parts: the pair is one box of the line, so it moves to the next
+   line whole. Only a name longer than the line itself wraps, inside the box, with the icon at its
+   start. The icon keeps the color of its channel (.veriqa-tab-icon--*, or the color stated for the
+   button of the channel), sits on the line of the text and stands off the name by a spacing token. */
+.veriqa-instruction-channel { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+.veriqa-instruction-channel .veriqa-tab-icon { vertical-align: text-bottom; margin-inline-end: var(--veriqa-spacing-xs); }
+
+/* The instruction of a page with tabs names the channel of the selected tab: a wording holds a variant per
+   tab, stacked in one cell of a grid, so the wording is as tall as its longest variant whichever tab is
+   selected and the block under it does not move. A variant of a tab that is not selected is hidden by
+   visibility, not display: it keeps its place in the cell and leaves the accessibility tree. */
+.veriqa-tab-wordings { display: inline-grid; }
+.veriqa-tab-wording { grid-area: 1 / 1; }
+.veriqa-tab-wording--hidden { visibility: hidden; }
+
+/* Buttons layout of the channels: no tab strip, every channel panel on screen in the order of the
+   set, each with its button. Two conditions switch it on: the modifier of the channel container,
+   which the server renders where the layout does not depend on the device, and the pair of root
+   attributes that hides the QR on a phone — the same phone check, made once by the head script.
+   The layout is a feature of its own: it does not touch the QR (the rules above do), so the modifier
+   alone gives buttons under a visible QR. A browser that runs no script never gets data-device and
+   keeps the tabs.
+   The Email Pull form waits behind a button of its own, which reveals it in place: the script flips
+   aria-expanded on the button, and the form shows while it is expanded. The button is rendered
+   right ahead of the form and is hidden outside the layout, where the form stands in its panel as
+   it always has.
+   The "Any channel" tab (.veriqa-channels--any-channel on the channel container, rendered by the server
+   and switched by the page script) lays the panels out the same way under the tab strip: every panel on
+   screen with its button, the Email Pull form behind its button. The strip stays - that state is not
+   the buttons layout, so the rule hiding the strip leaves it alone. */
+.veriqa-email-reveal { display: none; }
+.veriqa-channels--buttons .veriqa-tabs,
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-tabs { display: none; }
+.veriqa-channels--buttons .veriqa-panel--inactive,
+.veriqa-channels--any-channel .veriqa-panel--inactive,
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-panel--inactive { display: block; }
+.veriqa-channels--buttons .veriqa-email-reveal,
+.veriqa-channels--any-channel .veriqa-email-reveal,
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-email-reveal { display: inline-flex; }
+.veriqa-channels--buttons .veriqa-email-reveal[aria-expanded="false"] + .veriqa-email-form,
+.veriqa-channels--any-channel .veriqa-email-reveal[aria-expanded="false"] + .veriqa-email-form,
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-email-reveal[aria-expanded="false"] + .veriqa-email-form { display: none; }
+
+/* The two states of a page that shows the unified QR code next to the QR code of each channel. Under the
+   "Any channel" tab the unified QR code stands for every channel, so the panels show no QR code of their
+   own, and the wording of a panel that names a QR code takes its wording without one - the panel is the
+   one of the page with the unified QR code. Under a channel tab the unified QR code leaves and the panel
+   of that channel shows its own. The rules of the QR visibility on a phone hide both kinds as they hide
+   any QR code. */
+.veriqa-channels--any-channel .veriqa-panel .veriqa-qr,
+.veriqa-channels--any-channel .veriqa-panel .veriqa-if-qr,
+.veriqa-channels:not(.veriqa-channels--any-channel) .veriqa-qr--any-channel { display: none; }
+.veriqa-channels--any-channel .veriqa-panel .veriqa-if-no-qr { display: inline; display: revert; }
+
+/* A page whose "Any channel" tab shows the unified QR code alone: under that tab the channel panels leave,
+   while each channel tab keeps its panel. Where no QR code is shown - a phone under "desktoponly" - the
+   buttons are the only way in, and every panel stays. */
+.veriqa-channels--any-channel.veriqa-channels--any-channel-qr-only .veriqa-panel { display: none; }
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-channels--any-channel-qr-only .veriqa-panel { display: block; }
+
+/* Grid layout of the channels (setting Veriqa:AuthPageDesign:ChannelLayout, value Grid): every
+   channel panel on screen at once, side by side, each under the name of its channel - where the page
+   would otherwise put the panels behind tabs. The server renders it: the card carries the modifier
+   and the number of its channels (--veriqa-channel-count), the panels stand in a row of their own
+   inside the channel container, and there is no tab strip in the markup at all.
+   The card gives up its one-column ceiling. Its width is the width it has today plus one more column
+   for every further channel, so one channel would give exactly today's card; it never exceeds the
+   window less the margins the card always keeps. A panel is as wide as today's column
+   (--veriqa-channel-column: the 420px card less its 40px padding and 1px border on either side)
+   wherever the row has room for it. On a narrower window the panels of a row share what there is,
+   down to the width a QR code needs - the code with the padding and the border of its block - and
+   the panels that do not fit even so wrap onto the next line; on a phone-wide window that leaves one
+   panel a line, the column the page has always been.
+   Written for the engines of televisions as well as for current ones: the space between the panels
+   is a margin on each of them, taken back at the two ends of the row by a negative margin of the
+   row, and the upper bound of every width is a max-width declaration of its own. */
+.veriqa-container--grid {
+    --veriqa-channel-column: 338px;
+    width: calc(420px + (var(--veriqa-channel-count) - 1) * (var(--veriqa-channel-column) + 2 * var(--veriqa-spacing-sm)));
+    max-width: calc(100% - var(--veriqa-spacing-48));
+}
+.veriqa-channel-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: 0 calc(-1 * var(--veriqa-spacing-sm));
+}
+.veriqa-channel-grid .veriqa-panel {
+    flex: 1 1 auto;
+    width: calc(var(--veriqa-qr-size) + 2 * var(--veriqa-spacing-lg) + 2px);
+    min-width: 0;
+    max-width: var(--veriqa-channel-column);
+    margin: 0 var(--veriqa-spacing-sm);
+}
+
+/* Name of a channel over its panel in the grid layout - what the tab says in the tab layout, under
+   the same brand icon. The panel is a group labelled by this element. A name declared by a
+   third-party adapter has the whole column to itself, so it wraps instead of being clipped. */
+.veriqa-channel-name {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--veriqa-spacing-12);
+    font-family: var(--veriqa-font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--veriqa-text);
+}
+.veriqa-channel-name .veriqa-tab-icon { margin-right: var(--veriqa-spacing-6); }
+.veriqa-channel-name span { min-width: 0; overflow-wrap: anywhere; }
+
+/* The controls under the row stay one column wide: a button stretched across a card of several
+   columns would read as a banner. Both are centered in the card - the form by its margins, the link
+   by the alignment of the card's text. */
+.veriqa-container--grid .veriqa-cancel,
+.veriqa-container--grid .veriqa-btn-restart { max-width: var(--veriqa-channel-column); }
+.veriqa-container--grid .veriqa-cancel { margin-left: auto; margin-right: auto; }
+
+/* The spare code in the block of the started hop stays one column wide too, in the middle of the card:
+   stretched across several columns, its field would be far wider than the short code it holds. */
+.veriqa-container--grid .veriqa-hop-instruction .veriqa-start-code--spare {
+    max-width: var(--veriqa-channel-column);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* A phone under "desktoponly" has no QR code to show side by side: there the grid markup is laid out
+   as the buttons layout above, exactly as the tab markup is - the card back at its one column, the
+   panels stacked as ordinary blocks, and the channel names gone, since each button names its
+   channel. The page script takes the group role off the panels by the same condition. */
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--grid { width: 420px; }
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-channel-grid { display: block; margin: 0; }
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-channel-grid .veriqa-panel { width: auto; max-width: none; margin: 0; }
+[data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-channel-name { display: none; }
+
+/* Split card of the unified QR code (.veriqa-container--split): on a window wide enough for it the card is
+   680px wide and takes two columns - the QR code on the left, the channel buttons in their brand colors on
+   the right - and keeps that width whichever tab is selected. The window must hold the card with the
+   margins the card always keeps (680px + 48px); on a narrower one nothing below applies and the card stays
+   the one column it has always been.
+   The channel container is the grid: the tab strip across both columns, the unified QR code in the left
+   one and the stack of the panels (.veriqa-channel-stack) in the right one. Under a channel tab the unified
+   QR code leaves and the stack takes both columns: the panel of that channel is then the pair
+   (.veriqa-qr-pair) - its own QR code on the left, the rest of it on the right, centred on the QR code - and
+   a panel with no QR code of its own (.veriqa-split-single) is one column in the middle of the card. The
+   Push section of Email is the pair of its panel, and its email form one column. A column is the content
+   of the card - 680px less the 40px padding and the 1px border on either side - less the gap, halved:
+   287px (--veriqa-split-column). A QR code standing in a column keeps no space under itself: the card is
+   made lower, not the row taller. The controls under the columns stay one column wide, as on the grid card,
+   and so does the spare code in the block of the started hop.
+   The "OR" divider of Email leaves: the link to the email form stands right under the button.
+   These rules come before those of the page states on purpose: the states take the channel container away
+   by selectors of the same weight, and the later rule wins.
+   A phone under "desktoponly" gets the buttons layout from this markup as it does from any other: the card
+   back at its one column, the panels one under another. The container stays a grid there, of one column -
+   giving it its display back would outweigh the rules of the page states. */
+@media (min-width: 728px) {
+    .veriqa-container--split {
+        --veriqa-split-column: 287px;
+        width: 680px;
+        max-width: calc(100% - var(--veriqa-spacing-48));
+    }
+    .veriqa-container--split .veriqa-channels {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: var(--veriqa-spacing-lg);
+        align-items: center;
+    }
+    .veriqa-container--split .veriqa-channels > .veriqa-tabs,
+    .veriqa-container--split .veriqa-channels > .veriqa-tooltip-host { grid-column: 1 / -1; }
+    .veriqa-container--split .veriqa-channels > .veriqa-qr { grid-column: 1; margin-bottom: 0; }
+    .veriqa-container--split .veriqa-qr-pair > .veriqa-qr { margin-bottom: 0; }
+    .veriqa-container--split .veriqa-channel-stack { grid-column: 1 / -1; }
+    .veriqa-container--split .veriqa-channels--buttons .veriqa-channel-stack,
+    .veriqa-container--split .veriqa-channels--any-channel .veriqa-channel-stack { grid-column: 2; }
+    .veriqa-container--split .veriqa-channels--any-channel-qr-only > .veriqa-qr { grid-column: 1 / -1; justify-self: center; }
+    .veriqa-container--split .veriqa-channels:not(.veriqa-channels--any-channel) .veriqa-qr-pair:not(.veriqa-panel--inactive) {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: var(--veriqa-spacing-lg);
+        align-items: center;
+    }
+    .veriqa-container--split .veriqa-channels:not(.veriqa-channels--any-channel) .veriqa-split-single {
+        max-width: var(--veriqa-split-column);
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .veriqa-container--split .veriqa-divider { display: none; }
+    .veriqa-container--split .veriqa-divider + .veriqa-text-link { margin-top: 0; }
+    .veriqa-container--split .veriqa-cancel,
+    .veriqa-container--split .veriqa-btn-restart { max-width: var(--veriqa-split-column); }
+    .veriqa-container--split .veriqa-cancel { margin-left: auto; margin-right: auto; }
+    .veriqa-container--split .veriqa-hop-instruction .veriqa-start-code--spare {
+        max-width: var(--veriqa-split-column);
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--split { width: 420px; }
+    [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--split .veriqa-channels { grid-template-columns: none; }
+    [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--split .veriqa-channel-stack { grid-column: auto; }
+    [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--split .veriqa-divider { display: flex; }
+    [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--split .veriqa-divider + .veriqa-text-link { margin-top: var(--veriqa-spacing-12); }
+    [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--split .veriqa-cancel,
+    [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--split .veriqa-btn-restart,
+    [data-qr-visibility="desktoponly"][data-device="mobile"] .veriqa-container--split .veriqa-hop-instruction .veriqa-start-code--spare { max-width: none; }
+}
+
+/* Hop started (data-hop-started). The page script sets the attribute on the first hop code it
+   receives and does nothing else: the channel choice and the lead instruction describing it leave,
+   and the instruction block rendered for this moment takes their place. The subject of a
+   confirmation, the status line and the countdown stay. The block is hidden by default, so a page
+   whose script never runs keeps the channel choice. These rules come before the expired ones below
+   on purpose: an expired page hides the block again with a selector of the same weight, and the
+   later rule wins. */
+.veriqa-hop-instruction { display: none; }
+[data-hop-started] .veriqa-channels,
+[data-hop-started] .veriqa-instruction--lead { display: none; }
+[data-hop-started] .veriqa-hop-instruction { display: block; }
+
+/* Answer given elsewhere (data-page-state="answer-elsewhere"). The page script writes the state when the
+   question of the sign-in waits on another page or in a channel's chat: the scanner page sent back to the
+   window, a page that shows the line of the answer of a channel's bot. The transaction is bound to a
+   subject by then, so every way into a channel leaves - the channel choice as ONE container, the unified
+   QR included, the lead instruction, the block of the started hop and the spare code of a phone. The
+   subject, the status line, the countdown and "Cancel sign-in" stay. The rule comes after the started hop
+   on purpose: the block of the hop is shown there by a selector of the same weight, and the later rule
+   wins. The terminal states write their own value over this one. */
+[data-page-state="answer-elsewhere"] .veriqa-channels,
+[data-page-state="answer-elsewhere"] .veriqa-instruction--lead,
+[data-page-state="answer-elsewhere"] .veriqa-hop-instruction,
+[data-page-state="answer-elsewhere"] .veriqa-spare-return { display: none; }
+
+/* Spare start code (data-spare-code-held). A head script sets the attribute on a page that shows a
+   spare start code, and from then on a code is on screen only once the page script opened it. With
+   scripts off the attribute is never set and every code is shown from the load. */
+[data-spare-code-held] .veriqa-spare-code:not(.veriqa-spare-code--open) { display: none; }
+
+/* The block under the status line of a phone: hidden by its attribute until the page script shows it,
+   and gone with every ending of the page. Its link is the way to a code the person needs right now, so
+   it reads as the main text of the card does - bold, in the text color, not smaller than that text -
+   rather than as the muted toggle links. */
+[data-page-state="expired"] .veriqa-spare-return,
+[data-page-state="failed"] .veriqa-spare-return,
+[data-page-state="completed"] .veriqa-spare-return { display: none; }
+.veriqa-spare-return { margin-top: var(--veriqa-spacing-sm); }
+.veriqa-spare-return-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--veriqa-text);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.6;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    display: block;
+    width: 100%;
+    text-align: center;
+}
+.veriqa-spare-return-link:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; border-radius: 2px; }
+.veriqa-spare-return .veriqa-spare-code { margin-top: var(--veriqa-spacing-sm); }
+
 /* Expired page (data-page-state). The state is written on the root element by the page script, in
    the one function every path into expiry passes through — the verification the countdown makes at
    zero, the status delivered over SignalR, the 404 of the polling fallback. What the state does is
-   drop every way INTO the transaction and show the one way out: a QR that no longer scans, a deep
-   link that no longer resolves and an email form the server would refuse are three ways to spend
-   the user's attention on an action that cannot succeed. The channel tabs stay — switching one
-   sends no request, and hiding them would rebuild the card under the user's eyes.
-   The rules deliberately target only elements that carry NO inline display of their own: the panel
-   containers and the two Email sections are switched by the script with style.display, and a rule
-   over them would lose to it without !important. They need no hiding anyway — everything inside
-   them is hidden here by its own selector. display: none rather than a visual offset, so a hidden
-   control leaves the accessibility tree with its label. */
-[data-page-state="expired"] .veriqa-qr,
-[data-page-state="expired"] .veriqa-btn-channel,
-[data-page-state="expired"] .veriqa-divider,
-[data-page-state="expired"] .veriqa-email-form,
-[data-page-state="expired"] #veriqa-show-pull,
-[data-page-state="expired"] #veriqa-show-push { display: none; }
+   take away everything that belonged to the sign-in that did not happen and show the one way out:
+   the title and the lead instruction invite an action that can no longer succeed, and a QR that no
+   longer scans, a deep link that no longer resolves and an email form the server would refuse are
+   three ways to spend the user's attention on it. The brand row, the subject of a confirmation, the
+   status line with the text of the expiry and the restart button stay.
+   The channel choice leaves as ONE container, the way it does once the hop has started and on a
+   completed page, so nothing inside it needs a rule of its own - the two Email sections the script
+   switches with style.display included. The title stays in the document: what the screen means is
+   carried by the status line, a live region, alone - the title of the document is not rewritten on
+   expiry and still names the sign-in. display: none rather
+   than a visual offset, so a hidden control leaves the accessibility tree with its label.
+   Failed page (data-page-state="failed"): a transaction that failed, on a page that shows that ending
+   as its last screen - a page with no callback to take it to. The screen is
+   the same one: the same things belonged to the sign-in that did not happen, the hop instruction that
+   tells the user to go on in the application among them, and the status line carries the outcome.
+   The heading of a chosen channel is not these rules' to take: the status block of the page takes it
+   away with the first line it shows, the same way on every page that follows a transaction to its end,
+   so the selectors of the title leave it out. */
+[data-page-state="expired"] .veriqa-title:not(.veriqa-launch-title),
+[data-page-state="expired"] .veriqa-instruction--lead,
+[data-page-state="expired"] .veriqa-channels,
+[data-page-state="expired"] .veriqa-hop-instruction,
+[data-page-state="expired"] .veriqa-cancel,
+[data-page-state="failed"] .veriqa-title:not(.veriqa-launch-title),
+[data-page-state="failed"] .veriqa-instruction--lead,
+[data-page-state="failed"] .veriqa-channels,
+[data-page-state="failed"] .veriqa-hop-instruction,
+[data-page-state="failed"] .veriqa-cancel { display: none; }
+
+/* Completed page that ends here (data-page-state="completed"): a page that does not leave - the entry
+   page of a confirmation and the scanner page of either type. The script writes the state on completion
+   only on such a page; the whole channel choice leaves with the lead instruction describing it, the block
+   of the hop and the cancel form go with them, and the title, the subject and the success line of the
+   status are the last screen. */
+[data-page-state="completed"] .veriqa-channels,
+[data-page-state="completed"] .veriqa-instruction--lead,
+[data-page-state="completed"] .veriqa-hop-instruction,
+[data-page-state="completed"] .veriqa-cancel { display: none; }
 
 /* The way out, rendered ready and hidden: only the state attribute reveals it, so the page needs no
    script to build a link whose target the server already knows. display matches the .veriqa-btn
    primitive it is a modifier of (veriqa-core-base.css). */
 .veriqa-btn-restart { display: none; margin-top: var(--veriqa-spacing-md); }
-[data-page-state="expired"] .veriqa-btn-restart { display: inline-flex; }
+[data-page-state="expired"] .veriqa-btn-restart,
+[data-page-state="failed"] .veriqa-btn-restart { display: inline-flex; }
+
+/* "Cancel sign-in" / "Cancel confirmation": a plain form under the status and the countdown, holding the
+   secondary variant of the button (veriqa-core-base.css). The form stands alone - one button, no row of
+   actions - so it carries the space above itself. An expired page, a failed one and a completed page that
+   does not leave drop it with the rest of the ways to act on the transaction (the rules above); a page
+   leaving for its callback with a refusal writes no page state, and the page script hides the form there. */
+.veriqa-cancel { margin-top: var(--veriqa-spacing-md); }
 
 /* QR code */
 .veriqa-qr {
@@ -293,17 +650,16 @@ body {
     height: auto;
 }
 
-/* Channel buttons: the primitive itself is declared once in veriqa-core-base.css;
-   here are only the modifiers of the sign-in window. */
+/* Channel buttons: the primitive and its channel colors are declared once in
+   veriqa-core-base.css; here are only the modifiers of the sign-in window. */
 .veriqa-btn-channel { margin-bottom: var(--veriqa-spacing-md); }
-.veriqa-btn-telegram { background: #26a5e4; border-color: #26a5e4; color: #ffffff; }
-.veriqa-btn-whatsapp { background: #25d366; border-color: #25d366; color: #ffffff; }
-.veriqa-btn-max { background: #9500ff; border-color: #9500ff; color: #ffffff; }
 .veriqa-tab-icon--telegram { color: #26a5e4; }
 .veriqa-tab-icon--whatsapp { color: #25d366; }
+.veriqa-tab-icon--instagram { color: #ff0069; }
+.veriqa-tab-icon--messenger { color: #0866ff; }
+.veriqa-tab-icon--wechat { color: #07c160; }
+.veriqa-tab-icon--viber { color: #7360f2; }
 .veriqa-tab-icon--max { color: #9500ff; }
-.veriqa-btn-email { background: var(--veriqa-primary); border-color: var(--veriqa-primary); }
-.veriqa-btn-default { background: var(--veriqa-primary); border-color: var(--veriqa-primary); }
 
 /* Status */
 .veriqa-status {
@@ -336,27 +692,6 @@ body {
     50% { opacity: 0.25; }
 }
 
-/* Spinner */
-.veriqa-spinner {
-    display: none;
-    margin: var(--veriqa-spacing-md) auto 0;
-    width: 24px;
-    height: 24px;
-    border: 2px solid var(--veriqa-surface-variant);
-    border-top-color: var(--veriqa-primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* Timer */
-.veriqa-countdown {
-    margin-top: var(--veriqa-spacing-sm);
-    font-size: 0.6875rem;
-    font-family: var(--veriqa-font-mono);
-    color: var(--veriqa-soft);
-}
-.veriqa-countdown.warning { color: var(--veriqa-error); }
 
 /* Email form */
 .veriqa-email-form { margin: var(--veriqa-spacing-xs) 0 var(--veriqa-spacing-md); text-align: left; }
@@ -391,44 +726,74 @@ body {
     display: none;
 }
 .veriqa-email-msg.error { color: var(--veriqa-error); }
+/* The step of the code takes the place of the address once a mail carrying a code is sent: the field of
+   the address and its button are hidden by the page script, and the display of the field would otherwise
+   win over the hidden attribute. */
+.veriqa-email-input[hidden] { display: none; }
+/* The step of the code is centered, like its field, button and link; the message line under it follows
+   while the step is shown, so a wrong code is reported on the same axis. */
+.veriqa-email-code-sent {
+    margin-bottom: var(--veriqa-spacing-10);
+    font-size: 0.75rem;
+    color: var(--veriqa-text);
+    font-family: var(--veriqa-font-mono);
+    text-align: center;
+}
+.veriqa-email-code:not([hidden]) ~ .veriqa-email-msg { text-align: center; }
+.veriqa-email-code-input { text-align: center; letter-spacing: 0.3em; font-family: var(--veriqa-font-mono); }
 
-/* Push/Pull toggle link button */
-.veriqa-text-link {
-    background: none;
-    border: none;
-    color: var(--veriqa-soft);
-    font-size: 0.6875rem;
-    cursor: pointer;
+/* Chosen channel of the scanner page (data-channel-chosen). The page script sets the attribute when a
+   link into a channel is tapped and shows the heading of that channel, rendered hidden by the server:
+   the title of the page, the lead instruction and the channel choice leave, and the way back to the
+   choice - a text link, hidden until then - takes their place. A display mode inside the waiting state,
+   like the started hop. The way back is gone for good once the answer is given elsewhere or the page has
+   ended: those rules come after the one that shows it, with a selector of the same weight. The rules
+   stand after the text link on purpose - it is declared in the shared layer, which comes before this
+   file: the way back is a text link, and its own display has to win. */
+.veriqa-chosen-back { display: none; }
+[data-channel-chosen] .veriqa-title:not(.veriqa-launch-title),
+[data-channel-chosen] .veriqa-instruction--lead,
+[data-channel-chosen] .veriqa-channels { display: none; }
+[data-channel-chosen] .veriqa-chosen-back { display: block; }
+[data-page-state="answer-elsewhere"] .veriqa-chosen-back,
+[data-page-state="expired"] .veriqa-chosen-back,
+[data-page-state="failed"] .veriqa-chosen-back,
+[data-page-state="completed"] .veriqa-chosen-back { display: none; }
+
+/* Instruction block shown once the hop has started: the main text of the card at that moment, so
+   it takes the text color rather than the muted tone of the lead instruction it replaces. Its
+   content may be the integrator's markup; its blocks are spaced apart (the base layer zeroes every
+   margin, and a margin does not move an inline element) and a bare <a> is underlined like the
+   footer's. */
+.veriqa-hop-instruction {
+    color: var(--veriqa-text);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    margin-block: var(--veriqa-spacing-md);
+}
+.veriqa-hop-instruction > * + * { margin-top: var(--veriqa-spacing-sm); }
+.veriqa-hop-instruction a {
+    color: var(--veriqa-text);
     text-decoration: underline;
     text-underline-offset: 2px;
-    margin-top: var(--veriqa-spacing-12);
-    padding: 0;
-    font-family: var(--veriqa-font-mono);
-    display: block;
-    width: 100%;
-    text-align: center;
-    transition: color var(--veriqa-transition-fast);
 }
-.veriqa-text-link:hover { color: var(--veriqa-text); }
-.veriqa-text-link:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; border-radius: 2px; }
+.veriqa-hop-instruction a:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; border-radius: 2px; }
 
-/* "OR" divider between the mail-client button and the manual email entry link */
-.veriqa-divider {
-    display: flex;
-    align-items: center;
-    gap: var(--veriqa-spacing-10);
-    margin: var(--veriqa-spacing-14) 0 0;
-    color: var(--veriqa-soft);
+/* Label of the StatusBadge primitive (SPEC-015 §4.4) — the rule of the service pages
+   (veriqa-service-page.css), which this window does not load. The page script puts it into the live
+   region above the hop instruction when the hop link is opened once more from another browser. No
+   bottom margin here: the instruction block below keeps its own, and the two would add up. */
+.veriqa-badge {
+    display: inline-block;
+    background: var(--veriqa-warning-surface);
+    color: var(--veriqa-on-warning-surface);
     font-size: 0.625rem;
-    letter-spacing: 0.08em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: var(--veriqa-spacing-2) var(--veriqa-spacing-sm);
+    border-radius: 4px;
     font-family: var(--veriqa-font-mono);
-}
-.veriqa-divider::before,
-.veriqa-divider::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: var(--veriqa-surface-variant);
 }
 
 /* Integrator's footer block: the markup inside it is theirs, and these rules only keep the block

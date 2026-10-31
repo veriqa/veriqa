@@ -50,6 +50,21 @@ public static class ChannelTelemetry
     public const string UnservedStartsCounterName = "veriqa.channel.start.unserved";
 
     /// <summary>
+    /// Counter of channel events that name a transaction of a tenant other than the owner of the
+    /// channel registration they arrived through. Such an event is answered as one naming an unknown
+    /// transaction, so the answer shows nothing; the counter is what shows the operator a search
+    /// through the identifiers of other tenants.
+    /// </summary>
+    public const string ForeignTransactionEventsCounterName = "veriqa.channel.event.foreign_transaction";
+
+    /// <summary>
+    /// Counter of channel message templates the core could not resolve for an adapter: the message
+    /// was not sent. It is separate from <see cref="FailedNoticesCounterName"/>, which counts what
+    /// the channel failed to deliver.
+    /// </summary>
+    public const string TemplateResolutionFailuresCounterName = "veriqa.channel.template.failures";
+
+    /// <summary>
     /// Tag: channel type the failed notification belonged to.
     /// </summary>
     public const string ChannelTypeTag = "channel_type";
@@ -64,6 +79,11 @@ public static class ChannelTelemetry
     /// Tag: kind of the notification (see <see cref="ChannelNoticeKinds"/>).
     /// </summary>
     public const string NoticeKindTag = "notice_kind";
+
+    /// <summary>
+    /// Tag: kind of the message whose template could not be resolved (a <c>MessageKinds</c> value).
+    /// </summary>
+    public const string MessageKindTag = "message_kind";
 }
 
 /// <summary>

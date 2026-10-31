@@ -61,4 +61,18 @@ public static class OidcErrorCodes
     /// Error preparing channel data for the UI.
     /// </summary>
     public const string ChannelDisplayFailed = "channel_display_failed";
+
+    /// <summary>
+    /// The phone number is required of the sign-in, but no channel available to the request can provide
+    /// it (SPEC-041 L48): the request is refused before a transaction is created.
+    /// </summary>
+    public const string NoChannelForRequiredPhone = "no_channel_for_required_phone";
+
+    /// <summary>
+    /// The collected claims store, or the resolution of the tenant of the calling client, failed to answer
+    /// (SPEC-041 C82), and the request may be repeated. A failed tenant resolution deleted nothing. When the
+    /// subject stands for several core subjects, those deleted before the store failed stay deleted and
+    /// recorded in the audit journal; the repeated request completes the deletion.
+    /// </summary>
+    public const string CollectedClaimsStoreUnavailable = "collected_claims_store_unavailable";
 }

@@ -12,7 +12,11 @@ the OpenIddict issuer runs inside the process. This is the only public way of in
 ## Prerequisites
 
 - .NET SDK 10.0+
-- (optional) a demo bot token for the Telegram or MAX channel, if you want a real sign-in via a messenger
+- A trusted local HTTPS development certificate — `dotnet dev-certs https --trust`. The paired client
+  fetches this issuer's metadata over HTTPS and refuses an untrusted certificate. On Linux the
+  command also prints an `SSL_CERT_DIR` value to export — see the
+  [.NET quickstart](https://veriqa.app/docs/quickstart/dotnet).
+- (optional) a demo bot token for the Telegram channel, if you want a real sign-in via a messaging app
 
 ## Running
 
@@ -21,8 +25,16 @@ dotnet run --project samples/dotnet/inproc/login
 ```
 
 The application starts at `https://localhost:7300` (see `Properties/launchSettings.json`).
-Open the root route `/` — after a successful sign-in the single result page
-`Hello, {name}!` is shown; before sign-in — `Hello!`.
+Its root route `/` answers `Hello!` and nothing more: it tells the host is up.
+
+This application is the issuer, so it starts no sign-in and has no page for a signed-in user. A
+sign-in is started by a relying party and ends there: run the paired client sample in a second
+terminal and open `https://localhost:7020/` — after the sign-in that page shows `Hello, {name}!`.
+See [`../login-client`](../login-client).
+
+```bash
+dotnet run --project samples/dotnet/inproc/login-client
+```
 
 ## Configuration
 
@@ -39,7 +51,7 @@ Open the root route `/` — after a successful sign-in the single result page
 
 1. Wiring up the Veriqa AuthServer in inproc mode (region `snippet` in `Program.cs`).
 2. OIDC routing with a single `MapVeriqaAuthServer` call (region `snippet-routing`).
-3. The single result page `Hello, {name}!`.
+3. The root route as a plain "the host is up" page — the result page belongs to the client.
 
 ## Further reading
 

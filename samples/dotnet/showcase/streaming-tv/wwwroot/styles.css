@@ -300,6 +300,14 @@ body {
   margin-right: 1.2vw;
 }
 
+.viewer-traits {
+  font-size: 1.7vh;
+}
+
+.viewer-traits:empty {
+  display: none;
+}
+
 .top-bar-avatar {
   height: 4.6vh;
   margin-right: 1.2vw;
@@ -337,6 +345,22 @@ body {
   border-radius: 1.2vh;
   overflow: hidden;
   padding: 0;
+  /* The frame the "For you" badge is placed against. */
+  position: relative;
+}
+
+/* Laid over the corner of the cover rather than into the body: a tile with the badge then keeps the
+   height of a tile without one, and the row of buttons stays level. */
+.tile-badge {
+  background: var(--brand);
+  border-radius: 0.6vh;
+  color: #ffffff;
+  font-size: 1.6vh;
+  font-weight: 700;
+  left: 0.8vw;
+  padding: 0.3vh 0.7vw;
+  position: absolute;
+  top: 1.2vh;
 }
 
 .tile-cover {
@@ -375,6 +399,22 @@ body {
   border: 0.4vh solid transparent;
   border-radius: 0.8vh;
   color: #ffffff;
+  cursor: pointer;
+  display: block;
+  font-family: inherit;
+  font-size: 2vh;
+  font-weight: 700;
+  padding: 1.1vh 0;
+  width: 100%;
+}
+
+/* The control of a title the viewer's age closes: the size and place of the buy button, so the grid
+   and the remote meet the same geometry, but drawn as something that is not for sale. */
+.tile-locked {
+  background: transparent;
+  border: 0.4vh solid var(--line);
+  border-radius: 0.8vh;
+  color: var(--text-dim);
   cursor: pointer;
   display: block;
   font-family: inherit;
@@ -439,6 +479,11 @@ body {
   margin-right: 2.5vw;
   padding: 1vh;
   width: 28vh;
+}
+
+/* A window with no code to scan — a title closed by age — drops the white square altogether. */
+.modal-qr[hidden] {
+  display: none;
 }
 
 .modal-qr img {

@@ -65,6 +65,15 @@ internal sealed class ConfigResolutionStartupDiagnosticsService : IHostedService
     private readonly IReadOnlyList<ConfigKeyCatalog> _declarations;
 
     /// <summary>
+    /// Levels the contour reads through a reader of DOCUMENTS — a record walked by path
+    /// (<see cref="ConfigurationResolverServiceCollectionExtensions.AddVeriqaConfigLevelNodeReader{TReader}"/>).
+    /// A level a key addresses by IDENTITY is never bound over such a reader
+    /// (<see cref="PathConfigKeyRegistrar"/>), so on these levels the absence of its binding is how the
+    /// contour is built rather than a forgotten one.
+    /// </summary>
+    private readonly IReadOnlySet<ConfigLevel> _documentReadLevels;
+
+    /// <summary>
     /// Logger of the startup report.
     /// </summary>
     private readonly ILogger<ConfigResolutionStartupDiagnosticsService> _logger;
@@ -76,20 +85,24 @@ internal sealed class ConfigResolutionStartupDiagnosticsService : IHostedService
     /// <param name="bindings">Registry of the extraction bindings.</param>
     /// <param name="schema">Slice of the schema of declared keys.</param>
     /// <param name="declarations">Catalogs of the declarations of this deployment.</param>
+    /// <param name="documentReadLevels">Levels the contour reads through a reader of documents.</param>
     /// <param name="logger">Logger.</param>
     public ConfigResolutionStartupDiagnosticsService(
         ConfigSourceMap sources,
         ConfigBindingRegistry bindings,
         ConfigKeySchemaView schema,
         IEnumerable<ConfigKeyCatalog> declarations,
+        IReadOnlySet<ConfigLevel> documentReadLevels,
         ILogger<ConfigResolutionStartupDiagnosticsService> logger)
     {
         ArgumentNullException.ThrowIfNull(declarations);
+        ArgumentNullException.ThrowIfNull(documentReadLevels);
 
         _sources = sources;
         _bindings = bindings;
         _schema = schema;
         _declarations = [.. declarations];
+        _documentReadLevels = documentReadLevels;
         _logger = logger;
     }
 
@@ -216,9 +229,18 @@ internal sealed class ConfigResolutionStartupDiagnosticsService : IHostedService
     /// Warns about every pair "key + level" where the level is declared by the key, served by the
     /// contour, and yet has no extraction binding: such a level is silently empty. Keys with no
     /// binding at all are out of the walk — they are named once by <see cref="ReportUnboundKeys"/>.
+    /// <para>
+    /// A pair whose level the key addresses by IDENTITY and the contour reads through a reader of
+    /// documents is not such a discrepancy: a level without a path is bound by the store that keeps
+    /// values as rows, never over a document, so in this contour it has no value for the key by
+    /// construction — the degenerate case of a level that is opt-in for the key. Warning about it would
+    /// mean warning on every normal start.
+    /// </para>
     /// </summary>
     private void ReportUnboundLevels()
     {
+        var identityAddressed = IdentityAddressedLevels();
+
         foreach (var key in _bindings.Keys)
         {
             var bound = _bindings.BoundLevelsOf(key.Name).ToHashSet();
@@ -234,7 +256,9 @@ internal sealed class ConfigResolutionStartupDiagnosticsService : IHostedService
 
             foreach (var level in key.Levels)
             {
-                if (bound.Contains(level) || _sources.SourceOf(level) is null)
+                if (bound.Contains(level)
+                    || _sources.SourceOf(level) is null
+                    || (_documentReadLevels.Contains(level) && identityAddressed.Contains((key.Name, level))))
                 {
                     continue;
                 }
@@ -247,6 +271,19 @@ internal sealed class ConfigResolutionStartupDiagnosticsService : IHostedService
             }
         }
     }
+
+    /// <summary>
+    /// Pairs "key + level" whose level a declaration of the deployment addresses by IDENTITY — with no
+    /// path at all.
+    /// </summary>
+    /// <returns>Pairs addressed by identity.</returns>
+    private HashSet<(string Name, ConfigLevel Level)> IdentityAddressedLevels() =>
+        _declarations
+            .SelectMany(catalog => catalog.Keys)
+            .SelectMany(declared => declared.Levels
+                .Where(address => address.Kind is ConfigLevelAddressKind.Identity)
+                .Select(address => (declared.Name, address.Level)))
+            .ToHashSet();
 
     /// <summary>
     /// Stops the start on a declaration that addresses a level ABOVE THE CORE ONE at a section of the

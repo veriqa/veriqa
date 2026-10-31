@@ -11,8 +11,9 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter.Max</PackageId>
     <Authors>Veriqa</Authors>
-    <Description>Passwordless OpenID Connect sign-in and action approval through MAX for ASP.NET Core (OpenIddict). Users scan a QR code on a computer, TV or kiosk, or tap a button on the phone, and confirm with one tap in MAX. Veriqa channel adapter (satellite package).</Description>
-    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;openid-connect-provider;oidc-server;identity-provider;sso;sms-alternative;human-in-the-loop;ai-agent-security;device-flow;max;cross-device-authentication;two-factor-authentication;qr-code</PackageTags>
+    <Title>MAX messenger login and authentication for ASP.NET Core</Title>
+    <Description>MAX login and authentication for ASP.NET Core and OpenIddict. Add passwordless login with MAX to your website or app over standard OpenID Connect (OIDC): users scan a QR code on a computer, TV or kiosk, or tap a button on the phone, and confirm with one tap in MAX — no password, no SMS code. The same channel approves sensitive actions and AI agent steps. Veriqa channel adapter (satellite package).</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;max;max-messenger;max-login;max-auth;max-authentication;sign-in-with-max;max-bot</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->
@@ -34,7 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Max.BotClient" Version="1.1.0" />
+    <PackageReference Include="Max.BotClient" Version="1.1.3" />
   </ItemGroup>
 
   <ItemGroup>

@@ -45,4 +45,29 @@ public interface IConfigCoreBindings
         ConfigKey<T> key,
         Func<ConfigDimensionValues, LayerValue<T>> extract,
         Func<bool>? gate = null);
+
+    /// <summary>
+    /// Registers the core-level getter of a key together with the answer the level gives where the
+    /// value it states is one the domain of the key does not admit. There is no level below the core
+    /// to cede to, so a rejected step left unset would hand the consumer the default of the TYPE — a
+    /// value nobody declared; the level answers instead as over a record stating nothing, which for a
+    /// key the product ships a default for is that default (SPEC-012 §4.1 CFG-240).
+    /// <para>
+    /// The answer is reached only where the rejection is dropped by the default of CFG-240. A core
+    /// level the walk of the snapshot covers for a key that declared
+    /// <see cref="ConfigValueRejectionPolicy.FailStart"/> keeps the answer of CFG-246 — the host does
+    /// not start, and a reload is answered with the last valid value.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="T">Type of the setting value.</typeparam>
+    /// <param name="key">Setting key.</param>
+    /// <param name="extract">Getter of the value at a chain point.</param>
+    /// <param name="overSilentRecord">
+    /// Getter of what the level states at a chain point over a record stating nothing; None — the level
+    /// has no such answer and the step is left unset.
+    /// </param>
+    void RegisterCore<T>(
+        ConfigKey<T> key,
+        Func<ConfigDimensionValues, LayerValue<T>> extract,
+        Func<ConfigDimensionValues, LayerValue<T>> overSilentRecord);
 }

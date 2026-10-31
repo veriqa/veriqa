@@ -68,8 +68,8 @@ internal static class AuthPageLocalization
 
     /// <summary>
     /// The same rule stated over the transaction's locale TAG, for a page that belongs to a transaction
-    /// it does not hold — the <c>form_post</c> auto-posting page, which renders after the transaction was
-    /// deleted and receives the tag through the HTTP context of its own request (SPEC-007 UI-102). The
+    /// it does not hold — the <c>form_post</c> auto-posting page, whose handler is not handed the
+    /// transaction and receives the tag through the HTTP context of its own request (SPEC-007 UI-102). The
     /// overload taking the transaction delegates here, so the rule stays in one place.
     /// </summary>
     /// <param name="uiLocale">Locale tag stated by the transaction, or <see langword="null"/>/empty when none.</param>

@@ -1,13 +1,27 @@
 #nullable enable
+const Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessageTypes.Button = "button" -> string!
+const Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessageTypes.Text = "text" -> string!
 const Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.DefaultGraphApiBaseUrl = "https://graph.facebook.com" -> string!
-const Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.DefaultGraphApiVersion = "v21.0" -> string!
+const Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.DefaultGraphApiVersion = "v26.0" -> string!
+const Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.DefaultApiBaseUrl = "https://api.twilio.com" -> string!
 const Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.SectionName = "Veriqa:Channels:WhatsApp" -> string!
 const Veriqa.Core.ChannelAdapter.WhatsApp.Constants.WhatsAppProviderNames.MetaCloudApi = "MetaCloudApi" -> string!
+const Veriqa.Core.ChannelAdapter.WhatsApp.Constants.WhatsAppProviderNames.Twilio = "Twilio" -> string!
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.ToString() -> string!
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.ToString() -> string!
 override Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.Equals(object? obj) -> bool
 override Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.GetHashCode() -> int
 override Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.ToString() -> string!
 static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderWhatsAppExtensions.AddWhatsApp(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!
 static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderWhatsAppExtensions.UseWhatsAppProvider<TProvider>(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!
+static Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.operator !=(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent? left, Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent? right) -> bool
+static Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.operator ==(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent? left, Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent? right) -> bool
+static Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.operator !=(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage? left, Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage? right) -> bool
+static Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.operator ==(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage? left, Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage? right) -> bool
 static Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppConfigKeys.Credentials.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials!>!
 static Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
 static Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.operator !=(Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials? left, Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials? right) -> bool
@@ -16,8 +30,40 @@ Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderWhatsAppExte
 Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider
 Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.CheckHealthAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<(bool IsHealthy, string? Details)>!
 Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.ProviderType.get -> string!
-Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.SendInteractiveButtonsMessageAsync(string! recipientPhone, string! bodyText, string! confirmButtonId, string! confirmButtonTitle, string! declineButtonId, string! declineButtonTitle, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
-Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.SendTextMessageAsync(string! recipientPhone, string! messageText, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.SendContactRequestAsync(string! recipientUserId, string! bodyText, string! secondaryButtonId, string! secondaryButtonTitle, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.ReadInboundEvent(Veriqa.Core.ChannelAdapter.Domain.ChannelInboundRequest! request) -> Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.SendInteractiveButtonsMessageAsync(string! recipientUserId, string! bodyText, string! confirmButtonId, string! confirmButtonTitle, string! declineButtonId, string! declineButtonTitle, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.SendTextMessageAsync(string! recipientUserId, string! messageText, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.ValidateWebhookAsync(Veriqa.Core.ChannelAdapter.Domain.ChannelInboundRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<bool>!>!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.<Clone>$() -> Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.Deconstruct(out System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage!>! Messages, out object? Raw) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.Equals(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent? other) -> bool
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.Messages.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage!>!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.Messages.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.Raw.get -> object?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.Raw.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundEvent.WhatsAppInboundEvent(System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage!>! Messages, object? Raw) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.<Clone>$() -> Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.ButtonPayload.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.ButtonPayload.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.Deconstruct(out string! MessageId, out string? SenderPhone, out string? SenderDisplayName, out string! MessageType, out string? Text, out string? ButtonPayload, out string? Timestamp) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.Equals(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage? other) -> bool
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.MessageId.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.MessageId.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.MessageType.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.MessageType.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SenderDisplayName.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SenderDisplayName.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SenderPhone.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SenderPhone.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.Text.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.Text.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.Timestamp.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.Timestamp.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.WhatsAppInboundMessage(string! MessageId, string? SenderPhone, string? SenderDisplayName, string! MessageType, string? Text, string? ButtonPayload, string? Timestamp) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessageTypes
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.AccessToken.get -> string!
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.AccessToken.set -> void
@@ -32,6 +78,18 @@ Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.PhoneNumbe
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.PhoneNumberId.set -> void
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.WebhookVerifyToken.get -> string!
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions.WebhookVerifyToken.set -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.AccountSid.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.AccountSid.set -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.ApiBaseUrl.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.ApiBaseUrl.set -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.AuthToken.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.AuthToken.set -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.QuickReplyContentSid.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.QuickReplyContentSid.set -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.TwilioOptions() -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.WebhookUrl.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions.WebhookUrl.set -> void
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppConfigKeys
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.AccessToken.get -> string!
@@ -53,6 +111,8 @@ Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.PhoneNumberId.
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.PhoneNumberId.set -> void
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.Provider.get -> string!
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.Provider.set -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.Twilio.get -> Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions!
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.Twilio.set -> void
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.WebhookVerifyToken.get -> string!
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.WebhookVerifyToken.set -> void
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppOptions.WhatsAppOptions() -> void
@@ -63,11 +123,52 @@ Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.<Clone>$() -> Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials!
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.BusinessPhoneNumber.get -> string!
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.BusinessPhoneNumber.init -> void
-Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.Deconstruct(out string! Provider, out string! BusinessPhoneNumber, out Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions! MetaCloudApi) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.Deconstruct(out string! Provider, out string! BusinessPhoneNumber, out Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions! MetaCloudApi, out Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions? Twilio) -> void
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.Equals(Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials? other) -> bool
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.MetaCloudApi.get -> Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions!
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.MetaCloudApi.init -> void
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.Provider.get -> string!
 Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.Provider.init -> void
-Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.WhatsAppTenantCredentials(string! Provider, string! BusinessPhoneNumber, Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions! MetaCloudApi) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.Twilio.get -> Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions?
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.Twilio.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.WhatsAppTenantCredentials.WhatsAppTenantCredentials(string! Provider, string! BusinessPhoneNumber, Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.MetaCloudApiOptions! MetaCloudApi, Veriqa.Core.ChannelAdapter.WhatsApp.Configuration.TwilioOptions? Twilio) -> void
 Veriqa.Core.ChannelAdapter.WhatsApp.Constants.WhatsAppProviderNames
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.operator !=(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact? left, Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact? right) -> bool
+static Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.operator ==(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact? left, Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact? right) -> bool
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.<Clone>$() -> Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.Deconstruct(out string? PhoneNumber, out bool SharedByRequest, out string? Origin) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.Equals(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact? other) -> bool
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.Origin.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.Origin.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.PhoneNumber.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.PhoneNumber.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.SharedByRequest.get -> bool
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.SharedByRequest.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact.WhatsAppSharedContact(string? PhoneNumber, bool SharedByRequest, string? Origin) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SharedContact.get -> Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppSharedContact?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SharedContact.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SenderUserId.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SenderUserId.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SenderUsername.get -> string?
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppInboundMessage.SenderUsername.init -> void
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.operator !=(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption? left, Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption? right) -> bool
+static Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.operator ==(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption? left, Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption? right) -> bool
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.<Clone>$() -> Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.Deconstruct(out string! Id, out string! Title) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.Equals(Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption? other) -> bool
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.Id.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.Id.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.Title.get -> string!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.Title.init -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption.WhatsAppReplyOption(string! Id, string! Title) -> void
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.SendLinkButtonMessageAsync(string! recipientUserId, string! bodyText, string! buttonText, string! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.SendListMessageAsync(string! recipientUserId, string! bodyText, string! listButtonText, System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption!>! rows, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.IWhatsAppProvider.SendReplyButtonsMessageAsync(string! recipientUserId, string! bodyText, System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.WhatsApp.Abstractions.WhatsAppReplyOption!>! buttons, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!

@@ -10,10 +10,12 @@ using OpenIddict.Validation.AspNetCore;
 using Veriqa.Core.AuthServer.Configuration;
 using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Constants;
+using Veriqa.Core.AuthServer.HopMode;
 using Veriqa.Core.AuthServer.Infrastructure;
 using Veriqa.Core.AuthServer.UI.Services;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
 using Veriqa.Core.ChannelAdapter.Pipeline;
+using Veriqa.Core.ChannelAdapter.UI;
 using Veriqa.Core.Configuration;
 using Veriqa.Core.TransactionEngine.Common;
 using Veriqa.Core.TransactionEngine.Configuration;
@@ -90,6 +92,7 @@ public static class ConfirmationTransactionEndpoint
         IMessageTemplateAccessor messageTemplates,
         CallerSlotValidator callerSlotValidator,
         IChannelDisplayService channelDisplayService,
+        HopQrContent hopQrContent,
         IQrModuleMatrixSource qrMatrixSource,
         IConfigurationResolver configResolver,
         IIdentityValueProtector identityValueProtector,
@@ -203,6 +206,13 @@ public static class ConfirmationTransactionEndpoint
                 ConfigDimensionValues.None,
                 cancellationToken)).Value;
 
+        // The brand the texts may name, over the same context as the zone above: a presentation value.
+        var brandName = (await configResolver.ResolveAsync(
+                CorePageBrandingConfigKeys.BrandName,
+                TransactionResolutionContext.ForClient(tenantId, clientId, uiConfig.Selector),
+                ConfigDimensionValues.None,
+                cancellationToken)).Value;
+
         // Step 7 — caller values, by the contract of the message kind. The engine's validator owns
         // this step whole: which slots exist, which are required, their types and the aggregate size.
         var callerValues = request.SlotValues ?? new Dictionary<string, string>(StringComparer.Ordinal);
@@ -252,6 +262,19 @@ public static class ConfirmationTransactionEndpoint
             identityMatch = accepted.Value;
         }
 
+        // SPEC-042 R60: the requested channel may be one whose registration belongs to another tenant.
+        // For this tenant such a channel does not exist, so the request is refused before anything is
+        // written, the way a channel the transaction may not use is. A channel with an owner that is
+        // only among the allowed ones is no refusal: its entry is simply not built for this tenant.
+        if (request.RequestedChannelType is { } requestedChannelType
+            && ChannelRegistrationOwnership.IsOwnedByAnotherTenant(
+                httpContext.RequestServices.GetServices<CoreChannelDeclaration>(), requestedChannelType, tenantId))
+        {
+            return Failure(
+                TransactionErrorCodes.ChannelNotAllowed,
+                "The requested channel is not available to the tenant of the calling client.");
+        }
+
         // Step 9 — translate into the existing creation. The snapshot is the transport of the caller
         // values, and it carries the NORMALIZED ones the validator produced rather than the raw text.
         var normalized = validation.Value.Values;
@@ -268,6 +291,9 @@ public static class ConfirmationTransactionEndpoint
             {
                 TenantId = tenantId,
                 ApplicationId = clientId,
+                // The name the texts show for this application — its DisplayName, as a sign-in shows it.
+                ApplicationName = clientsAccessor.Current.ApplicationNameOf(clientId),
+                BrandName = brandName,
                 UiLocale = request.Locale,
                 UiTimeZone = timeZone,
                 UiConfigCode = uiConfig.Selector
@@ -321,6 +347,7 @@ public static class ConfirmationTransactionEndpoint
             httpContext.Request,
             TransactionResolutionContext.For(transaction),
             channelDisplayService,
+            hopQrContent,
             pageSettingsResolver,
             qrMatrixSource,
             configResolver,

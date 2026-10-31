@@ -23,10 +23,16 @@ public static class SecurityHeaderConstants
 
     /// <summary>
     /// HttpContext.Items key carrying the extra CSP source the <c>form-action</c> directive of THIS
-    /// response must allow — the target a generated page posts to. It is written only by the
-    /// <c>form_post</c> branches of the authorization response, whose page posts the issued code to the
-    /// relying party's already validated <c>redirect_uri</c>; every other response leaves the key unset
-    /// and keeps the policy at <c>form-action 'self'</c> by construction, the sign-in window included.
+    /// response must allow — the target a generated page posts to. It is written only by four pages
+    /// (SPEC-007 UI-091): the auto-posting page of the <c>form_post</c> branches of the authorization
+    /// response, which posts the issued code to the relying party's already validated
+    /// <c>redirect_uri</c>; the web sign-in confirmation page, whose answers end on that same
+    /// <c>redirect_uri</c> through a chain of redirects; the sign-in window that carries the
+    /// "Cancel sign-in" button, whose post ends there the same way; and the page of the claims completion
+    /// on the device the sign-in was started on, whose submission and "Cancel sign-in" end there as well.
+    /// Every other response leaves the key unset and keeps the policy at <c>form-action 'self'</c> by
+    /// construction — a sign-in window rendered without that button and the page of the claims
+    /// completion on the device that confirmed the sign-in included.
     /// <para>
     /// The value is a CSP source expression, derived from the PARSED redirect URI rather than from the
     /// raw string, and never a wildcard: <c>form-action *</c> is not introduced under any circumstance.

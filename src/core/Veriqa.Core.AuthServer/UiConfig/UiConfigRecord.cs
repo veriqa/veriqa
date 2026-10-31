@@ -74,6 +74,7 @@ public sealed class UiConfigRecord
     /// states no themed logo.
     /// </summary>
     [JsonPropertyName("logo_url_by_theme")]
+    [JsonConverter(typeof(TolerantMapConverter<IReadOnlyDictionary<string, string>, string>))]
     public IReadOnlyDictionary<string, string>? LogoUrlByTheme { get; init; }
 
     /// <summary>
@@ -81,6 +82,7 @@ public sealed class UiConfigRecord
     /// shape of the map. A theme absent from it takes <see cref="PrimaryColor"/>.
     /// </summary>
     [JsonPropertyName("primary_color_by_theme")]
+    [JsonConverter(typeof(TolerantMapConverter<IReadOnlyDictionary<string, string>, string>))]
     public IReadOnlyDictionary<string, string>? PrimaryColorByTheme { get; init; }
 
     /// <summary>
@@ -113,16 +115,55 @@ public sealed class UiConfigRecord
     // ── Text (decisions #1, #8) ──────────────────────────────────────────────
 
     /// <summary>
-    /// Authentication page title (decision #1). Null — global default (AuthPageStrings.Title).
+    /// Authentication page title (decision #1). Null — the renderer's own title (AuthPageStrings.Title, or
+    /// AuthPageStrings.ConfirmationTitle on the entry page of a confirmation).
     /// </summary>
     [JsonPropertyName("title")]
     public string? Title { get; init; }
 
     /// <summary>
-    /// On-page instruction (decision #1). Null — global default (AuthPageStrings.Instruction).
+    /// On-page instruction (decision #1), in place of the page's own instruction: the wording of every
+    /// device that <see cref="InstructionWithoutQr"/> and <see cref="InstructionWithoutButton"/> do not
+    /// word. Null — such a device gets the page's own instruction, worded by what the page shows
+    /// (AuthPageStrings.Instruction and its counterparts).
     /// </summary>
     [JsonPropertyName("instruction")]
     public string? Instruction { get; init; }
+
+    /// <summary>
+    /// Instruction of a page that hides the QR code — a phone under the default QR visibility. Null —
+    /// <see cref="Instruction"/>, and without it the page's own wording.
+    /// </summary>
+    [JsonPropertyName("instruction_without_qr")]
+    public string? InstructionWithoutQr { get; init; }
+
+    /// <summary>
+    /// Instruction of a page that shows the QR code and hides the channel buttons. Null —
+    /// <see cref="Instruction"/>, and without it the page's own wording.
+    /// </summary>
+    [JsonPropertyName("instruction_without_button")]
+    public string? InstructionWithoutButton { get; init; }
+
+    /// <summary>
+    /// Overrides of the built-in texts of the core pages for this record (SPEC-012 §4.3, key
+    /// <c>AuthPage.Texts</c>), keyed by the built-in Natural Key of the element they replace:
+    /// <c>"texts": { "Get a link": "Get the form link", "Sign in with Email": { "en": "…", "ru": "…" } }</c>.
+    /// Each entry is a replacement key or ready texts by language (<see cref="UiConfigText"/>). An entry
+    /// outranks the same entry of the application and of the tenant; the entries of other texts stated
+    /// there stay in force. Null — the record overrides no text.
+    /// </summary>
+    [JsonPropertyName("texts")]
+    public IReadOnlyDictionary<string, UiConfigText>? Texts { get; init; }
+
+    /// <summary>
+    /// Colors of the buttons of single channels for this record (key <c>AuthPageDesign.ChannelButtonColor</c>),
+    /// channel type → <c>#RRGGBB</c>: <c>"channel_button_colors": { "telegram": "#0f62fe" }</c>. An entry
+    /// outranks the color the application and the core section state for the same channel. Null — the
+    /// record states none.
+    /// </summary>
+    [JsonPropertyName("channel_button_colors")]
+    [JsonConverter(typeof(TolerantMapConverter<IReadOnlyDictionary<string, string>, string>))]
+    public IReadOnlyDictionary<string, string>? ChannelButtonColors { get; init; }
 
     // ── Behavior ─────────────────────────────────────────────────────────────
 
@@ -162,6 +203,32 @@ public sealed class UiConfigRecord
     /// </summary>
     [JsonPropertyName("qr_code")]
     public Configuration.QrCodeOverrideOptions? QrCode { get; init; }
+
+    /// <summary>
+    /// Settings of the cancel button of the sign-in window and of the entry page of a confirmation
+    /// (SPEC-012 §9): the same field as
+    /// the global section <c>Veriqa:AuthPageDesign:Cancel</c>, optional. Null — the record states
+    /// nothing about the button, and the value is taken from the level below.
+    /// </summary>
+    [JsonPropertyName("cancel")]
+    public Configuration.AuthPageCancelOverrideOptions? Cancel { get; init; }
+
+    /// <summary>
+    /// Settings of the channel buttons of the sign-in page (SPEC-012 §9): the same field as the global
+    /// section <c>Veriqa:AuthPageDesign:ChannelButton</c>, optional. Null — the record states nothing
+    /// about the buttons, and the value is taken from the level below.
+    /// </summary>
+    [JsonPropertyName("channel_button")]
+    public Configuration.ChannelButtonOverrideOptions? ChannelButton { get; init; }
+
+    /// <summary>
+    /// Layout of the channels on a sign-in page that shows the QR code of each of them (SPEC-012 §9):
+    /// the same field as <c>Veriqa:AuthPageDesign:ChannelLayout</c> of the global section. Null — the
+    /// record states none, and the layout is taken from the level below.
+    /// </summary>
+    [JsonPropertyName("channel_layout")]
+    [JsonConverter(typeof(TolerantNullableEnumConverter<ChannelLayout>))]
+    public ChannelLayout? ChannelLayout { get; init; }
 
     // ── Evolution ────────────────────────────────────────────────────────────
 

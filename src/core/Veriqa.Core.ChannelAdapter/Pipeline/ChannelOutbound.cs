@@ -175,8 +175,9 @@ internal static class ChannelOutbound
     }
 
     /// <summary>
-    /// Shows the user a terminal transaction outcome — but only when the channel declared it can
-    /// (<c>DeliversOutcomeNotice</c>). A channel that did not is never called.
+    /// Shows the user the state of a transaction — a terminal outcome, or the one non-terminal state
+    /// of a sign-in confirmed and waiting for missing claims — but only when the channel declared it
+    /// can (<c>DeliversOutcomeNotice</c>). A channel that did not is never called.
     /// </summary>
     /// <param name="adapter">Channel adapter.</param>
     /// <param name="notice">What to show and everything needed to address it.</param>
@@ -203,8 +204,9 @@ internal static class ChannelOutbound
         var result = await adapter.ReportOutcomeAsync(notice, cancellationToken);
         if (result.IsFailure)
         {
-            // The outcome code is a bounded, non-personal value: it names WHICH terminal state the
-            // user was supposed to see, which is exactly what a failed notice log is missing otherwise.
+            // The outcome code is a bounded, non-personal value: it names WHICH state of the
+            // transaction the user was supposed to see, which is exactly what a failed notice log is
+            // missing otherwise.
             logger.LogWarning(
                 "Failed to show the transaction outcome to the user. ChannelType: {ChannelType}, TransactionId: {TransactionId}, Outcome: {Outcome}, Error: {ErrorCode}",
                 adapter.ChannelType,

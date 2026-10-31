@@ -1,0 +1,51 @@
+#nullable enable
+const Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.DefaultGraphApiBaseUrl = "https://graph.instagram.com" -> string!
+const Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.DefaultGraphApiVersion = "v26.0" -> string!
+const Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.SectionName = "Veriqa:Channels:Instagram" -> string!
+override Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderInstagramExtensions.AddInstagram(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!
+static Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+const Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramConfigKeys.UnaddressedReplyEnabledKeyName = "Channels.instagram.UnaddressedReplyEnabled" -> string!
+const Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramConfigKeys.UnaddressedReplyEnabledMember = "UnaddressedReplyEnabled" -> string!
+static Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramConfigKeys.UnaddressedReplyEnabled.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramConfigKeys.Credentials.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials!>!
+static Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.operator !=(Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials? left, Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials? right) -> bool
+static Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.operator ==(Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials? left, Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials? right) -> bool
+Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderInstagramExtensions
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramConfigKeys
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.AccessToken.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.AccessToken.set -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.AccountId.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.AccountId.set -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.AppSecret.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.AppSecret.set -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.Enabled.get -> bool
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.Enabled.set -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.GetTenantCredentials() -> Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.GraphApiBaseUrl.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.GraphApiBaseUrl.set -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.GraphApiVersion.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.GraphApiVersion.set -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.InstagramOptions() -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.Username.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.Username.set -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.WebhookVerifyToken.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramOptions.WebhookVerifyToken.set -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.<Clone>$() -> Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.AccessToken.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.AccessToken.init -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.AccountId.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.AccountId.init -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.AppSecret.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.AppSecret.init -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.Deconstruct(out string! AppSecret, out string! WebhookVerifyToken, out string! AccessToken, out string! AccountId, out string! Username) -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.Equals(Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials? other) -> bool
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.InstagramTenantCredentials(string! AppSecret, string! WebhookVerifyToken, string! AccessToken, string! AccountId, string! Username) -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.Username.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.Username.init -> void
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.WebhookVerifyToken.get -> string!
+Veriqa.Core.ChannelAdapter.Instagram.Configuration.InstagramTenantCredentials.WebhookVerifyToken.init -> void

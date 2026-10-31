@@ -1,7 +1,16 @@
 # Veriqa.Core.Configuration
 
-The settings mechanism shared by the Veriqa core assemblies. A setting is declared once as a typed
-key with an owning level, and every read goes through one resolver that applies the declared
+**Every Veriqa setting is resolved in one place.** A key is declared once, with its owning
+level, and one resolver applies the order of the core, tenant and application levels.
+
+Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
+authentication through popular messaging apps and email, over standard OpenID Connect.
+Documentation: [Configuration keys](https://veriqa.app/docs/guides/config-keys).
+
+## About this package
+
+The settings mechanism shared by the Veriqa core assemblies. A setting is declared once as a
+typed key with an owning level, and every read goes through one resolver that applies the declared
 precedence of levels and the gate rules of that key — instead of each assembly reading
 `IConfiguration` its own way.
 

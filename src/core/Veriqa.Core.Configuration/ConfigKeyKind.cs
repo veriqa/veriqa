@@ -19,9 +19,11 @@ public enum ConfigKeyKind
     /// Set (narrowing, SPEC-012 §10.3): a lower level does not widen what the upper one allows.
     /// The effective value is the intersection of the levels that PARTICIPATE — which is not the
     /// same as the levels the key declares: the CORE level opts out of the intersection per key
-    /// (<see cref="ConfigKey{T}.CoreParticipatesInSetIntersection"/>) and is then a degenerate
-    /// default under the set rather than a ceiling over it. A key's own semantics therefore follow
-    /// from its declaration (levels plus that flag), not from this sentence alone.
+    /// (<see cref="ConfigKey{T}.CoreParticipatesInSetIntersection"/>) and is then no ceiling over the
+    /// tenant — a tenant set replaces it — but, while the tenant is silent, the base the levels below
+    /// the tenant narrow, provided it allows at least one member; with no level stating a set it is the
+    /// value as it is. A key's own semantics therefore follow from its declaration (levels plus that
+    /// flag), not from this sentence alone.
     /// </summary>
     Set = 1,
 

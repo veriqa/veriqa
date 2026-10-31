@@ -1,0 +1,75 @@
+# Copyright (c) Dmitrii Erusov
+# SPDX-License-Identifier: MIT
+#
+# Veriqa and the reference Telegram adapter side by side, the adapter plugged in as the HTTP channel
+# telegram-http. Demonstration only: Veriqa runs in the Development environment with an in-memory
+# OpenIddict store and development certificates, which is not a production configuration.
+#
+#   cp .env.example .env    # then fill it in
+#   docker compose up
+#
+# Veriqa listens on http://127.0.0.1:8080; the state of the channel is at /health/channels.
+
+name: veriqa-telegram-http
+
+services:
+
+  # ── Veriqa ─────────────────────────────────────────────────────────────────
+  veriqa:
+    build:
+      context: ../../..
+      dockerfile: build/docker/Dockerfile
+    image: veriqa-authserver:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Development: OpenIddict makes its own development certificates, and the in-memory store below
+      # is accepted. Nothing survives a restart.
+      ASPNETCORE_ENVIRONMENT: Development
+      Veriqa__OpenIddict__Database__Provider: InMemory
+
+      # The HTTP channel telegram-http: the adapter is reached by its name in the network of this file.
+      # The network is private to the two services, hence plain HTTP (Veriqa writes a warning at start).
+      Veriqa__Channels__telegram-http__InboundVerification: ${VERIQA_INBOUND_VERIFICATION}
+      Veriqa__Channels__telegram-http__Http__BaseUrl: http://adapter:8000/
+      Veriqa__Channels__telegram-http__Http__AllowInsecureHttp: "true"
+      Veriqa__Channels__telegram-http__Http__TransportSecret: ${VERIQA_TRANSPORT_SECRET}
+      Veriqa__Channels__telegram-http__Http__DisplayName: Telegram (HTTP)
+      # The own setting of the adapter, forwarded verbatim with every call (see the README).
+      Veriqa__Channels__telegram-http__Http__AdapterSettings: '{"disable_notification": false}'
+
+      # The facts of the channel: the same ones the built-in Telegram channel declares, so both channels
+      # word the prompt and the receipt alike.
+      Veriqa__Channels__telegram-http__Http__Capabilities__SupportsInChannelConfirmation: "true"
+      Veriqa__Channels__telegram-http__Http__Capabilities__SupportsMessageUpdate: "true"
+      Veriqa__Channels__telegram-http__Http__Capabilities__DeliversOutcomeNotice: "true"
+      Veriqa__Channels__telegram-http__Http__Capabilities__ProvidesRecipientLocale: "true"
+      Veriqa__Channels__telegram-http__Http__Capabilities__SupportedMessageKinds__0: plain_text
+      Veriqa__Channels__telegram-http__Http__Capabilities__SupportedMessageKinds__1: phone_number_request
+      # The phone number: asked for with the contact button of Telegram, which shares the number of the
+      # account itself — hence proven. Declare it only for a bot without a forward address (see the README).
+      Veriqa__Channels__telegram-http__Http__Capabilities__PhoneNumber__Acquisition__0: OnRequest
+      Veriqa__Channels__telegram-http__Http__Capabilities__PhoneNumber__Proof: Proven
+      Veriqa__Channels__telegram-http__Http__Capabilities__RendersEmoji: "true"
+      # The start by a code: set to match CODE_START of the adapter — true for fallback, false for only;
+      # left empty, the key is not set and the channel has no start by a code (see the README).
+      Veriqa__Channels__telegram-http__Http__Capabilities__CodeStart__LinkCarriesTransaction: ${VERIQA_CODE_START_LINK_CARRIES_TRANSACTION:-}
+
+  # ── The adapter ────────────────────────────────────────────────────────────
+  adapter:
+    build: .
+    image: veriqa-sample-telegram-adapter:latest
+    environment:
+      VERIQA_URL: http://veriqa:8080
+      VERIQA_CHANNEL_TYPE: telegram-http
+      VERIQA_TRANSPORT_SECRET: ${VERIQA_TRANSPORT_SECRET}
+      TELEGRAM_INBOUND_MODE: ${TELEGRAM_INBOUND_MODE}
+      TELEGRAM_PUBLIC_URL: ${TELEGRAM_PUBLIC_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_BOT_FORWARD_URL: ${TELEGRAM_BOT_FORWARD_URL:-}
+      CODE_START: ${CODE_START:-off}
+    volumes:
+      - adapter-data:/data
+
+volumes:
+  adapter-data:

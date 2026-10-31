@@ -15,6 +15,10 @@ public interface ITransactionStore
     /// <summary>
     /// Adds a new transaction to the store.
     /// </summary>
+    /// <remarks>
+    /// The hop observations the transaction carries are stored with it; once it is stored, they are
+    /// set only by the one-time writes (see <see cref="TryMarkHopObservationAsync"/>).
+    /// </remarks>
     /// <param name="transaction">Transaction to add.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Task representing the completion of the operation.</returns>
@@ -77,6 +81,15 @@ public interface ITransactionStore
     /// <para>
     /// A store composed through <c>AddVeriqaTransactionEngine</c> is given this check by the engine
     /// and need not repeat it. The obligation is stated here for a store reached by any other path.
+    /// </para>
+    /// <para>
+    /// The hop observations of the passed transaction are ignored: the write neither sets nor erases
+    /// them (see <see cref="TryMarkHopObservationAsync"/>). The same holds for the surface of the web
+    /// step, the outcomes of the claims completion and the fingerprint of its form token (see
+    /// <see cref="TrySetWebStepSurfaceAsync"/>, <see cref="TrySetClaimFormTokenHashAsync"/>); the completion mark and the list of missing claims (<see cref="ClaimCompletionState.ConfirmedAt"/>,
+    /// <see cref="ClaimCompletionState.Items"/>) are ordinary fields and are written, and so are the values
+    /// taken from the collected claims store (<see cref="Transaction.StoredClaimValues"/>) and the bound
+    /// channel subject (<see cref="Transaction.SubjectBinding"/>).
     /// </para>
     /// </remarks>
     /// <param name="transaction">Updated transaction.</param>
@@ -144,4 +157,227 @@ public interface ITransactionStore
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of stalled Confirmed transactions.</returns>
     Task<IReadOnlyList<Transaction>> GetStalledConfirmedAsync(DateTimeOffset confirmedBefore, int batchSize, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the sign-ins of one scope that still wait for an answer: every stored transaction in the
+    /// Pending state whose <see cref="SignInSubjectScope.Of"/> equals <paramref name="scope"/>.
+    /// </summary>
+    /// <remarks>
+    /// The deadline does not narrow the selection: a sign-in past its TTL that the cleanup pass has
+    /// not promoted yet is returned as well. The order is not significant. The transactions carry
+    /// the current values of the conditionally written fields, as every other read of the store does.
+    /// <para>
+    /// The engine closes what this member returns when a newer sign-in of the same scope gets its
+    /// channel subject, and it does not take the answer on trust: before closing, it checks again
+    /// that each returned transaction is Pending, has the same scope and is not the new sign-in
+    /// itself. A store that returns too much therefore cannot close someone else's sign-in — but a
+    /// store that returns too little leaves earlier sign-ins alive until their deadline. A store
+    /// that cannot run this selection must say so in its documentation rather than answer with an
+    /// empty list in silence.
+    /// </para>
+    /// </remarks>
+    /// <param name="scope">Scope of the sign-ins to select.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The pending sign-ins of the scope; an empty list when there are none.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="scope"/> is null.</exception>
+    Task<IReadOnlyList<Transaction>> GetPendingSignInsAsync(
+        SignInSubjectScope scope,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes a hop observation mark onto the transaction once: the field is written only while it is
+    /// empty, by the first writer (SPEC-025 HOP-071a).
+    /// </summary>
+    /// <remarks>
+    /// Obligations shared by the three hop observation writes — this one,
+    /// <see cref="TryAttachScannerContextAsync"/> and <see cref="TryFillScannerFingerprintAsync"/>:
+    /// <list type="bullet">
+    /// <item><description>
+    /// The write is an atomic conditional write on the field, "empty → value" (<c>WHERE … IS NULL</c>,
+    /// <c>HSETNX</c>, a compare-and-swap), never a read followed by a write: of two concurrent calls
+    /// for one field exactly one gets <see langword="true"/>. A backend without atomicity on a field
+    /// runs its own read → conditional write → retry loop over an unchanged
+    /// <see cref="Transaction.ConcurrencyToken"/> / <see cref="Transaction.UpdatedAt"/>.
+    /// </description></item>
+    /// <item><description>
+    /// An observation is not state: the write changes neither <see cref="Transaction.ConcurrencyToken"/>,
+    /// nor <see cref="Transaction.UpdatedAt"/>, nor <see cref="Transaction.State"/>, and never makes a
+    /// concurrent <see cref="UpdateAsync"/> with a valid token return <see langword="false"/>.
+    /// </description></item>
+    /// <item><description>
+    /// <see cref="UpdateAsync"/> neither writes nor erases observations: the values a passed
+    /// transaction carries in them are ignored, and the stored ones stay.
+    /// </description></item>
+    /// <item><description>
+    /// Every read (<see cref="GetByIdAsync"/>, <see cref="GetByIdempotencyKeyAsync"/>,
+    /// <see cref="GetExpiredAsync"/>, <see cref="GetStaleTerminalAsync"/>,
+    /// <see cref="GetStalledConfirmedAsync"/>) returns the transaction with the current observation
+    /// values.
+    /// </description></item>
+    /// <item><description>
+    /// Observations live and die with the transaction: <see cref="DeleteAsync"/>, cleanup and the TTL
+    /// of the store remove them together with it, and nothing keeps them longer (HOP-112).
+    /// </description></item>
+    /// <item><description>
+    /// The state of the transaction (terminal, expired) is not checked here — the conditions of
+    /// acceptance belong to the callers; the write goes through as long as the record exists.
+    /// </description></item>
+    /// </list>
+    /// </remarks>
+    /// <param name="id">Transaction identifier.</param>
+    /// <param name="mark">Which mark to write.</param>
+    /// <param name="markedAt">Moment the mark carries — stated by the caller, not by the store's clock.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// true — the mark was written by this call; false — the mark is already there or the transaction
+    /// is not stored.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="mark"/> is not a defined value.</exception>
+    Task<bool> TryMarkHopObservationAsync(TransactionId id, HopObservationMark mark, DateTimeOffset markedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attaches the scanner context snapshot to the transaction once, by the first writer (SPEC-025
+    /// HOP-080). The obligations of <see cref="TryMarkHopObservationAsync"/> apply.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="snapshot"/>.<see cref="ScannerContextSnapshot.ScannedAt"/> equals the
+    /// <c>markedAt</c> of the <see cref="HopObservationMark.FirstResolve"/> mark — the snapshot projects
+    /// that mark (HOP-071a). The caller keeps the two equal; the store does not check it.
+    /// The fingerprint never arrives here: it is filled later by
+    /// <see cref="TryFillScannerFingerprintAsync"/>.
+    /// </remarks>
+    /// <param name="id">Transaction identifier.</param>
+    /// <param name="snapshot">Scanner context without a fingerprint.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// true — the snapshot was attached by this call; false — a snapshot is already there or the
+    /// transaction is not stored.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="snapshot"/> carries a fingerprint.</exception>
+    Task<bool> TryAttachScannerContextAsync(TransactionId id, ScannerContextSnapshot snapshot, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fills <see cref="ScannerContextSnapshot.Fingerprint"/> of the attached snapshot once, by the
+    /// first writer — the single field of the snapshot written after it is captured (SPEC-025
+    /// HOP-080). The obligations of <see cref="TryMarkHopObservationAsync"/> apply.
+    /// </summary>
+    /// <remarks>
+    /// The form of the value is checked by the caller, not by the store.
+    /// </remarks>
+    /// <param name="id">Transaction identifier.</param>
+    /// <param name="fingerprint">Fingerprint to write.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// true — the fingerprint was written by this call; false — a fingerprint is already there, no
+    /// snapshot is attached, or the transaction is not stored.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="fingerprint"/> is null, empty or whitespace.</exception>
+    Task<bool> TryFillScannerFingerprintAsync(TransactionId id, string fingerprint, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes the surface of the web step of the claims completion (SPEC-041 C90, L53) when it holds
+    /// the value the caller expects — the two moves the surface makes: "none → any" when the web step
+    /// begins, and "<see cref="WebStepSurface.CrossDevicePage"/> → <see cref="WebStepSurface.InitiatingPage"/>"
+    /// when the link to the other device could not be delivered.
+    /// </summary>
+    /// <remarks>
+    /// The obligations of <see cref="TryMarkHopObservationAsync"/> apply — an atomic conditional write,
+    /// never a read followed by a write; no change of <see cref="Transaction.ConcurrencyToken"/>,
+    /// <see cref="Transaction.UpdatedAt"/> or <see cref="Transaction.State"/>; <see cref="UpdateAsync"/>
+    /// neither writes nor erases the value; every read returns it — with one difference: the condition
+    /// includes the state of the transaction. The write goes through only while the transaction is
+    /// <see cref="TransactionState.Pending"/> and carries a completion mark, checked in the same atomic
+    /// step as the value: a surface written after the transaction left the completion would describe a
+    /// step that no longer exists.
+    /// <para>
+    /// Any other pair of <paramref name="expected"/> and <paramref name="surface"/> is not a move the
+    /// surface makes, and the answer is <see langword="false"/> without touching the store.
+    /// </para>
+    /// </remarks>
+    /// <param name="id">Transaction identifier.</param>
+    /// <param name="expected">Value the surface must hold now; null — no surface yet.</param>
+    /// <param name="surface">Value to write.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// true — the surface was written by this call; false — the transaction carries no completion mark,
+    /// is not Pending, holds a surface other than <paramref name="expected"/>, the pair is not a move the
+    /// surface makes, or the transaction is not stored.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="expected"/> or <paramref name="surface"/> is not a defined value.
+    /// </exception>
+    Task<bool> TrySetWebStepSurfaceAsync(
+        TransactionId id,
+        WebStepSurface? expected,
+        WebStepSurface surface,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes the fingerprint of the form token of the claims completion once, by the first writer
+    /// (SPEC-041 N78): the value is written only while none is stored — "none → value".
+    /// </summary>
+    /// <remarks>
+    /// The obligations of <see cref="TrySetWebStepSurfaceAsync"/> apply, the state included: an atomic
+    /// conditional write, never a read followed by a write; no change of
+    /// <see cref="Transaction.ConcurrencyToken"/>, <see cref="Transaction.UpdatedAt"/> or
+    /// <see cref="Transaction.State"/>; <see cref="UpdateAsync"/> neither writes nor erases the value; every
+    /// read returns it; and the write goes through only while the transaction is
+    /// <see cref="TransactionState.Pending"/> and carries a completion mark, checked in the same atomic step.
+    /// Of two concurrent writes exactly one gets <see langword="true"/>, so a token is issued to one holder
+    /// only.
+    /// <para>
+    /// The store keeps the fingerprint only — the token it was taken from never reaches the store.
+    /// </para>
+    /// </remarks>
+    /// <param name="id">Transaction identifier.</param>
+    /// <param name="tokenHash">Fingerprint of the issued form token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// true — the fingerprint was written by this call; false — the transaction carries no completion mark,
+    /// is not Pending, already holds a fingerprint, or is not stored.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="tokenHash"/> is null, empty or whitespace.</exception>
+    Task<bool> TrySetClaimFormTokenHashAsync(
+        TransactionId id,
+        string tokenHash,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records the outcome of the claims completion for one missing claim — its collected value or the
+    /// mark that it was skipped (SPEC-041 C90) — once per claim.
+    /// </summary>
+    /// <remarks>
+    /// The obligations of <see cref="TrySetWebStepSurfaceAsync"/> apply, the state included. The write
+    /// adds the outcome to <see cref="ClaimCompletionState.Results"/> only while the transaction is
+    /// <see cref="TransactionState.Pending"/>, carries a completion mark whose
+    /// <see cref="ClaimCompletionState.Items"/> name <paramref name="result"/>'s claim, and holds no
+    /// outcome for that claim yet — the claim names compared the way claim names are
+    /// (<c>VeriqaClaimTypes.NameComparer</c>). All of it is one atomic step: of two concurrent outcomes for
+    /// one claim exactly one is recorded, and an outcome never lands after the transaction left
+    /// Pending. A store without atomicity over its document runs a read → conditional write → retry loop
+    /// whose condition covers everything it read.
+    /// <para>
+    /// Whether the claim belongs to the current step of the completion is the caller's condition, not
+    /// the store's.
+    /// </para>
+    /// </remarks>
+    /// <param name="id">Transaction identifier.</param>
+    /// <param name="result">Outcome to record.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// true — the outcome was recorded by this call; false — the transaction carries no completion
+    /// mark, is not Pending, does not list the claim as missing, already holds an outcome for it, or is
+    /// not stored.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="result"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="result"/> names no claim, carries a value without a method or a method without a
+    /// value, or marks a skip as verified.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="result"/> carries an undefined method.</exception>
+    Task<bool> TryRecordClaimResultAsync(
+        TransactionId id,
+        ClaimCompletionResult result,
+        CancellationToken cancellationToken = default);
 }

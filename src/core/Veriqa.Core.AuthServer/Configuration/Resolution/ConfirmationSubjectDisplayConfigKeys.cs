@@ -87,7 +87,11 @@ public static class ConfirmationSubjectDisplayConfigKeys
     /// <see cref="ChannelAdapter.MultiTenancy.ChannelConfigKeys.ChannelsEnabled"/> is: the global set
     /// here is the degenerate N=1 default of a self-hosted deployment, not a ceiling over the tenant,
     /// and as a ceiling it would zero out a tenant's set through the intersection whenever the global
-    /// one is empty — which is the shipped default (CFG-105).
+    /// one is empty — which is the shipped default (CFG-105). A tenant set replaces the global one;
+    /// while the tenant is silent, a global set naming at least one surface is the base an application
+    /// narrows (CFG-248), so an application cannot show the subject on a surface the global section does
+    /// not allow. The empty global set is no base: it leaves an application's set as the application
+    /// states it.
     /// <para>
     /// Above the core level the set is read inside the RECORD of the level, at the member the options
     /// class names, so an application states it as a member of its OIDC client entry and no type of the

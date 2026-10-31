@@ -4,7 +4,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-using Veriqa.Core.ChannelAdapter.Abstractions;
 using Veriqa.Core.ChannelAdapter.Pipeline;
 using Veriqa.Core.Configuration;
 
@@ -51,13 +50,10 @@ public static class ChannelMultiTenancyServiceCollectionExtensions
         // Channel client factory with a per-tenant cache + the failure-path negative cache (#9).
         services.TryAddSingleton<IChannelClientFactory, ChannelClientFactory>();
 
-        // Optional dependencies of the webhook pipeline, gathered once. Asking the container what it
-        // happens to hold belongs HERE, in the composition root — not inside a request path.
+        // The optional dependency of the webhook routes — the resolver the tenant demux authorizes
+        // against. Asking the container what it happens to hold belongs HERE, in the composition root —
+        // not inside a request path.
         services.TryAddScoped(provider => new ChannelWebhookSupport(
-            provider.GetService<IUserAuthRateLimiter>(),
-            provider.GetService<IConfirmationPromptOrchestrator>(),
-            provider.GetService<IConfirmationPromptLocalizer>(),
-            provider.GetService<IChannelPromptMessageStore>(),
             provider.GetService<IConfigurationResolver>()));
 
         return services;

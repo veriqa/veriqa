@@ -1,5 +1,14 @@
 # Veriqa.Core.AuditTrail
 
+**An audit trail of Veriqa sign-ins and confirmations.** Identities are always masked, and
+tokens are never written to it.
+
+Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
+authentication through popular messaging apps and email, over standard OpenID Connect.
+Documentation: [Data handling](https://veriqa.app/docs/guides/data-handling).
+
+## About this package
+
 Satellite package holding the audit trail of the Veriqa core: the event-bus receiver, the
 append-only journal and the retention process. It is optional — a host that does not register it
 runs without an audit trail, and no core library references this package. The record model

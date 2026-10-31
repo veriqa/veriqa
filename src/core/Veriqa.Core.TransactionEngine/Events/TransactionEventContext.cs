@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 
 using Veriqa.Core.TransactionEngine.Domain;
+using Veriqa.Core.TransactionEngine.Identity;
 using Veriqa.Core.TransactionEngine.Services;
 
 namespace Veriqa.Core.TransactionEngine.Events;
@@ -15,8 +16,8 @@ namespace Veriqa.Core.TransactionEngine.Events;
 /// </summary>
 /// <remarks>
 /// Delivery to subscribers is asynchronous, so by the time an event is handled its transaction may
-/// already be gone: it is removed right after the authorize callback, swept as terminal by the
-/// cleanup service, or dropped by a native store TTL. An attribution read at handling time is
+/// already be gone: it is swept as terminal by the cleanup service or dropped by a native store
+/// TTL. An attribution read at handling time is
 /// therefore non-deterministic — the same event yields a different result depending on who won the
 /// race. Carried with the event, it is exact.
 /// <para>
@@ -29,16 +30,6 @@ namespace Veriqa.Core.TransactionEngine.Events;
 /// </remarks>
 public sealed record TransactionEventContext
 {
-    /// <summary>
-    /// Number of trailing characters of a channel user identifier left unmasked.
-    /// </summary>
-    private const int UnmaskedTailLength = 2;
-
-    /// <summary>
-    /// Character the masked part of an identifier is replaced with.
-    /// </summary>
-    private const char MaskCharacter = '*';
-
     /// <summary>
     /// Transaction type (login, confirmation).
     /// </summary>
@@ -61,6 +52,26 @@ public sealed record TransactionEventContext
     /// null when the transaction has no OIDC context.
     /// </summary>
     public string? ClientId { get; init; }
+
+    /// <summary>
+    /// Display name of the application the transaction took at its creation; null when it took none.
+    /// </summary>
+    /// <remarks>
+    /// Stays inside the process, as <see cref="ConfirmationParameters"/> does: its consumer is the
+    /// in-channel expiry notice, which names the application as the other receipts of the transaction
+    /// do, and the closed set an event carries outward is not widened for it.
+    /// </remarks>
+    [JsonIgnore]
+    public string? ApplicationName { get; init; }
+
+    /// <summary>
+    /// Brand name the levels of the transaction stated at its creation, as configured; null when none.
+    /// </summary>
+    /// <remarks>
+    /// Stays inside the process on the grounds of <see cref="ApplicationName"/>.
+    /// </remarks>
+    [JsonIgnore]
+    public string? BrandName { get; init; }
 
     /// <summary>
     /// Client request identifier for end-to-end tracing.
@@ -138,11 +149,13 @@ public sealed record TransactionEventContext
             // on the event, on the audit record and in the resolution context built from it.
             TenantId = Stated(transaction.GetTenantId()),
             ClientId = transaction.GetApplicationId(),
+            ApplicationName = transaction.GetApplicationName(),
+            BrandName = transaction.GetBrandName(),
             CorrelationId = transaction.CorrelationId,
             UiLocale = Stated(transaction.GetUiLocale()),
             UiTimeZone = Stated(transaction.GetUiTimeZone()),
             ChannelType = identity?.ChannelType,
-            MaskedChannelUserId = identity is null ? null : Mask(identity.ChannelUserId),
+            MaskedChannelUserId = identity is null ? null : IdentifierMask.Mask(identity.ChannelUserId),
             ConfirmationParameters = transaction.ConfirmationSnapshot
         };
     }
@@ -153,22 +166,4 @@ public sealed record TransactionEventContext
     /// <param name="value">Captured value.</param>
     /// <returns>The value, or null when it is null, empty or whitespace.</returns>
     private static string? Stated(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
-
-    /// <summary>
-    /// Masks an identifier, leaving at most the last two characters readable. A value that short
-    /// carries no distinguishing tail, so it is masked whole.
-    /// </summary>
-    /// <param name="value">Identifier to mask.</param>
-    /// <returns>Masked identifier of the same length.</returns>
-    private static string Mask(string value)
-    {
-        if (value.Length <= UnmaskedTailLength)
-        {
-            return new string(MaskCharacter, value.Length);
-        }
-
-        var masked = new string(MaskCharacter, value.Length - UnmaskedTailLength);
-
-        return string.Concat(masked, value.AsSpan(value.Length - UnmaskedTailLength));
-    }
 }

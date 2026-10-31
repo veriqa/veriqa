@@ -28,6 +28,14 @@ public static class TerminalTransactionOutcome
     /// and telling them "the person said no" about a resolution failure would be telling them
     /// something untrue.
     /// <para>
+    /// The one exception is a sign-in closed because its channel subject began a newer one
+    /// (<see cref="TransactionErrorCodes.SupersededByNewSignIn"/>): to the outside it reads as an
+    /// expiry. Nothing went wrong with it and nobody refused it — it stopped waiting for an answer,
+    /// which is what an expiry is, and the surfaces that answer about an outcome already treat an
+    /// expired sign-in the way a superseded one has to be treated. The state, the reason code and
+    /// the event of the transaction are not read from this table and stay a failure with that code.
+    /// </para>
+    /// <para>
     /// "Confirmed" here means the transaction reached <see cref="TransactionState.Completed"/>. A
     /// transaction sitting in <see cref="TransactionState.Confirmed"/> has answered but has not
     /// finished — <see cref="Transaction.IsTerminal"/> does not count it either — so this reading
@@ -45,12 +53,12 @@ public static class TerminalTransactionOutcome
         {
             TransactionState.Completed => TransactionOutcome.Confirmed,
             TransactionState.Expired => TransactionOutcome.Expired,
-            TransactionState.Failed => string.Equals(
-                transaction.StateReasonCode,
-                TransactionErrorCodes.DeclinedByUser,
-                StringComparison.Ordinal)
-                ? TransactionOutcome.Declined
-                : TransactionOutcome.Failed,
+            TransactionState.Failed => transaction.StateReasonCode switch
+            {
+                TransactionErrorCodes.DeclinedByUser => TransactionOutcome.Declined,
+                TransactionErrorCodes.SupersededByNewSignIn => TransactionOutcome.Expired,
+                _ => TransactionOutcome.Failed
+            },
             _ => null
         };
     }

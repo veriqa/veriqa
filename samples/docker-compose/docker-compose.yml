@@ -46,6 +46,10 @@ services:
       # DataProtection — key storage in Redis
       Veriqa__DataProtection__RedisConnectionString: "redis:6379"
 
+      # Channel stores in Redis (multi-instance): magic links, start codes, link handles and
+      # phone number requests resolve on whichever instance receives them
+      Veriqa__ChannelStores__Redis__ConnectionString: "redis:6379"
+
       # Telegram bot (optional)
       Veriqa__Channels__Telegram__Enabled: "${TELEGRAM_ENABLED:-false}"
       Veriqa__Channels__Telegram__BotToken: "${TELEGRAM_BOT_TOKEN:-}"

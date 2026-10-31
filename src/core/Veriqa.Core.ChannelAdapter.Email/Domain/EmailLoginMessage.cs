@@ -7,7 +7,7 @@ using Veriqa.Core.Configuration;
 namespace Veriqa.Core.ChannelAdapter.Email.Domain;
 
 /// <summary>
-/// Message for sending a magic link email in Pull mode (SPEC-016 §4.3).
+/// Message for sending the sign-in email in Pull mode (SPEC-016 §4.3): the magic link, a code, or both.
 /// </summary>
 /// <param name="ToAddress">Recipient's email address.</param>
 /// <param name="ClientName">Client application name to display in the email.</param>
@@ -60,4 +60,26 @@ public sealed record EmailLoginMessage(
     /// </para>
     /// </summary>
     public string? TimeZone { get; init; }
+
+    /// <summary>
+    /// Type of the transaction the mail is sent for (<see cref="Veriqa.Core.TransactionEngine.Domain.TransactionTypes"/>):
+    /// the wording of the mail is addressed by it, so a confirmation gets the mail whose words name the
+    /// confirmation (SPEC-016 §4.3) and a sign-in the sign-in mail. Null — the type is not stated, and the
+    /// wording of the kind itself answers.
+    /// </summary>
+    public string? TransactionType { get; init; }
+
+    /// <summary>
+    /// Code of the mail, entered on the page the address was typed into (message kinds
+    /// <c>sign-in-code-mail</c> and <c>sign-in-code-link-mail</c>); null — the mail carries no code, and it
+    /// is the mail of the magic link (<c>sign-in-mail</c>).
+    /// </summary>
+    public string? Code { get; init; }
+
+    /// <summary>
+    /// Whether the mail shows the magic link built of <see cref="ActionToken"/>. False only beside a
+    /// <see cref="Code"/>: the mail of the code alone (<c>sign-in-code-mail</c>), whose action token is still
+    /// issued — it identifies the letter to the gate of a sign-in — and is never shown.
+    /// </summary>
+    public bool CarriesLink { get; init; } = true;
 }

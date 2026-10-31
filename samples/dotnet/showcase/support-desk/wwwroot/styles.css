@@ -157,6 +157,11 @@ body {
   color: var(--bad);
 }
 
+.button[disabled] {
+  cursor: default;
+  opacity: 0.5;
+}
+
 /* ---------------------------------------------------------------- infographic */
 
 .infographic {
@@ -223,9 +228,45 @@ body {
   font-size: 12px;
 }
 
-.card-fields {
+.card-body {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.contacts {
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
+.contact {
+  align-items: center;
+  display: flex;
+  font-size: 14px;
+  margin: 8px 0 0 0;
+}
+
+.contact-label {
+  color: var(--text-dim);
+  flex: 0 0 auto;
+  width: 60px;
+}
+
+.contact-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contact-value.is-missing {
+  color: var(--text-dim);
+}
+
+.contact .button {
+  flex: 0 0 auto;
+  margin-left: 10px;
 }
 
 .field-name {
@@ -319,6 +360,19 @@ body {
 
 .ticket-actions .button {
   margin-right: 8px;
+}
+
+.ticket-contact {
+  color: var(--ok);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 0 0;
+}
+
+.ticket-hint {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 8px 0 0 0;
 }
 
 /* ---------------------------------------------------------------- FAQ */

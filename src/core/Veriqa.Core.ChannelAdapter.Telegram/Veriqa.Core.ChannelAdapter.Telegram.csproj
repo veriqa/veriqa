@@ -11,8 +11,9 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter.Telegram</PackageId>
     <Authors>Veriqa</Authors>
-    <Description>Passwordless OpenID Connect sign-in and action approval through Telegram for ASP.NET Core (OpenIddict). Users scan a QR code on a computer, TV or kiosk, or tap a button on the phone, and confirm with one tap in Telegram. Veriqa channel adapter (satellite package).</Description>
-    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;openid-connect-provider;oidc-server;identity-provider;sso;sms-alternative;human-in-the-loop;ai-agent-security;device-flow;telegram;cross-device-authentication;two-factor-authentication;qr-code</PackageTags>
+    <Title>Telegram login and authentication for ASP.NET Core</Title>
+    <Description>Telegram login and authentication for ASP.NET Core and OpenIddict. Add passwordless login with Telegram to your website or app over standard OpenID Connect (OIDC): users scan a QR code on a computer, TV or kiosk, or tap a button on the phone, and confirm with one tap in Telegram — no password, no SMS code. The same channel approves sensitive actions and AI agent steps. Veriqa channel adapter (satellite package).</Description>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;telegram;telegram-login;telegram-auth;telegram-authentication;sign-in-with-telegram;login-with-telegram;telegram-bot</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->

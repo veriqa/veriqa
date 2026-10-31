@@ -44,6 +44,8 @@ public static class VeriqaConfigKeyCatalogs
         AuthServerConfigKeys.Catalog,
         RateLimitConfigKeys.Catalog,
         ConfirmationSubjectDisplayConfigKeys.Catalog,
+        HopModeConfigKeys.Catalog,
+        ScopesClaimsConfigKeys.Catalog,
         ChannelInboundVerificationConfigKeys.Catalog
     ];
 }

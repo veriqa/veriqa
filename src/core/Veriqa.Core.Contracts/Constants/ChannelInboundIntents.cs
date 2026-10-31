@@ -16,6 +16,11 @@ public static class ChannelInboundIntents
     public const string AuthStart = "AuthStart";
 
     /// <summary>
+    /// The user initiated the start of authentication by sending the code shown on the sign-in page.
+    /// </summary>
+    public const string AuthStartByCode = "AuthStartByCode";
+
+    /// <summary>
     /// The user confirmed authentication.
     /// </summary>
     public const string AuthConfirm = "AuthConfirm";
@@ -29,6 +34,16 @@ public static class ChannelInboundIntents
     /// The user shared a phone number.
     /// </summary>
     public const string PhoneShared = "PhoneShared";
+
+    /// <summary>
+    /// The user pressed the secondary action of the phone step (skip the number, cancel the sign-in).
+    /// </summary>
+    public const string PhoneStepAction = "PhoneStepAction";
+
+    /// <summary>
+    /// The user pressed a callback item of the post-sign-in menu.
+    /// </summary>
+    public const string MenuItemPressed = "MenuItemPressed";
 
     /// <summary>
     /// The event is unrelated to the authentication process.

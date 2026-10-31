@@ -143,6 +143,34 @@ internal class StateTransitionGuardingTransactionStore : ITransactionStore, IDis
     public Task<IReadOnlyList<Transaction>> GetStalledConfirmedAsync(DateTimeOffset confirmedBefore, int batchSize, CancellationToken cancellationToken = default)
         => _inner.GetStalledConfirmedAsync(confirmedBefore, batchSize, cancellationToken);
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Transaction>> GetPendingSignInsAsync(SignInSubjectScope scope, CancellationToken cancellationToken = default)
+        => _inner.GetPendingSignInsAsync(scope, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> TryMarkHopObservationAsync(TransactionId id, HopObservationMark mark, DateTimeOffset markedAt, CancellationToken cancellationToken = default)
+        => _inner.TryMarkHopObservationAsync(id, mark, markedAt, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> TryAttachScannerContextAsync(TransactionId id, ScannerContextSnapshot snapshot, CancellationToken cancellationToken = default)
+        => _inner.TryAttachScannerContextAsync(id, snapshot, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> TryFillScannerFingerprintAsync(TransactionId id, string fingerprint, CancellationToken cancellationToken = default)
+        => _inner.TryFillScannerFingerprintAsync(id, fingerprint, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> TrySetWebStepSurfaceAsync(TransactionId id, WebStepSurface? expected, WebStepSurface surface, CancellationToken cancellationToken = default)
+        => _inner.TrySetWebStepSurfaceAsync(id, expected, surface, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> TrySetClaimFormTokenHashAsync(TransactionId id, string tokenHash, CancellationToken cancellationToken = default)
+        => _inner.TrySetClaimFormTokenHashAsync(id, tokenHash, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> TryRecordClaimResultAsync(TransactionId id, ClaimCompletionResult result, CancellationToken cancellationToken = default)
+        => _inner.TryRecordClaimResultAsync(id, result, cancellationToken);
+
     /// <summary>
     /// Disposes the inner store the guard owns, mirroring what the container would have done to it
     /// had the registration not been replaced by one returning this wrapper.

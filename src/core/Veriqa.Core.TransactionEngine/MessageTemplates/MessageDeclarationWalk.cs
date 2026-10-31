@@ -47,7 +47,9 @@ internal static class MessageDeclarationWalk
         (MessageTemplateConfigKeys.ByTypeGroup, MessageTemplateConfigKeys.TransactionTypeDimensionName),
         (MessageTemplateConfigKeys.ByActionGroup, MessageTemplateConfigKeys.ActionTypeDimensionName),
         (MessageTemplateConfigKeys.BySurfaceGroup, MessageTemplateConfigKeys.SurfaceDimensionName),
-        (MessageTemplateConfigKeys.ByChannelGroup, MessageTemplateConfigKeys.ChannelDimensionName)
+        (MessageTemplateConfigKeys.ByChannelGroup, MessageTemplateConfigKeys.ChannelDimensionName),
+        (MessageTemplateConfigKeys.ByLinkPurposeGroup, MessageTemplateConfigKeys.LinkPurposeDimensionName),
+        (MessageTemplateConfigKeys.ByDeviceGroup, MessageTemplateConfigKeys.DeviceTypeDimensionName)
     ];
 
     /// <summary>
@@ -259,7 +261,7 @@ internal static class MessageDeclarationWalk
 
     /// <summary>
     /// The map of one group of a node — the single place a group NAME meets the member holding it, so
-    /// the walk and the address of the keys name the same four groups.
+    /// the walk and the address of the keys name the same groups.
     /// </summary>
     /// <param name="declaration">Node of the declaration.</param>
     /// <param name="group">Group name.</param>
@@ -273,6 +275,8 @@ internal static class MessageDeclarationWalk
             MessageTemplateConfigKeys.ByActionGroup => declaration.ByAction,
             MessageTemplateConfigKeys.BySurfaceGroup => declaration.BySurface,
             MessageTemplateConfigKeys.ByChannelGroup => declaration.ByChannel,
+            MessageTemplateConfigKeys.ByLinkPurposeGroup => declaration.ByLinkPurpose,
+            MessageTemplateConfigKeys.ByDeviceGroup => declaration.ByDevice,
             _ => throw new ArgumentOutOfRangeException(nameof(group), group, "Unknown declaration group.")
         };
 

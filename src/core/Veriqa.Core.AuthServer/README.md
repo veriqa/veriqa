@@ -1,8 +1,19 @@
 # Veriqa.Core.AuthServer
 
-**Veriqa** — an embeddable OpenIddict connector for cross-device authentication through trusted channels: Telegram, WhatsApp, MAX, and Email.
+**Passwordless login and authentication through messaging apps and email for your ASP.NET Core
+application.** Your users scan a QR code on a computer, TV or kiosk, or tap a button on their phone,
+and confirm the sign-in in Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX or Email: no
+password, no SMS code and no sign-up form. Even a first sign-in takes 4–6 seconds.
 
-Plug Veriqa into an existing ASP.NET Core application and get a ready-made OIDC Authorization Code Flow with QR codes, deep links through popular messengers, and email magic links.
+Veriqa **extends** the OpenIddict setup of your application rather than replacing it: it runs the
+sign-in transaction between `/connect/authorize` and `/connect/token` and leaves token issuance to
+OpenIddict. Your clients get a standard OpenID Connect Authorization Code Flow, and your backend can
+ask the same user to confirm a sensitive action or an AI agent step through the Confirmation API.
+
+This package is the OpenID Connect server of [Veriqa](https://veriqa.app), an open-source
+project for passwordless authentication through popular messaging apps and email, over standard
+OpenID Connect.
+Documentation: [.NET quickstart](https://veriqa.app/docs/quickstart/dotnet).
 
 ---
 
@@ -130,10 +141,11 @@ app.Run();
 ```
 
 The WhatsApp delivery provider expected by the installation is declared by
-`Veriqa:Channels:WhatsApp:Provider` (`MetaCloudApi` — the official path, the default and the only
-shipped provider). A provider supplied by the host names itself with its own code and is registered
-with `UseWhatsAppProvider<TProvider>()`; the declared code is matched against the registered one at
-startup, and a mismatch stops the host.
+`Veriqa:Channels:WhatsApp:Provider`, which also picks the shipped provider that is registered:
+`MetaCloudApi` (the official path, the default) or `Twilio` (credentials in the `Twilio` section —
+`AccountSid`, `AuthToken`, `QuickReplyContentSid`, `WebhookUrl`). A provider supplied by the host
+names itself with its own code and is registered with `UseWhatsAppProvider<TProvider>()`; the
+declared code is matched against the registered one at startup, and a mismatch stops the host.
 The Email channel settings (SMTP for magic links, inbound for the one-tap email) live in the
 `Veriqa:Channels:Email` section; `PublicBaseUrl` is mandatory when the channel is enabled.
 
@@ -217,7 +229,7 @@ context is collected as usual (graceful degradation). `Veriqa:InitiatorContext:C
 is `true` by default, so a default installation with no provider behind it does get a startup
 warning carrying the code `initiator_context_geoip_unavailable` — on every boot, until either this
 satellite is installed or the setting is turned off (`"CollectGeoLocation": false`). That is the
-same behaviour an installation with an unconfigured database already had. The database path and the
+same behavior an installation with an unconfigured database already had. The database path and the
 rest of the settings are described in the satellite's own README.
 
 ---
@@ -231,15 +243,22 @@ rest of the settings are described in the satellite's own README.
 | `/connect/authorize` | GET | Entry point of the OIDC Authorization Code Flow |
 | `/connect/authorize/callback` | GET | Callback after confirmation in the channel |
 | `/connect/authorize/callback/confirm` | POST | Confirming the sign-in with a button on the web page (page confirmation mode) |
+| `/connect/authorize/callback/cancel` | POST | "Cancel sign-in" of the sign-in page: ends the sign-in as declined by the user and returns `access_denied` to the client. The button is on by default; `Veriqa:AuthPageDesign:Cancel:Enabled` switches it off |
 | `/connect/token` | POST | Exchange the authorization code for tokens |
 | `/connect/userinfo` | GET | Retrieve the user's claims |
 | `/connect/revoke` | POST | Token revocation (RFC 7009) — handled natively by OpenIddict |
 | `/connect/introspect` | POST | Token introspection (RFC 7662) — handled natively by OpenIddict; token metadata only, for confidential clients with `AllowIntrospection` |
 | `/api/transaction/{id}/status` | GET | Transaction status polling (fallback for non-WebSocket) |
+| `/api/link-handle/redeem` | POST | Server-to-server exchange of a link handle — the one-time value a post-completion button carries in place of `{handle}` — for the identity of the signed-in user (client credentials of the client the sign-in belongs to); the link handle store is registered together with the channel layer, so the route is there in every installation with channels |
+| `/api/collected-claims?sub=…` | DELETE | Deletion of the collected claims of a subject (client credentials of a client with `AllowCollectedClaimsDeletion`); mapped only when a collected claims store is registered |
 | `/hubs/auth` | WebSocket (SignalR) | Live transaction status for the sign-in page |
 | `/api/channels/telegram/webhook` | POST | Telegram channel adapter webhook |
-| `/api/channels/whatsapp/webhook` | GET/POST | WhatsApp channel adapter Hub Challenge and webhook |
+| `/api/channels/whatsapp/webhook` | GET/POST | WhatsApp channel adapter webhook (GET — the Meta Cloud API Hub Challenge) |
 | `/api/channels/max/webhook` | POST | MAX channel adapter webhook |
+| `/api/channels/instagram/webhook` | GET/POST | Instagram channel adapter webhook (GET — the Meta verification handshake) |
+| `/api/channels/messenger/webhook` | GET/POST | Messenger channel adapter webhook (GET — the Meta verification handshake) |
+| `/api/channels/wechat/webhook` | GET/POST | WeChat channel adapter webhook (GET — the address check of the Official Account) |
+| `/api/channels/viber/webhook` | POST | Viber channel adapter webhook |
 
 The Email channel endpoints are mapped by the same `MapVeriqaAuthServer` automatically — only
 when the channel is enabled (`Veriqa:Channels:Email:Enabled = true`). The channel contributes them
@@ -249,7 +268,7 @@ itself, through the endpoint seam every channel may use, so this package holds n
 |---|---|---|
 | `/auth/email/start` | GET/POST | Email entry page and magic link sending (Pull) |
 | `/auth/email/confirm` | GET/POST | Magic link confirmation (Pull) |
-| `/auth/email/push/compose` | GET | Push-mode compose page (the one-tap email) |
+| `/auth/email/claim` | GET/POST | Email address confirmation by the link of a claims-completion mail |
 | `/api/channels/email/inbound` | POST | Inbound email webhook from the inbound provider (Push) |
 
 ---
@@ -385,6 +404,15 @@ The attribution is what a pairwise subject identifier needs (OIDC Core 1.0 §8.1
 gets a different `sub` per relying party. The built-in mapper does not use it — the `sub` it issues is
 global across relying parties.
 
+Values Veriqa collected from the user during the sign-in (claims completion) reach a mapper in
+`completion.Claims`, next to what the channel gave in `resolvedIdentity.Claims` — the completion runs
+before the mapper, not instead of it. A claim the channel gave with an empty value counts as missing:
+when the user supplies it, `completion.Claims` carries the collected value while
+`resolvedIdentity.Claims` keeps the empty one, and the built-in mapper issues the collected value. Whatever a mapper returns, the core then sets the token
+destinations itself: a claim declared in the `ScopesClaims` catalog (other than the claims of the
+standard scopes, which keep their own rules) goes to both tokens when the scope of its catalog row is
+granted and to none when it is not — the same gate for channel, collected and mapper-supplied values.
+
 ### Adding a transaction event handler
 
 Implement `ITransactionEventHandler` for custom handling of transaction events:
@@ -416,6 +444,8 @@ Supported values:
 - `channel:telegram` — authentication via Telegram only
 - `channel:whatsapp` — authentication via WhatsApp only
 - `channel:max` — authentication via MAX only
+- `channel:instagram`, `channel:messenger`, `channel:wechat`, `channel:viber` — authentication via
+  that channel only
 - `channel:email` — authentication via Email only (magic link)
 - multiple values separated by spaces (e.g. `channel:telegram channel:email`) — the user
   chooses from the listed channels; without the parameter all enabled channels are available
@@ -509,7 +539,9 @@ The theme sets the `data-theme` attribute (`auto`/`light`/`dark`) on `<html>`, a
 `data-preset`. The dark values of the variables are declared under `[data-theme="dark"]` and (for
 `auto`) under `@media (prefers-color-scheme: dark)`. An explicit `Theme` (`Light`/`Dark`) takes
 priority over the preset's color scheme; with `Theme=Auto`, the `Dark` preset also yields a dark
-theme. Animations respect `prefers-reduced-motion` (SPEC-015 §2.3). When `CustomCssPath` is set, the
+theme. Every page the core generates states the attribute — the sign-in window and the service pages
+(confirmation, claims completion, expired callback, email pages) — and all of them derive it by the
+one rule above. Animations respect `prefers-reduced-motion` (SPEC-015 §2.3). When `CustomCssPath` is set, the
 preset is ignored (CFG-023) — the look is fully determined by the user CSS.
 
 ---

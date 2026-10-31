@@ -30,12 +30,18 @@ dotnet add package Veriqa.Core.TransactionEngine
 
 # Channels — one metapackage with the base set (Telegram, WhatsApp, Email):
 dotnet add package Veriqa.Core.BaseChannels
-# MAX is not part of the metapackage — install it separately when you need it:
+# MAX, Instagram, Messenger, WeChat and Viber are not part of the metapackage — install each separately when you need it:
 dotnet add package Veriqa.Core.ChannelAdapter.Max
+dotnet add package Veriqa.Core.ChannelAdapter.Instagram
+dotnet add package Veriqa.Core.ChannelAdapter.Messenger
+dotnet add package Veriqa.Core.ChannelAdapter.WeChat
+dotnet add package Veriqa.Core.ChannelAdapter.Viber
+# Sign-in with a Google, Apple, Huawei, Yandex, VK ID or other provider account:
+dotnet add package Veriqa.Core.ChannelAdapter.WebProviders
 ```
 
 Need a single channel? Install just that one: `Veriqa.Core.ChannelAdapter.Telegram`,
-`.WhatsApp`, `.Max`, `.Email`. Each brings only its own SDK.
+`.WhatsApp`, `.Max`, `.Instagram`, `.Messenger`, `.WeChat`, `.Viber`, `.Email`. Each brings only its own SDK.
 
 For production storage on PostgreSQL add the migrations assemblies of both stores:
 

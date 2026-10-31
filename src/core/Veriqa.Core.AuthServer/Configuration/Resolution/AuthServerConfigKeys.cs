@@ -57,20 +57,6 @@ public static class AuthServerConfigKeys
     private static readonly OidcServerOptions ShippedServer = new();
 
     /// <summary>
-    /// The sign-in page design AS THE PRODUCT SHIPS IT — a default-constructed options object, read for
-    /// the same one thing <see cref="ShippedServer"/> is: the value a core level yields where the
-    /// section states nothing. Taking the shipped values off the options class rather than restating
-    /// them here is what keeps the two from drifting.
-    /// <para>
-    /// The preset of the page is NOT among them: its key is declared in the assembly this one
-    /// references (<see cref="CorePageBrandingConfigKeys.DefaultPreset"/>), which cannot see this
-    /// options class, so the shipped value of that key lives at the key and the options class takes it
-    /// from there.
-    /// </para>
-    /// </summary>
-    private static readonly AuthPageDesignOptions ShippedPageDesign = new();
-
-    /// <summary>
     /// Access token lifetime (sec), CFG-220. Protective ceiling: a level below the owning one can only
     /// make the value stricter. "Stricter" = a smaller value (the token lives shorter) = more protection.
     /// </summary>
@@ -186,9 +172,10 @@ public static class AuthServerConfigKeys
     /// none. It lives at the key for the same reason the member name above does: the section is no
     /// longer bound into an object for this setting, so the declaration of the key is the only place
     /// left that can state it (the arrangement <see cref="CorePageBrandingConfigKeys.DefaultPreset"/>
-    /// already has).
+    /// already has). It is <see cref="QrCodeVisibility.DesktopOnly"/> (SPEC-025 HOP-147): a phone gets
+    /// the channel buttons, and every other device keeps the QR.
     /// </summary>
-    private const QrCodeVisibility ShippedVisibility = QrCodeVisibility.Always;
+    private const QrCodeVisibility ShippedVisibility = QrCodeVisibility.DesktopOnly;
 
     /// <summary>
     /// Member of the <c>ui_config</c> record the QR settings live in — the snake_case name of its
@@ -205,13 +192,6 @@ public static class AuthServerConfigKeys
     private const string RecordPixelsPerModuleByChannel = "pixels_per_module_by_channel";
 
     /// <summary>
-    /// Dimensions a per-channel map of a level is cut by, innermost last — a single one, the channel.
-    /// It is the shape of the level's MAP and never the order of the chain's steps, which the key
-    /// declares (see <see cref="DimensionedConfigValue"/>).
-    /// </summary>
-    private static readonly IReadOnlyList<string> ChannelDimensions = [ChannelDimensionName];
-
-    /// <summary>
     /// QR settings of the authentication page (SPEC-003 §17.3 — presentational group,
     /// SPEC-012 §10.3/§10.6) — TWO keys over the same four levels: the global section, the tenant
     /// record, the OIDC client entry and the <c>ui_config</c> record. Value semantics (CFG-210) applies
@@ -220,9 +200,10 @@ public static class AuthServerConfigKeys
     /// defaults. Self-hosted (N=1) resolves every one of them to the core level, i.e. to the global
     /// section named by <see cref="QrCodeOptions.SectionName"/>.
     /// <para>
-    /// The core level DECLARES the shipped visibility: a deployment that wrote no section was served
-    /// that very value already — the consumer received the default of the TYPE where no level spoke —
-    /// and declaring it is what lets the schema of the deployment print the answer instead of "none
+    /// The core level DECLARES the shipped visibility, <see cref="QrCodeVisibility.DesktopOnly"/>: a
+    /// deployment that writes no section is served that value by this declaration, not by the default
+    /// of the TYPE — the two differ (the type's default is <see cref="QrCodeVisibility.Always"/>).
+    /// Declaring it is also what lets the schema of the deployment print the answer instead of "none
     /// declared".
     /// </para>
     /// </summary>
@@ -282,25 +263,25 @@ public static class AuthServerConfigKeys
 
     /// <summary>
     /// Layer value of one step of the scale's chain at a level: the step that addresses the channel
-    /// answers from the level's per-channel map, the step that addresses none from the plain member
-    /// the address names. The two are different MEMBERS of the record, which an address cannot say,
-    /// so the key states it here — over the same helper every handwritten binding of this key used.
-    /// Whether the setting admits the value is decided by <see cref="PixelsPerModuleDomain"/>, applied
-    /// by the mechanism to every binding alike.
+    /// answers from the entry of the level's per-channel map that names the channel, the step that
+    /// addresses none from the plain member the address names. The two are different MEMBERS of the
+    /// record, which an address cannot say, so the key states it here. Whether the setting admits the
+    /// value is decided by <see cref="PixelsPerModuleDomain"/>, applied by the mechanism to every
+    /// binding alike.
+    /// <para>
+    /// A value the record cannot be read as is not caught here either: the mechanism reports it and
+    /// leaves the step that read it unset (SPEC-012 CFG-246, CFG-240). The map is read entry by entry,
+    /// so an entry that cannot be read costs that entry alone — the scale of its channel comes from the
+    /// plain member of the same level or from the level below, and the other entries stand — while a
+    /// plain member that cannot be read leaves both steps of its level unset.
+    /// </para>
     /// </summary>
     /// <param name="node">Subtree of the level's record.</param>
     /// <param name="path">Address the step resolved to — the plain scale.</param>
     /// <param name="point">Point of the chain handed in by the resolver.</param>
     /// <returns>Layer value of the step.</returns>
-    private static LayerValue<int> ReadScale(ConfigNode node, string path, ConfigDimensionValues point)
-    {
-        var byChannel = node.TryRead<Dictionary<string, int>>(ByChannelAddress(node, path), out var map)
-            ? map
-            : null;
-        var plain = node.TryRead<int>(path, out var scale) ? scale : (int?)null;
-
-        return DimensionedConfigValue.Layer(point, ChannelDimensions, byChannel, plain);
-    }
+    private static LayerValue<int> ReadScale(ConfigNode node, string path, ConfigDimensionValues point) =>
+        DimensionedConfigValue.Layer<int>(node, point, ChannelDimensionName, ByChannelAddress(node, path), path);
 
     /// <summary>
     /// Addresses one record of a level STATES the scale at: the plain member the key's address names,
@@ -342,6 +323,153 @@ public static class AuthServerConfigKeys
             path,
             nameof(QrCodeOptions.PixelsPerModuleByChannel),
             RecordPixelsPerModuleByChannel);
+
+    /// <summary>
+    /// Member the settings of the cancel button live in inside the global section of the page
+    /// design and inside the record of a level above the core — the tenant record and the OIDC client
+    /// entry. Written out for the reason <see cref="ShowQrCodeMember"/> is: no level binds the member
+    /// into an object for this setting, and the address of a level is a contract of the deployment
+    /// (SPEC-012 §10.6).
+    /// </summary>
+    private const string CancelSection = "Cancel";
+
+    /// <summary>
+    /// Member of <see cref="CancelSection"/> carrying the switch of the button, as a deployment spells it.
+    /// </summary>
+    private const string CancelEnabledMember = "Enabled";
+
+    /// <summary>
+    /// Address of the same switch inside the <c>ui_config</c> record — the snake_case names of its public
+    /// JSON schema, which the record spells with <c>[JsonPropertyName]</c>.
+    /// </summary>
+    private const string RecordCancelEnabledAddress = "cancel:enabled";
+
+    /// <summary>
+    /// Whether the product SHIPS the cancel button on — the value the core level yields where
+    /// the section states none. It lives at the key for the reason <see cref="ShippedVisibility"/> does:
+    /// the declaration of the key is the only place that states it.
+    /// </summary>
+    private const bool ShippedCancelEnabled = true;
+
+    /// <summary>
+    /// Whether the cancel button is offered — "Cancel sign-in" of the sign-in window and "Cancel
+    /// confirmation" of the entry page of a confirmation (SPEC-012 CFG-267, SPEC-007 UI-122): pressing it ends
+    /// the transaction as declined by the user; the client of a sign-in receives the standard
+    /// <c>access_denied</c> answer, the browser of a confirmation the receipt of the refusal. A plain value over the same four levels as
+    /// <see cref="QrCodeShowQrCode"/>, each overriding the one below it freely: the first level that
+    /// states the switch wins. The core level declares the shipped answer — the button is on.
+    /// <para>
+    /// The switch decides the MARKUP of the page only. The routes the button posts to are mapped
+    /// whatever the value: they are guarded by their own checks, and a page rendered a moment before the
+    /// setting was switched off still has to be answered.
+    /// </para>
+    /// </summary>
+    public static ConfigKey<bool> CancelEnabled { get; } = Declared
+        .Of<bool>("AuthPageDesign.Cancel.Enabled")
+        .At(
+            ConfigLevel.Core,
+            AuthPageDesignOptions.SectionName + ":" + CancelSection + ":" + CancelEnabledMember)
+        .At(ConfigLevel.Tenant, CancelSection + ":" + CancelEnabledMember)
+        .At(ConfigLevel.Application, CancelSection + ":" + CancelEnabledMember)
+        .At(ConfigLevel.UiConfig, RecordCancelEnabledAddress)
+        .Cached(ConfigCachePolicy.ExternalStore)
+        .Default(ShippedCancelEnabled)
+        .Declare();
+
+    /// <summary>
+    /// Member the settings of the channel buttons live in inside the global section of the page design
+    /// and inside the record of a level above the core — the tenant record and the OIDC client entry.
+    /// Written out for the reason <see cref="ShowQrCodeMember"/> is: no level binds the member into an
+    /// object for this setting, and the address of a level is a contract of the deployment
+    /// (SPEC-012 §10.6).
+    /// </summary>
+    private const string ChannelButtonSection = "ChannelButton";
+
+    /// <summary>
+    /// Member of <see cref="ChannelButtonSection"/> carrying the visibility of the button, as a
+    /// deployment spells it.
+    /// </summary>
+    private const string ShowChannelButtonMember = "ShowChannelButton";
+
+    /// <summary>
+    /// Address of the same visibility inside the <c>ui_config</c> record — the snake_case names of its
+    /// public JSON schema, which the record spells with <c>[JsonPropertyName]</c>.
+    /// </summary>
+    private const string RecordShowChannelButtonAddress = "channel_button:show_channel_button";
+
+    /// <summary>
+    /// The channel button visibility the product SHIPS — the value the core level yields where the
+    /// section states none: the button is on every device. It lives at the key for the reason
+    /// <see cref="ShippedVisibility"/> does.
+    /// </summary>
+    private const ChannelButtonVisibility ShippedChannelButtonVisibility = ChannelButtonVisibility.Always;
+
+    /// <summary>
+    /// On which devices the sign-in page shows the channel button — the button that takes the user into
+    /// a channel by its deep link. The counterpart of <see cref="QrCodeShowQrCode"/>, over the same four
+    /// levels, each overriding the one below it freely: the first level that states the visibility wins.
+    /// The core level declares the shipped answer, <see cref="ChannelButtonVisibility.Always"/>.
+    /// <para>
+    /// The two visibilities are resolved independently, and some combinations of them leave a device
+    /// with no way in at all — neither the QR code nor the button. That is a relation BETWEEN the keys
+    /// and is therefore checked by the group the page is made of (<see cref="AuthPageSettingsGroup"/>),
+    /// not here: the page then shows the button on every device, and the operator is told.
+    /// </para>
+    /// </summary>
+    public static ConfigKey<ChannelButtonVisibility> ChannelButtonShowChannelButton { get; } = Declared
+        .Of<ChannelButtonVisibility>("AuthPageDesign.ChannelButton.ShowChannelButton")
+        .At(
+            ConfigLevel.Core,
+            AuthPageDesignOptions.SectionName + ":" + ChannelButtonSection + ":" + ShowChannelButtonMember)
+        .At(ConfigLevel.Tenant, ChannelButtonSection + ":" + ShowChannelButtonMember)
+        .At(ConfigLevel.Application, ChannelButtonSection + ":" + ShowChannelButtonMember)
+        .At(ConfigLevel.UiConfig, RecordShowChannelButtonAddress)
+        .Cached(ConfigCachePolicy.ExternalStore)
+        .Default(ShippedChannelButtonVisibility)
+        .Declare();
+
+    /// <summary>
+    /// Member carrying the layout of the channels inside the global section of the page design and
+    /// inside the record of a level above the core — the tenant record and the OIDC client entry.
+    /// Written out for the reason <see cref="ShowQrCodeMember"/> is: no level binds the member into an
+    /// object for this setting, and the address of a level is a contract of the deployment
+    /// (SPEC-012 §10.6).
+    /// </summary>
+    private const string ChannelLayoutMember = "ChannelLayout";
+
+    /// <summary>
+    /// Address of the same layout inside the <c>ui_config</c> record — the snake_case name of its public
+    /// JSON schema, which the record spells with <c>[JsonPropertyName]</c>.
+    /// </summary>
+    private const string RecordChannelLayoutAddress = "channel_layout";
+
+    /// <summary>
+    /// The layout of the channels the product SHIPS — the value the core level yields where the section
+    /// states none: tabs. It lives at the key for the reason <see cref="ShippedVisibility"/> does.
+    /// </summary>
+    private const ChannelLayout ShippedChannelLayout = ChannelLayout.Tabs;
+
+    /// <summary>
+    /// How several channels share a sign-in page that shows the QR code of each of them: behind tabs,
+    /// or all at once. A plain value over the same four levels as <see cref="QrCodeShowQrCode"/>, each
+    /// overriding the one below it freely: the first level that states the layout wins. The core level
+    /// declares the shipped answer, <see cref="ChannelLayout.Tabs"/>.
+    /// <para>
+    /// The key arranges and nothing more: the set of channels stays with
+    /// <see cref="PageChannelDisplayMode"/> and <see cref="PageChannels"/>, and a page that has nothing
+    /// to arrange — one channel, the buttons layout, the unified QR code — is rendered the same
+    /// whatever the value.
+    /// </para>
+    /// </summary>
+    public static ConfigKey<ChannelLayout> PageChannelLayout { get; } = Declared
+        .Of<ChannelLayout>("AuthPageDesign.ChannelLayout")
+        .At(ConfigLevel.Core, AuthPageDesignOptions.SectionName + ":" + ChannelLayoutMember)
+        .At(ConfigLevel.Tenant, ChannelLayoutMember)
+        .At(ConfigLevel.Application, ChannelLayoutMember)
+        .At(ConfigLevel.UiConfig, RecordChannelLayoutAddress)
+        .Cached(ConfigCachePolicy.ExternalStore)
+        .Default(ShippedChannelLayout)
+        .Declare();
 
     /// <summary>
     /// Hint of the sign-in page FOR A CHANNEL: the owner is the tenant (SPEC-012 §9), resolved by the
@@ -397,23 +525,10 @@ public static class AuthServerConfigKeys
         .Declare();
 
     /// <summary>
-    /// Color scheme of the sign-in page (SPEC-015 §2.2). The core level declares the shipped scheme,
-    /// for the reason <see cref="QrCodeShowQrCode"/> states: the page was rendered with it either way,
-    /// and a declared answer is one the schema of the deployment can print.
-    /// </summary>
-    public static ConfigKey<AuthPageTheme> PageTheme { get; } = Declared
-        .Of<AuthPageTheme>("AuthPageDesign.Theme")
-        .At(ConfigLevel.Core, AuthPageDesignOptions.SectionName + ":" + nameof(AuthPageDesignOptions.Theme))
-        .At(ConfigLevel.UiConfig, "theme")
-        .Cached(ConfigCachePolicy.ExternalStore)
-        .Default(ShippedPageDesign.Theme)
-        .Declare();
-
-    /// <summary>
     /// Logo URL of the brand row of the sign-in page, read in every preset whose row is rendered
     /// (SPEC-007 UI-100) — branding of the page, owned by the tenant and overridable by the application
     /// and by the <c>ui_config</c> record (SPEC-012 §9). The key has no shipped value: when neither this
-    /// key nor <see cref="PageBrandName"/> resolves to a value, the page shows the product's own mark,
+    /// key nor <see cref="CorePageBrandingConfigKeys.BrandName"/> resolves to a value, the page shows the product's own mark,
     /// and that default is markup of the page rather than an answer of the key.
     /// <para>
     /// The logo is the one configurable ASSET of the page that does not follow the theme by itself
@@ -444,32 +559,14 @@ public static class AuthServerConfigKeys
         .Declare();
 
     /// <summary>
-    /// Brand name of the sign-in page — the text of the brand row, read in every preset whose row is
-    /// rendered (SPEC-007 UI-100), standing over the same levels as <see cref="PageLogoUrl"/>
-    /// (SPEC-012 §9) and resolved INDEPENDENTLY of it: the two are separate keys, so a deployment may
-    /// state the logo at one level and the name at another and the page shows both. There is no
-    /// shipped value: with a logo resolved the row carries the logo alone, and with neither resolved the
-    /// page shows the product's own mark, which is markup of the page rather than an answer of the key.
-    /// <para>
-    /// Unlike the logo the name is NOT cut by the theme, and that is the difference between an asset and
-    /// a text: an external image cannot repaint itself for a dark page, while a text takes the color of
-    /// the page it is rendered on.
-    /// </para>
-    /// <para>
-    /// The value is a Natural Key: the page resolves it through the host locale files, and a name no
-    /// locale file carries is shown as it is. A blank value states nothing, so a level below cannot
-    /// switch off the name a level above it states.
-    /// </para>
+    /// Wording of the markup shape <see cref="AuthPageFooterMarkup"/> admits — the one shape of every
+    /// setting whose value the sign-in page emits as markup, told to an operator by each such domain.
     /// </summary>
-    public static ConfigKey<string?> PageBrandName { get; } = Declared
-        .Text("AuthPageDesign.BrandName")
-        .At(ConfigLevel.Core, AuthPageDesignOptions.SectionName + ":" + nameof(AuthPageDesignOptions.BrandName))
-        .At(ConfigLevel.Tenant, nameof(AuthPageDesignOptions.BrandName))
-        .At(ConfigLevel.Application, nameof(AuthPageDesignOptions.BrandName))
-        .At(ConfigLevel.UiConfig, "brand_name")
-        .Cached(ConfigCachePolicy.ExternalStore)
-        .BlankIsUnstated()
-        .Declare();
+    private const string AdmissiblePageMarkupShape =
+        "inline markup of the tags a, span, div, p, strong, em and br with the attributes href, target, "
+        + "rel and class in double quotes, no class named veriqa or veriqa-*, the tags balanced, and every "
+        + "link carrying target=\"_blank\" "
+        + "and an http(s) or root-relative href";
 
     /// <summary>
     /// Core-level address of the footer block of the sign-in page — the member the key is read at, and
@@ -492,10 +589,7 @@ public static class AuthServerConfigKeys
     /// </summary>
     private static readonly ConfigValueDomain<string?> FooterHtmlDomain = new(
         static markup => string.IsNullOrWhiteSpace(markup) || AuthPageFooterMarkup.IsValid(markup),
-        "inline markup of the tags a, span, div, p, strong, em and br with the attributes href, target, "
-        + "rel and class in double quotes, no class named veriqa or veriqa-*, the tags balanced, and every "
-        + "link carrying target=\"_blank\" "
-        + "and an http(s) or root-relative href",
+        AdmissiblePageMarkupShape,
         CoreFooterHtmlAddress + " of the core level, or '" + nameof(AuthPageDesignOptions.FooterHtml)
         + "' of the record of the level stating it",
         ConfigValueRejectionPolicy.FailStart);
@@ -527,6 +621,54 @@ public static class AuthServerConfigKeys
         .Cached(ConfigCachePolicy.ExternalStore)
         .BlankIsUnstated()
         .Domain(FooterHtmlDomain)
+        .Declare();
+
+    /// <summary>
+    /// Core-level address of the block the sign-in page shows once the hop has started — the member
+    /// the key is read at, and the section its domain tells an operator to write a correct value at.
+    /// </summary>
+    private const string CoreHopInstructionHtmlAddress =
+        AuthPageDesignOptions.SectionName + ":" + nameof(AuthPageDesignOptions.HopInstructionHtml);
+
+    /// <summary>
+    /// Domain of the hop instruction — the same admissible shape and the same strict policy as the
+    /// footer block (<see cref="FooterHtmlDomain"/>), under its own address: a rejection names the
+    /// setting the operator has to correct, and that is not the footer.
+    /// </summary>
+    private static readonly ConfigValueDomain<string?> HopInstructionHtmlDomain = new(
+        static markup => string.IsNullOrWhiteSpace(markup) || AuthPageFooterMarkup.IsValid(markup),
+        AdmissiblePageMarkupShape,
+        CoreHopInstructionHtmlAddress + " of the core level, or '"
+        + nameof(AuthPageDesignOptions.HopInstructionHtml) + "' of the record of the level stating it",
+        ConfigValueRejectionPolicy.FailStart);
+
+    /// <summary>
+    /// Content of the block the sign-in page shows in place of the QR code and the channel choice once
+    /// the first code of the hop family has arrived (SPEC-025 HOP-101) — text or the integrator's own
+    /// markup. The levels are those of <see cref="PageFooterHtml"/>: the tenant owns it, the application
+    /// may state its own, and the <c>ui_config</c> record does not state it at all — markup is not
+    /// selectable per request. There is no shipped value: no level stating one means the page's own
+    /// localized text. The block is styled by the page's rules and, beyond them, by the integrator's
+    /// stylesheet (<see cref="CorePageBrandingConfigKeys.CustomCss"/>); the key carries no style of its own.
+    /// <para>
+    /// The value is MARKUP, emitted unsanitized, and checked for the shape of
+    /// <see cref="AuthPageFooterMarkup"/> on every level by the domain of the key and once more where it
+    /// is emitted; a translation outside that shape gives the page its default text.
+    /// </para>
+    /// <para>
+    /// The value is a Natural Key: the page resolves it through the host locale files, and a value no
+    /// locale file carries is emitted as it is. A blank value states nothing, so a level below cannot
+    /// switch off the content a level above it states.
+    /// </para>
+    /// </summary>
+    public static ConfigKey<string?> PageHopInstructionHtml { get; } = Declared
+        .Text("AuthPageDesign.HopInstructionHtml")
+        .At(ConfigLevel.Core, CoreHopInstructionHtmlAddress)
+        .At(ConfigLevel.Tenant, nameof(AuthPageDesignOptions.HopInstructionHtml))
+        .At(ConfigLevel.Application, nameof(AuthPageDesignOptions.HopInstructionHtml))
+        .Cached(ConfigCachePolicy.ExternalStore)
+        .BlankIsUnstated()
+        .Domain(HopInstructionHtmlDomain)
         .Declare();
 
     /// <summary>
@@ -669,7 +811,9 @@ public static class AuthServerConfigKeys
     /// Client Registration 1.0 §2, the HTTPS URL a third party sends the user to when it wants this
     /// client to sign them in. The sign-in window offers it as the way out of an expired page: the
     /// relying party's own entry point is a better place to land than a repeat of a request whose
-    /// <c>state</c> and <c>nonce</c> the relying party may already have written off.
+    /// <c>state</c> and <c>nonce</c> the relying party may already have written off. The callback's
+    /// "sign-in session expired" page offers the same address, and it is the only one that page has:
+    /// there is no request behind a callback to repeat.
     /// <para>
     /// The level is the APPLICATION and only it, because the value belongs to one client by
     /// definition — it is a field of that client's metadata. A global section stating it would state
@@ -688,6 +832,58 @@ public static class AuthServerConfigKeys
         .Text("Client.InitiateLoginUri")
         .At(ConfigLevel.Application, ClientInitiateLoginUriMember)
         .BlankIsUnstated()
+        .Declare();
+
+    /// <summary>
+    /// Address of the core level of the claims completion form switch inside the global section.
+    /// </summary>
+    private const string CoreClaimCompletionFormEnabledAddress = "Veriqa:ClaimCompletion:FormEnabled";
+
+    /// <summary>
+    /// Whether the claims completion form of the product is on when neither level states otherwise.
+    /// </summary>
+    private const bool ShippedClaimCompletionFormEnabled = true;
+
+    /// <summary>
+    /// Whether the claims completion form of Veriqa is shown to the users of an application
+    /// (SPEC-041 C34, R16). A relying party with a profile completion form of its own (Keycloak, Logto)
+    /// switches it off, so that the user does not fill two forms in a row: with the form off, the
+    /// requirement set of a transaction records every claim but <c>phone_number</c> and <c>email</c> as
+    /// <c>IfAvailable</c> — such a claim is issued when the channel provides it and never blocks the
+    /// sign-in. A plain value over the core and application levels, each overriding the one below it
+    /// freely: which form the user sees is the integrator's choice. The core level always states a value
+    /// — the one of the global section, or the one the product ships with (the form is on).
+    /// </summary>
+    public static ConfigKey<bool> ClaimCompletionFormEnabled { get; } = Declared
+        .Of<bool>("ClaimCompletion.FormEnabled")
+        .At(ConfigLevel.Core, CoreClaimCompletionFormEnabledAddress)
+        .At(ConfigLevel.Application, nameof(OidcClientOptions.ClaimCompletionFormEnabled))
+        .Default(ShippedClaimCompletionFormEnabled)
+        .Declare();
+
+    /// <summary>
+    /// Address of the core level of the claims completion form surface inside the global section.
+    /// </summary>
+    private const string CoreClaimCompletionFormSurfaceAddress = "Veriqa:ClaimCompletion:FormSurface";
+
+    /// <summary>
+    /// Where the claims completion form is shown when neither level states otherwise.
+    /// </summary>
+    private const ClaimFormSurface ShippedClaimCompletionFormSurface = ClaimFormSurface.Auto;
+
+    /// <summary>
+    /// Where the claims completion form of an application is shown (SPEC-041 C34, L53): chosen by the path
+    /// of the sign-in, always the sign-in page, the device that confirmed the sign-in with the sign-in page
+    /// as the fallback, or that device only. The value is read once, when the web step of a transaction
+    /// begins. A plain value over the core and application levels, each overriding the one below it
+    /// freely, like <see cref="ClaimCompletionFormEnabled"/>; the core level always states a value — the
+    /// one of the global section, or the one the product ships with (<see cref="ClaimFormSurface.Auto"/>).
+    /// </summary>
+    public static ConfigKey<ClaimFormSurface> ClaimCompletionFormSurface { get; } = Declared
+        .Of<ClaimFormSurface>("ClaimCompletion.FormSurface")
+        .At(ConfigLevel.Core, CoreClaimCompletionFormSurfaceAddress)
+        .At(ConfigLevel.Application, nameof(OidcClientOptions.ClaimCompletionFormSurface))
+        .Default(ShippedClaimCompletionFormSurface)
         .Declare();
 
     /// <summary>
@@ -710,6 +906,32 @@ public static class AuthServerConfigKeys
     public static ConfigKey<string?> PageInstruction { get; } = Declared
         .Text("AuthPage.Instruction")
         .At(ConfigLevel.UiConfig, "instruction")
+        .Cached(ConfigCachePolicy.ExternalStore)
+        .BlankIsUnstated()
+        .Declare();
+
+    /// <summary>
+    /// Wording of the stated instruction for a page that hides the QR code — a phone under
+    /// <c>QrVisibility: DesktopOnly</c>, any device under <c>Never</c> — supplied by the <c>ui_config</c>
+    /// record. Unstated — that wording takes <see cref="PageInstruction"/>, and without it the page's own
+    /// wording. See <see cref="PageTitle"/> for why the key declares no core level.
+    /// </summary>
+    public static ConfigKey<string?> PageInstructionWithoutQr { get; } = Declared
+        .Text("AuthPage.InstructionWithoutQr")
+        .At(ConfigLevel.UiConfig, "instruction_without_qr")
+        .Cached(ConfigCachePolicy.ExternalStore)
+        .BlankIsUnstated()
+        .Declare();
+
+    /// <summary>
+    /// Wording of the stated instruction for a page that shows the QR code and hides the channel
+    /// buttons, supplied by the <c>ui_config</c> record. Unstated — that wording takes
+    /// <see cref="PageInstruction"/>, and without it the page's own wording. See <see cref="PageTitle"/>
+    /// for why the key declares no core level.
+    /// </summary>
+    public static ConfigKey<string?> PageInstructionWithoutButton { get; } = Declared
+        .Text("AuthPage.InstructionWithoutButton")
+        .At(ConfigLevel.UiConfig, "instruction_without_button")
         .Cached(ConfigCachePolicy.ExternalStore)
         .BlankIsUnstated()
         .Declare();
@@ -748,7 +970,7 @@ public static class AuthServerConfigKeys
     /// Channel display mode: the GLOBAL mode of the deployment, which a <c>ui_config</c> record may
     /// replace for the requests it serves (SPEC-012 §9 — owned by the tenant, overridden by
     /// <c>ui_config</c>; in a self-hosted installation the tenant IS the core, CFG-202). The shape is
-    /// the one <see cref="PageTheme"/> has: a core level at the address of the global section, a
+    /// the one <see cref="CorePageBrandingConfigKeys.Theme"/> has: a core level at the address of the global section, a
     /// <c>ui_config</c> level above it, and the shipped answer declared at the key.
     /// <para>
     /// The core level is what makes the mode a setting of the mechanism on EVERY level it lives at,
@@ -945,7 +1167,6 @@ public static class AuthServerConfigKeys
             .ToList()
             .AsReadOnly();
     }
-
 
     /// <summary>
     /// Layer value of a TEXT setting: a level that states nothing at the address — or states a blank

@@ -14,4 +14,10 @@ internal static class EmailEndpointPaths
     /// Endpoint path for starting the Pull flow (email entry, generation and sending of the magic link).
     /// </summary>
     public const string Start = "/auth/email/start";
+
+    /// <summary>
+    /// Endpoint path for the entry of the code of a sign-in mail that carries one: the address form of a
+    /// page posts the code here, on the same place the address was typed into.
+    /// </summary>
+    public const string Code = "/auth/email/code";
 }

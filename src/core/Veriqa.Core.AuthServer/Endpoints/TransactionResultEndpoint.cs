@@ -14,9 +14,11 @@ using Veriqa.Core.TransactionEngine.Services;
 namespace Veriqa.Core.AuthServer.Endpoints;
 
 /// <summary>
-/// Authenticated result surface of a confirmation transaction (GET /api/transaction/{id}/result,
+/// Authenticated result surface of a transaction (GET /api/transaction/{id}/result,
 /// SPEC-039 C24): the outcome, and the verdict of the check between the confirming party and the
-/// expectations the relying party stated.
+/// expectations the relying party stated. The surface does not tell transaction types apart: it
+/// answers the creating client about a sign-in transaction as well as about a confirmation one; a
+/// sign-in carries no expectations, so its verdict is null.
 /// <para>
 /// It sits next to the status endpoint and is deliberately NOT it: the status surface is anonymous
 /// and is addressed by an identifier that travels in the QR, the deep link and the URL of the entry

@@ -114,8 +114,9 @@ internal sealed class InMemoryEmailPushCorrelationStore : IEmailPushCorrelationS
         // withdraws its own provisional entry. Otherwise two parallel renders would leave two live tokens.
         var effectiveToken = StoreOrReuseCore(token, correlation);
 
-        // In direct-mailto mode StoreAsync is no longer called, so the periodic cleanup has to be triggered
-        // from here as well — otherwise expired entries would never be swept on that path
+        // The Push sign-in registers its tokens through this method and never calls StoreAsync, so the
+        // periodic cleanup has to be triggered from here as well — otherwise expired entries would never
+        // be swept on that path
         var count = Interlocked.Increment(ref _storeCallCount);
         if (count % CleanupEveryNCalls is 0)
         {
@@ -229,20 +230,6 @@ internal sealed class InMemoryEmailPushCorrelationStore : IEmailPushCorrelationS
         }
 
         return consumed;
-    }
-
-    /// <inheritdoc />
-    public Task<bool> TryMarkComposeOpenedAsync(string token, CancellationToken cancellationToken = default)
-    {
-        // The method atomically records the first open of the compose page via the shared CAS helper:
-        // exactly one concurrent call gets true; repeated views/refreshes,
-        // an expired or consumed correlation — false (the status is not duplicated)
-        return ConcurrentCasHelper.TryUpdateWithRetryAsync(
-            _correlations,
-            token,
-            canUpdate: current => current.ComposeOpenedAt is null && !current.IsExpired(_timeProvider.GetUtcNow()) && !current.IsConsumed,
-            update: current => current with { ComposeOpenedAt = _timeProvider.GetUtcNow() },
-            cancellationToken);
     }
 
     /// <inheritdoc />

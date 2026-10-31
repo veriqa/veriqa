@@ -1,0 +1,55 @@
+#nullable enable
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.ErrorCodes.ChannelCannotContinue = "channel_cannot_continue" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.ErrorCodes.UnsupportedOperation = "unsupported_operation" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.ErrorCodes.UnsupportedWireVersion = "unsupported_wire_version" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.AuthConfirm = "auth_confirm" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.AuthDecline = "auth_decline" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.AuthStart = "auth_start" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.AuthStartByCode = "auth_start_by_code" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.MenuItemPressed = "menu_item_pressed" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.PhoneShared = "phone_shared" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.PhoneStepAction = "phone_step_action" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.Unaddressed = "unaddressed" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events.Unrelated = "unrelated" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.MajorVersion = 1 -> int
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.MaxMenuItemValueLength = 1024 -> int
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Operations.DeepLink = "deep-link" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Operations.Health = "health" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Operations.ReportOutcome = "report-outcome" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Operations.SendMessage = "send-message" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Operations.SendPrompt = "send-prompt" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Version = "1.0" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.WebhookIdHeader = "webhook-id" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.WebhookSignatureHeader = "webhook-signature" -> string!
+const Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.WebhookTimestampHeader = "webhook-timestamp" -> string!
+override Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderHttpExtensions.AddHttpChannels(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!
+static Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.operator !=(Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest? left, Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest? right) -> bool
+static Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.operator ==(Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest? left, Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest? right) -> bool
+static Veriqa.Core.ChannelAdapter.Http.HttpChannelSignature.Sign(string! webhookId, System.DateTimeOffset timestamp, System.ReadOnlySpan<byte> body, System.Collections.Generic.IReadOnlyList<string!>! secrets) -> string!
+static Veriqa.Core.ChannelAdapter.Http.HttpChannelSignature.Verify(string? webhookId, string? webhookTimestamp, string? webhookSignature, System.ReadOnlySpan<byte> body, System.Collections.Generic.IReadOnlyList<string!>! secrets, System.DateTimeOffset now) -> bool
+Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderHttpExtensions
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.<Clone>$() -> Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest!
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.ChannelType.get -> string!
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.ChannelType.init -> void
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Deconstruct(out string? Tenant, out string! ChannelType, out string! Operation, out System.Uri! Target) -> void
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Equals(Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest? other) -> bool
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.HttpChannelEgressRequest(string? Tenant, string! ChannelType, string! Operation, System.Uri! Target) -> void
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Operation.get -> string!
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Operation.init -> void
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Target.get -> System.Uri!
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Target.init -> void
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Tenant.get -> string?
+Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest.Tenant.init -> void
+Veriqa.Core.ChannelAdapter.Http.HttpChannelSignature
+Veriqa.Core.ChannelAdapter.Http.HttpChannelWire
+Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.ErrorCodes
+Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Events
+Veriqa.Core.ChannelAdapter.Http.HttpChannelWire.Operations
+Veriqa.Core.ChannelAdapter.Http.IHttpChannelEgressPolicy
+Veriqa.Core.ChannelAdapter.Http.IHttpChannelEgressPolicy.IsAllowedAsync(Veriqa.Core.ChannelAdapter.Http.HttpChannelEgressRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<bool>
+Veriqa.Core.ChannelAdapter.Http.IHttpChannelInboundEventIdSource
+Veriqa.Core.ChannelAdapter.Http.IHttpChannelInboundEventIdSource.GetCurrentEventId(string! channelType) -> string?

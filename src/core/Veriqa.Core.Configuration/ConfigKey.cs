@@ -126,11 +126,15 @@ public sealed class ConfigKey<T>
     /// go beyond what core allows).
     /// </para>
     /// <para>
-    /// <c>false</c> — core does NOT participate in the intersection and is instead treated as a
-    /// degenerate N=1 default (self-hosted ≡ core, SPEC-012 §10.1 / SPEC-003 CA-170): core defines the set only
-    /// when no level above it by ownership has defined one. This is how <c>channels_enabled</c> opts out,
-    /// where the core's global set is a default, not a ceiling over the tenant (otherwise an empty global
-    /// set would wipe out the tenant's one — the narrowing defect of SPEC-012 §10.3).
+    /// <c>false</c> — core is NOT a ceiling over the TENANT: a set the tenant states replaces the core one.
+    /// This is how <c>channels_enabled</c> opts out, where the core's global set is a default, not a
+    /// ceiling over the tenant (otherwise an empty global set would wipe out the tenant's one — the
+    /// narrowing defect of SPEC-012 §10.3). While the tenant is silent, a core set that allows at least one
+    /// member is the base of the narrowing: the levels below the tenant (application and further) narrow
+    /// it by intersection and cannot state more than it allows (SPEC-012 CFG-162, CFG-248). An empty core
+    /// set, an unstated one and one whose read failed with no last valid value are no base — the levels
+    /// below then intersect among themselves; when no level states a set, the core one is the value as it
+    /// is, the degenerate N=1 default (self-hosted ≡ core, SPEC-012 §10.1 / SPEC-003 CA-170).
     /// </para>
     /// </summary>
     public bool CoreParticipatesInSetIntersection { get; }
@@ -188,8 +192,9 @@ public sealed class ConfigKey<T>
     /// <param name="coreParticipatesInSetIntersection">
     /// Role of the core level in the intersection (see <see cref="CoreParticipatesInSetIntersection"/>).
     /// Default <c>true</c> — core limits the set as an allowlist ceiling (ICC-081 contract).
-    /// Pass <c>false</c> for a capability where the core's set is a degenerate N=1 default rather
-    /// than a ceiling over the tenant (e.g. <c>channels_enabled</c>, CA-170).
+    /// Pass <c>false</c> for a set where the core's set is no ceiling over the tenant — a tenant set
+    /// replaces it — yet stays the base the levels below the tenant narrow while the tenant is silent
+    /// (e.g. <c>channels_enabled</c>, CA-170).
     /// </param>
     /// <param name="cachePolicy">Caching policy; null — not cached.</param>
     /// <param name="dimensions">Dimensions of a composite key; null — not composite.</param>

@@ -12,6 +12,7 @@ using Veriqa.Core.AuthServer.Configuration;
 using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Constants;
 using Veriqa.Core.AuthServer.Endpoints;
+using Veriqa.Core.AuthServer.HopMode;
 using Veriqa.Core.AuthServer.Hubs;
 using Veriqa.Core.AuthServer.Infrastructure;
 using Veriqa.Core.ChannelAdapter.Abstractions;
@@ -19,6 +20,7 @@ using Veriqa.Core.ChannelAdapter.DependencyInjection;
 using Veriqa.Core.ChannelAdapter.Pipeline;
 using Veriqa.Core.AuthServer.UiConfig;
 using Veriqa.Core.Configuration;
+using Veriqa.Core.TransactionEngine.CollectedClaims;
 using Veriqa.Core.TransactionEngine.DependencyInjection;
 
 namespace Veriqa.Core.AuthServer.DependencyInjection;
@@ -210,7 +212,8 @@ public static class OpenIddictIntegrationExtensions
         // SignalR (SPEC-007 §5)
         services.AddSignalR();
 
-        // AntiForgery for the web login confirmation page (OnWebPage, SPEC-007 UI-038, CFG-045).
+        // AntiForgery for the forms of the core pages: the question page (OnWebPage, SPEC-007 UI-038,
+        // UI-123, CFG-045) and the cancel form of the sign-in window and of the entry page of a confirmation.
         // The token is validated manually in the endpoint (IAntiforgery.ValidateRequestAsync) — without depending
         // on the UseAntiforgery middleware in the host pipeline.
         services.AddAntiforgery();
@@ -256,7 +259,10 @@ public static class OpenIddictIntegrationExtensions
         // The method registers AddRateLimiter with OnRejected and the endpoint-level policies.
         // Source of truth: RateLimitOptions (read via IOptions in AddOptions.Configure).
 
-        // Per-user auth rate limiter (PartitionedRateLimiter, in-memory, single-instance)
+        // Per-user auth rate limiter (PartitionedRateLimiter, in-memory, single-instance). Its partition
+        // registry reads the clock; this method is public and a host may call it on its own, so the clock
+        // is claimed here with TryAdd, keeping one already registered by the host or another component.
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IUserAuthRateLimiter, UserAuthRateLimiter>();
 
         // AddRateLimiter: OnRejected — the shared handler for limit violations
@@ -379,6 +385,29 @@ public static class OpenIddictIntegrationExtensions
                     o.QueueLimit = 0;
                 });
 
+                // Limit on the hop resolve endpoint (GET {HopPath}/{hop_token}, SPEC-025 HOP-061) — one
+                // global bucket of the route: the request carries only an opaque token, and the limit
+                // is what protects its decoding. Defined whether or not the route is mapped, as every
+                // policy above is.
+                limiterOptions.AddFixedWindowLimiter(RateLimitOptions.HopResolvePolicyName, o =>
+                {
+                    o.PermitLimit = rateLimitCore.Read(RateLimitConfigKeys.HopResolvePermitLimit);
+                    o.Window = TimeSpan.FromSeconds(
+                        rateLimitCore.Read(RateLimitConfigKeys.HopResolveWindowSeconds));
+                    o.QueueLimit = 0;
+                });
+
+                // Limit on the receiver of client signals of the launch page (POST {HopPath}/{hop_token},
+                // SPEC-025 HOP-061, HOP-066b) — a bucket of its own, apart from the presentation's, with
+                // the same kind of key: an exhausted budget of the receiver refuses signals only.
+                limiterOptions.AddFixedWindowLimiter(RateLimitOptions.HopSignalPolicyName, o =>
+                {
+                    o.PermitLimit = rateLimitCore.Read(RateLimitConfigKeys.HopSignalPermitLimit);
+                    o.Window = TimeSpan.FromSeconds(
+                        rateLimitCore.Read(RateLimitConfigKeys.HopSignalWindowSeconds));
+                    o.QueueLimit = 0;
+                });
+
                 // Limit on the server-to-server confirmation creation endpoint, partitioned by the
                 // AUTHENTICATED CLIENT (SPEC-039 N33). The policies above are global because their
                 // callers are browsers; here the callers are relying parties, and a shared budget
@@ -457,6 +486,24 @@ public static class OpenIddictIntegrationExtensions
         // an identifier every holder of the way in knows (N35).
         endpoints.MapTransactionResultEndpoint(RateLimitOptions.ConfirmationResultPolicyName);
 
+        // Server-to-server deletion of collected claims (SPEC-041 C82): mapped only where a collected claims
+        // store is registered. Without one there is nothing to delete, and the path answers as any unknown one.
+        var registeredServices = endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
+        if (registeredServices.IsService(typeof(ICollectedClaimsStore)))
+        {
+            endpoints.MapCollectedClaimsEndpoint();
+        }
+
+        // Server-to-server exchange of a link handle for the identity of its sign-in: mapped where a link
+        // handle store is registered. The channel layer registers one together with its other stores, so
+        // every installation with channels has the route; only a host composed without that layer has no
+        // store — there no handle is ever issued, and the path answers as any unknown one. It shares the
+        // budget of the result surface — the same caller reading the outcome of its own transactions.
+        if (registeredServices.IsService(typeof(ILinkHandleStore)))
+        {
+            endpoints.MapLinkHandleRedeemEndpoint(RateLimitOptions.ConfirmationResultPolicyName);
+        }
+
         // Entry page of an already created confirmation transaction (SPEC-039 C15) and the surface that
         // asks the subject about it and takes the answer (SPEC-039 R37) — the browser pages of the
         // confirmation vertical. ONE policy over both: they are one path a user walks, and it is a
@@ -464,6 +511,31 @@ public static class OpenIddictIntegrationExtensions
         // otherwise exhaust — an observable change of a path these surfaces must not touch.
         endpoints.MapTransactionEntryEndpoint(RateLimitOptions.ConfirmationPagesPolicyName);
         endpoints.MapTransactionConfirmEndpoint(RateLimitOptions.ConfirmationPagesPolicyName);
+
+        // Hop resolve endpoint (SPEC-025 HOP-060, HOP-125): mapped only where hop can be on — at the core
+        // level for a registered channel, or at a level bound above it, which startup cannot see. Where
+        // it is off everywhere the route does not exist, and its path answers as any unknown one does.
+        // A channel whose link carries no transaction maps it as well, when the channel can be available
+        // to a layer: the QR code of such a channel is a hop URL whatever the switch states, and the route
+        // is where that URL leads. A channel of this kind that is switched off is issued no hop URL and
+        // maps nothing.
+        var hopModeSettings = endpoints.ServiceProvider.GetRequiredService<HopModeSettings>();
+        var codeChannelServed = HopChannelModes.IsCodeChannelServed(endpoints.ServiceProvider, hopModeSettings);
+        if (hopModeSettings.IsResolveEndpointMapped || codeChannelServed)
+        {
+            endpoints.MapHopResolveEndpoint(hopModeSettings.HopPath, RateLimitOptions.HopResolvePolicyName);
+        }
+
+        // Receiver of client signals of the launch page (SPEC-025 HOP-066b): the same route, mapped only
+        // where signals can be accepted — at the core level, or at a level bound above it. Where they are
+        // off without such a level the path answers POST as a route without the method does (405). The
+        // page of a channel whose link carries no transaction sends the same signals, so the receiver
+        // follows the route such a channel maps.
+        if (hopModeSettings.IsSignalReceiverMapped
+            || (codeChannelServed && hopModeSettings.MayAcceptClientSignals))
+        {
+            endpoints.MapHopSignalEndpoint(hopModeSettings.HopPath, RateLimitOptions.HopSignalPolicyName);
+        }
 
         // Authentication SignalR hub (SPEC-007 §5.2) with rate limiting (SPEC-007 §6.1)
         endpoints.MapHub<AuthTransactionHub>(SignalRConstants.AuthHubPath)

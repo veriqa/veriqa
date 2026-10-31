@@ -74,8 +74,8 @@ internal sealed class OutcomeReceiptTextResolver : IOutcomeReceiptText
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        // A receipt is terminal: the user pressed something (or the time ran out) and must be told
-        // how it ended. A surface nobody named still gets an answer — the step that names none —
+        // A receipt answers the user: something was pressed (or the time ran out) and the result
+        // must be told. A surface nobody named still gets an answer — the step that names none —
         // and is reported rather than refused, because refusing would leave the screen silent. The
         // channel goes out of the address with the surface it refines, which is what keeps this a
         // degradation rather than a refusal (see OutcomeReceiptAddress.ToDimensions).
@@ -97,7 +97,7 @@ internal sealed class OutcomeReceiptTextResolver : IOutcomeReceiptText
             // level at all is a broken build rather than a deployment's configuration — which is why
             // this throws where a missing translation degrades.
             _logger.LogError(
-                "No level declares an outcome receipt for message kind {MessageKind}; the terminal "
+                "No level declares an outcome receipt for message kind {MessageKind}; the receipt "
                 + "text of the transaction cannot be shown.",
                 address.Kind);
 
@@ -117,6 +117,13 @@ internal sealed class OutcomeReceiptTextResolver : IOutcomeReceiptText
         }
 
         return OutcomeReceiptText.Render(
-            receipt, recipientLocale, recipientTimeZone, outcomeMoment, transaction, _localizer, _logger);
+            receipt,
+            recipientLocale,
+            recipientTimeZone,
+            outcomeMoment,
+            transaction,
+            address.Surface,
+            _localizer,
+            _logger);
     }
 }

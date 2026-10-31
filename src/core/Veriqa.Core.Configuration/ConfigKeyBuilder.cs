@@ -26,20 +26,15 @@ namespace Veriqa.Core.Configuration;
 ///     .Declare();
 /// </code>
 /// A key whose steps read DIFFERENT leaves — the map for the step that addresses the theme, the plain
-/// field for the step that addresses nothing — states it with the parse hook, over the helper the
-/// handwritten bindings already use:
+/// field for the step that addresses nothing — states it with the parse hook, over the helper that
+/// reads the map entry by entry (<see cref="DimensionedConfigValue"/>):
 /// <code>
 /// public static readonly ConfigKey&lt;string?&gt; LogoUrl = Declared
 ///     .Text("AuthPageDesign.LogoUrl")
 ///     .Narrowing("theme")
 ///     .At(ConfigLevel.Application, ConfigLevel.UiConfig)
 ///     .Parse(static (node, _, point) =&gt;
-///     {
-///         node.TryRead&lt;Dictionary&lt;string, string&gt;&gt;("LogoUrlByTheme", out var byTheme);
-///         node.TryRead&lt;string&gt;("LogoUrl", out var plain);
-///
-///         return DimensionedConfigValue.Layer(point, ["theme"], byTheme, plain);
-///     })
+///         DimensionedConfigValue.Layer(node, point, "theme", "LogoUrlByTheme", "LogoUrl"))
 ///     .NotWalked()
 ///     .Declare();
 /// </code>

@@ -156,6 +156,30 @@ public static class RateLimitConfigKeys
         nameof(RateLimitOptions.ConfirmationPagesWindowSeconds),
         Shipped.ConfirmationPagesWindowSeconds);
 
+    /// <summary>Hop resolve endpoint limit ceiling.</summary>
+    public static ConfigKey<int> HopResolvePermitLimit { get; } = PermitCeiling(
+        "RateLimit.HopResolvePermitLimit",
+        nameof(RateLimitOptions.HopResolvePermitLimit),
+        Shipped.HopResolvePermitLimit);
+
+    /// <summary>Hop resolve endpoint window ceiling (seconds).</summary>
+    public static ConfigKey<int> HopResolveWindowSeconds { get; } = WindowCeiling(
+        "RateLimit.HopResolveWindowSeconds",
+        nameof(RateLimitOptions.HopResolveWindowSeconds),
+        Shipped.HopResolveWindowSeconds);
+
+    /// <summary>Hop signal receiver limit ceiling.</summary>
+    public static ConfigKey<int> HopSignalPermitLimit { get; } = PermitCeiling(
+        "RateLimit.HopSignalPermitLimit",
+        nameof(RateLimitOptions.HopSignalPermitLimit),
+        Shipped.HopSignalPermitLimit);
+
+    /// <summary>Hop signal receiver window ceiling (seconds).</summary>
+    public static ConfigKey<int> HopSignalWindowSeconds { get; } = WindowCeiling(
+        "RateLimit.HopSignalWindowSeconds",
+        nameof(RateLimitOptions.HopSignalWindowSeconds),
+        Shipped.HopSignalWindowSeconds);
+
     /// <summary>Per-user authentication limit ceiling.</summary>
     public static ConfigKey<int> UserAuthPermitLimit { get; } = PermitCeiling(
         "RateLimit.UserAuthPermitLimit",

@@ -42,6 +42,12 @@ public sealed class ChannelDisplayOptions
     /// <localizable/> The value is operator text and supports localization; the mechanism that serves
     /// it per language is delivered by a separate task, so today the configured text is shown as is.
     /// </para>
+    /// <para>
+    /// The text may carry inline markup: the tags <c>span</c>, <c>strong</c>, <c>em</c>, <c>a</c> and
+    /// <c>br</c>, under the rules the sign-in page applies to the title and the lead instruction. A
+    /// value of any other shape — a block tag, an attribute or a class outside the admitted ones, an
+    /// unclosed tag — is shown whole as plain text and reported in the log.
+    /// </para>
     /// </summary>
     public IDictionary<string, string> Hints { get; set; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

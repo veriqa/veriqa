@@ -72,11 +72,15 @@ public static class IdentityMatchConfigKeys
     /// narrow what the level above allows.
     /// </summary>
     /// <remarks>
-    /// The core level does NOT take part in the intersection: its shipped set is empty (CFG-157), and
-    /// as a ceiling an empty set would zero out everything a tenant or an application declares — the
-    /// narrowing defect SPEC-012 §10.3 names. It is therefore the degenerate N=1 default instead: in a
-    /// self-hosted installation the global section IS the set, and a level above it, once it states
-    /// one, replaces it and is narrowed by the levels below.
+    /// The core level is no ceiling over the tenant (<c>coreParticipatesInSetIntersection: false</c>):
+    /// its shipped set is empty (CFG-157), and as a ceiling an empty set would zero out everything a
+    /// tenant or an application declares — the narrowing defect SPEC-012 §10.3 names. In a self-hosted
+    /// installation the global section IS the set (CFG-162): a tenant, once it states one, replaces it;
+    /// while the tenant is silent a global set that declares at least one type is the base an
+    /// application narrows, so an application cannot compare by a type the global section does not
+    /// declare, and a type both declare is compared by the global declaration — its claim and its
+    /// normalization rule (<see cref="Narrow"/> keeps the upper one). The empty global set is no base:
+    /// it leaves an application's set as the application states it.
     /// <para>
     /// What the domain reaches has ONE boundary, and it belongs to the source of a level rather than to
     /// this declaration: on a level read from the host configuration the binder of the platform drops

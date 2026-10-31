@@ -8,7 +8,7 @@ every project in this repository — the Veriqa Core libraries, the host and
 the samples — and is not maintained by hand. Where the graph resolves several
 versions of one package, the highest is listed.
 
-Total distinct NuGet packages: 196.
+Total distinct NuGet packages: 199.
 
 ## MIT
 
@@ -25,7 +25,7 @@ Total distinct NuGet packages: 196.
 | JsonPatch.Net | 3.3.0 | Greg Dennis |
 | JsonPointer.Net | 5.2.0 | Greg Dennis |
 | MailKit | 4.16.0 | .NET Foundation and Contributors |
-| Max.BotClient | 1.1.0 | Deskri |
+| Max.BotClient | 1.1.3 | Deskri |
 | MessagePack | 2.5.302 | © Yoshifumi Kawai and contributors. All rights reserved. |
 | MessagePack.Annotations | 2.5.302 | © Yoshifumi Kawai and contributors. All rights reserved. |
 | Microsoft.AspNetCore.Authentication.OpenIdConnect | 10.0.9 | © Microsoft Corporation. All rights reserved. |
@@ -124,6 +124,7 @@ Total distinct NuGet packages: 196.
 | QRCoder | 1.8.0 | Copyright © 2013-2025 Raffael Herrmann. Copyright © 2024-2025 Shane Krueger. All rights reserved. |
 | Semver | 3.0.0 | Copyright © 2013-2024 Jeff Walker, Max Hauser |
 | StackExchange.Redis | 2.13.1 | 2014 - 2026 Stack Exchange, Inc. |
+| StandardWebhooks.StandardWebhooks | 1.0.1 | Copyright (c) 2023 Svix (https://www.svix.com) |
 | StreamJsonRpc | 2.25.29 | © Microsoft Corporation. All rights reserved. |
 | System.CodeDom | 6.0.0 | © Microsoft Corporation. All rights reserved. |
 | System.Composition | 9.0.0 | © Microsoft Corporation. All rights reserved. |
@@ -216,7 +217,9 @@ Total distinct NuGet packages: 196.
 | Package | Version | Copyright / Authors |
 |---|---|---|
 | Google.Protobuf | 3.34.1 | Copyright 2015, Google Inc. |
-| Polly | 7.2.4 | Copyright (c) 2023, App vNext |
+| LateApexEarlySpeed.Json.Schema | 4.2.0 | Lateapexearlyspeed |
+| LateApexEarlySpeed.Nullability.Generic | 1.0.4 | Lateapexearlyspeed |
+| Polly | 8.5.0 | Copyright (c) 2024, App vNext |
 | Polly.Core | 8.6.6 | Copyright (c) 2015-2026, App vNext |
 | Polly.Extensions | 8.4.2 | Copyright (c) 2024, App vNext |
 | Polly.Extensions.Http | 3.0.0 | Copyright (c) 2019, App vNext |
@@ -240,9 +243,13 @@ Total distinct NuGet packages: 196.
 | File | Component | Version | License | Copyright |
 |---|---|---|---|---|
 | `src/core/Veriqa.Core.AuthServer/wwwroot/lib/signalr/signalr.min.js` | `@microsoft/signalr` | 8.0.7 | MIT | Copyright (c) .NET Foundation and Contributors |
+| `samples/claude-code/veriqa-approval/hooks/vendor/fflate.mjs` | `fflate` (`esm/browser.js`, its declarations as `fflate.d.mts`) | 0.8.3 | MIT | Copyright (c) 2026 Arjun Barrett |
 
 The minified file carries no license header; the MIT license text travels
 next to it as `wwwroot/lib/signalr/LICENSE.txt`, served and packaged with it.
+
+The fflate files are copied unchanged from the npm package; the MIT license text
+travels next to them as `hooks/vendor/LICENSE`.
 
 ## Data and external services (not distributed with Veriqa)
 

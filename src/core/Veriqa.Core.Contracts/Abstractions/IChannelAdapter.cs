@@ -54,36 +54,20 @@ public interface IChannelAdapter
     /// actionable — the precise answer still comes from <see cref="ProcessInboundEventAsync"/>.</returns>
     /// <remarks>
     /// The default body scans the raw bytes of <see cref="ChannelInboundRequest.Body"/> for any
-    /// marker of <see cref="CallbackDataPrefixes"/>. It reads nothing else — not the headers, not
-    /// the query — asks neither the platform nor the transaction store anything, and throws for no
-    /// body content whatsoever: an empty or a binary body simply answers <see langword="false"/>.
+    /// marker of <see cref="CallbackDataPrefixes"/> (<see cref="CallbackDataPrefixes.ContainsAnyMarker"/>).
+    /// It reads nothing else — not the headers, not the query — asks neither the platform nor the
+    /// transaction store anything, and throws for no body content whatsoever: an empty or a binary
+    /// body simply answers <see langword="false"/>.
     /// False positives are allowed by the contract for two reasons: the search is substring-based,
     /// so <see cref="CallbackDataPrefixes.Auth"/> — the one marker without a vendor prefix — also
     /// matches inside unrelated fields (a user's message containing "oauth_", say); and any marker
     /// can simply be typed out by a user. Override the member with a precise check of your own wire
-    /// format when a false positive costs you something.
+    /// format when a false positive costs you something, or to claim events that carry no marker (a
+    /// shared contact); an override that should still answer the markers calls
+    /// <see cref="CallbackDataPrefixes.ContainsAnyMarker"/> itself.
     /// </remarks>
     bool OwnsInboundEvent(ChannelInboundRequest request)
-    {
-        var body = request.Body.Span;
-        return ContainsMarker(body, CallbackDataPrefixes.Confirm)
-            || ContainsMarker(body, CallbackDataPrefixes.Decline)
-            || ContainsMarker(body, CallbackDataPrefixes.Auth);
-
-        // Ordinal byte-wise search: the markers are ASCII by construction, so their UTF-8 encoding
-        // is byte-identical to their characters and the body needs no decoding — which is what
-        // keeps the check allocation-free on a path the router walks for every single update.
-        static bool ContainsMarker(ReadOnlySpan<byte> body, string marker)
-        {
-            Span<byte> markerBytes = stackalloc byte[marker.Length];
-            for (var i = 0; i < marker.Length; i++)
-            {
-                markerBytes[i] = (byte)marker[i];
-            }
-
-            return body.IndexOf(markerBytes) >= 0;
-        }
-    }
+        => CallbackDataPrefixes.ContainsAnyMarker(request.Body.Span);
 
     /// <summary>
     /// Sends an authentication confirmation prompt to the user in the channel.
@@ -139,15 +123,58 @@ public interface IChannelAdapter
     /// <summary>
     /// Generates a deep link to start authentication in the channel.
     /// </summary>
-    /// <param name="transactionId">Transaction identifier.</param>
+    /// <param name="request">The transaction the link starts and where the link is going to be used.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Deep link URL.</returns>
+    /// <remarks>
+    /// <para>
+    /// The channel button opens the link of a call with <see cref="DeepLinkPurpose.Button"/> as is. A QR
+    /// code without hop carries the link of a call with <see cref="DeepLinkPurpose.DirectQr"/>. With hop
+    /// mode on for the channel the QR code carries a hop link to the Veriqa server, which leads to the
+    /// link of a call with <see cref="DeepLinkPurpose.HopQr"/> — except a scan the core answers with a
+    /// page of buttons (unified QR, Email that accepts an entered address under the Interstitial
+    /// redirect style): the buttons of that page get <see cref="DeepLinkPurpose.Button"/>.
+    /// The wrapping is still done by the core above this contract, the adapter does nothing for it.
+    /// </para>
+    /// <para>
+    /// SPEC-025 HOP-011a: the call must be idempotent and free of observable side effects. A repeated
+    /// call for the same request returns the same target and creates no state — it issues no new
+    /// secrets, writes nothing to a store and publishes no events. Calls with different purposes for one
+    /// transaction issue no separate secrets either. The core calls the method every time
+    /// it shows the channel (the sign-in page, the channel-choice page of a confirmation, the
+    /// confirmation creation response) and, in hop mode, again every time a person opens the hop link,
+    /// so a call that mints something on each run turns every refresh and every scan into another live
+    /// secret. The core cannot verify this in an implementation — the promise is the implementer's, as
+    /// with the rest of this contract.
+    /// </para>
+    /// <para>
+    /// A channel that declared <see cref="Domain.ChannelCapabilities.CodeStart"/> states there what
+    /// its link is. With <see cref="Domain.ChannelCodeStart.LinkCarriesTransaction"/> <c>false</c> the
+    /// method returns a link that only OPENS THE CHAT and carries no transaction: the user starts the
+    /// sign-in by sending the code the core shows next to it, and the adapter answers that message
+    /// with <see cref="Domain.ChannelAuthStartByCodeResult"/>. With <c>true</c> the method returns the
+    /// link carrying the transaction, as a channel without the declaration does, and the code is a
+    /// fallback beside it. The idempotency promise above holds for both. A message with a code carries
+    /// none of the markers of <see cref="CallbackDataPrefixes"/>: a channel that needs such an event
+    /// claimed overrides <see cref="OwnsInboundEvent"/>.
+    /// </para>
+    /// <para>
+    /// The purpose describes where the link is going to be used. The adapter may pass the request to
+    /// <c>IChannelMessageTemplates.ResolveAsync</c>, so that the message template of the purpose shapes
+    /// the link, or ignore the purpose.
+    /// </para>
+    /// </remarks>
     Task<Result<string>> GetDeepLinkAsync(
-        TransactionId transactionId,
+        DeepLinkRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Shows the user that the transaction reached a terminal state (SPEC-003 §6.2, CA-142).
+    /// Shows the user where the transaction stands (SPEC-003 §6.2, CA-142): that it reached a terminal
+    /// state, or that the sign-in is confirmed and waits for the claims it still lacks
+    /// (<see cref="Domain.TransactionOutcomeNotice.IsTerminal"/> tells the two apart). A non-terminal
+    /// notice does not promise a terminal one: a confirmed, declined or failed end of such a sign-in
+    /// is always reported, an expiry — only on the terms of any expiry, to a channel whose reference
+    /// to the question was stored.
     /// The core only states the intent; the composition and the order of platform calls are the
     /// adapter's choice. Called only when the channel declared <c>DeliversOutcomeNotice</c>.
     /// The notice also carries the DESIRED display intent of the deployment
@@ -157,7 +184,7 @@ public interface IChannelAdapter
     /// </summary>
     /// <param name="notice">What to show and everything needed to address it.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns><c>Success(true)</c> — the outcome was shown to the user;
+    /// <returns><c>Success(true)</c> — the outcome or the state was shown to the user;
     /// <c>Success(false)</c> — the channel deliberately showed nothing (no surface, channel policy);
     /// <c>Failure</c> — the attempt to show the outcome did not succeed.</returns>
     Task<Result<bool>> ReportOutcomeAsync(

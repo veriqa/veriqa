@@ -1,0 +1,9 @@
+# What running the adapter outside its container leaves in this folder: the state of the WhatsApp
+# sessions (Signal keys, pairing credentials) and pairing codes under the data directory, the store,
+# the filled-in .env and the packages. None of it belongs in git.
+data/
+sessions/
+*.pairing-code
+*.sqlite3*
+.env
+node_modules/

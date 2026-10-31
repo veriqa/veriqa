@@ -5,10 +5,11 @@
 // SPI. The adapter itself (Veriqa.Sample.CustomChannel.Adapter) is built against the MIT contracts
 // package only; this host is the reference wiring — registration, webhook route and sign-in button.
 
-using System.Security.Claims;
 
 using Veriqa.Core.AuthServer.DependencyInjection;
 using Veriqa.Core.AuthServer.Infrastructure;
+using Veriqa.Core.ChannelAdapter.DependencyInjection;
+using Veriqa.Core.ChannelAdapter.MultiTenancy;
 using Veriqa.Sample.CustomChannel.Adapter;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,9 +44,26 @@ builder.Services.AddVeriqaAuthServer(builder.Configuration, builder.Environment,
             AcmeChatConstants.ChannelType,
             serviceProvider => new AcmeChatChannelAdapter(
                 acmeChatOptions,
-                serviceProvider.GetRequiredService<ILogger<AcmeChatChannelAdapter>>()));
+                serviceProvider.GetRequiredService<ILogger<AcmeChatChannelAdapter>>()),
+            new ChannelRegistrationOptions
+            {
+                // What the bot answers to a code no sign-in answers to. Without it such a code gets
+                // the reply to a link that cannot be served (StaleLinkReplyText), and this channel
+                // declares none — the user would be left in front of a silent chat.
+                UnmatchedCodeReplyText = AcmeChatConstants.UnmatchedCodeReplyText
+            });
     });
 });
+
+// The core-level declaration of the channel — a step of its own next to AddChannel, the one the
+// built-in channels take as well. AddChannel registers the adapter and its route; the declaration is
+// what puts the channel into the set available at core level, and the readers of that set skip a
+// channel missing from it: a channel started by a code gets no hop link into its QR code without it.
+// The sample channel has no switch of its own, so it is declared always on; a real channel reads its
+// Enabled flag here through IOptionsMonitor.
+builder.Services.AddSingleton(new CoreChannelDeclaration(
+    AcmeChatConstants.ChannelType,
+    isEnabled: static () => true));
 // endregion:snippet
 
 var app = builder.Build();
@@ -58,9 +76,8 @@ app.UseVeriqaAuthServer();
 // channel is mapped here together with the built-in ones.
 app.MapVeriqaAuthServer();
 
-app.MapGet("/", (ClaimsPrincipal user) =>
-    user.Identity?.IsAuthenticated is true
-        ? $"Hello, {user.Identity!.Name}!"
-        : "Hello!");
+// The issuer has no page of its own to show a signed-in user: a sign-in is started by a relying
+// party and ends there, with the claims in its session. This route only tells the host is up.
+app.MapGet("/", () => "Hello!");
 
 app.Run();

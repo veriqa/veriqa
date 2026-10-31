@@ -1,9 +1,19 @@
 # Veriqa.ServiceDefaults
 
-Shared service wiring for the .NET Aspire hosts of Veriqa: OpenTelemetry (traces, metrics, logs),
-health check endpoints, service discovery, the default HTTP resilience handler, forwarded headers
-for a reverse proxy and rate-limiting helpers. It is the standard Aspire "service defaults" project
-of the solution, shipped as a package so a host outside this repository can take the same defaults.
+**OpenTelemetry, health checks and HTTP resilience for a Veriqa host in one call.** The same
+defaults the Veriqa hosts use, for your own host.
+
+Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
+authentication through popular messaging apps and email, over standard OpenID Connect.
+Documentation: [Observability](https://veriqa.app/docs/guides/observability).
+
+## About this package
+
+Shared service wiring for the .NET Aspire hosts of Veriqa: OpenTelemetry (traces, metrics,
+logs), health check endpoints, service discovery, the default HTTP resilience handler, forwarded
+headers for a reverse proxy and rate-limiting helpers. It is the standard Aspire "service defaults"
+project of the solution, shipped as a package so a host outside this repository can take the same
+defaults.
 
 The package is MIT-licensed: it contains host plumbing, not the authentication core.
 

@@ -7,19 +7,29 @@ Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.ChannelType.init
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.ChannelUserId.get -> string!
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.ChannelUserId.init -> void
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.Equals(Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef? other) -> bool
-Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.Message.get -> Veriqa.Core.ChannelAdapter.Domain.ChannelMessageRef!
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.Message.get -> Veriqa.Core.ChannelAdapter.Domain.ChannelMessageRef?
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.Message.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.PhoneRequestMessage.get -> Veriqa.Core.ChannelAdapter.Domain.ChannelMessageRef?
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.PhoneRequestMessage.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.PromptShown.get -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.PromptShown.init -> void
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.RecipientLocale.get -> string?
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.RecipientLocale.init -> void
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.RecipientTimeZone.get -> string?
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.RecipientTimeZone.init -> void
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.TenantId.get -> string?
 Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef.TenantId.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.EmailPullMethod
+Veriqa.Core.ChannelAdapter.Abstractions.EmailPullMethod.Code = 1 -> Veriqa.Core.ChannelAdapter.Abstractions.EmailPullMethod
+Veriqa.Core.ChannelAdapter.Abstractions.EmailPullMethod.MagicLink = 0 -> Veriqa.Core.ChannelAdapter.Abstractions.EmailPullMethod
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelEndpointRegistrar
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelEndpointRegistrar.MapEndpoints(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder! endpoints, Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies! policies) -> void
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore.FindAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef?>!
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore.SaveAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef! reference, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore.SetPhoneRequestMessageAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, string! channelType, Veriqa.Core.ChannelAdapter.Domain.ChannelMessageRef! requestMessage, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore.TakeAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef?>!
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore.TakeForChannelAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, string! channelType, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Abstractions.ChannelPromptMessageRef?>!
 Veriqa.Core.ChannelAdapter.Abstractions.IInitiatorAnomalyDetector
 Veriqa.Core.ChannelAdapter.Abstractions.IInitiatorAnomalyDetector.EvaluateAsync(string! channelType, string! channelUserId, Veriqa.Core.TransactionEngine.Domain.InitiatorContextSnapshot! initiatorContext, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Domain.InitiatorAnomalyResult!>!
 Veriqa.Core.ChannelAdapter.Abstractions.IInitiatorAnomalyDetector.HasHistorySource.get -> bool
@@ -36,6 +46,7 @@ Veriqa.Core.ChannelAdapter.Abstractions.UserAuthRateLimitResult.UserAuthRateLimi
 Veriqa.Core.ChannelAdapter.Abstractions.UserAuthRateLimitResult.UserAuthRateLimitResult(bool isAllowed, System.TimeSpan retryAfter) -> void
 Veriqa.Core.ChannelAdapter.Constants.ChannelAdapterErrorCodes
 Veriqa.Core.ChannelAdapter.Constants.ChannelAdapterLimits
+Veriqa.Core.ChannelAdapter.Constants.ChannelAuditEventCodes
 Veriqa.Core.ChannelAdapter.Constants.ChannelInteractionAuditCodes
 Veriqa.Core.ChannelAdapter.Constants.CustomChannelConstants
 Veriqa.Core.ChannelAdapter.Constants.HttpContextItemKeys
@@ -58,6 +69,8 @@ Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelRegistrationOptions.StaleL
 Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelRegistrationOptions.StaleLinkReplyText.init -> void
 Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelRegistrationOptions.UnaddressedReplyText.get -> string?
 Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelRegistrationOptions.UnaddressedReplyText.init -> void
+Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelRegistrationOptions.UnmatchedCodeReplyText.get -> string?
+Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelRegistrationOptions.UnmatchedCodeReplyText.init -> void
 Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelRegistrationOptions.WebhookVerificationQueryKey.get -> string?
 Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelRegistrationOptions.WebhookVerificationQueryKey.init -> void
 Veriqa.Core.ChannelAdapter.Domain.InitiatorAnomalyResult
@@ -80,6 +93,10 @@ Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration
 Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration.ChannelType.get -> string!
 Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration.CoreChannelDeclaration(string! channelType, System.Func<bool>! isEnabled, System.Func<bool>? usesPolling = null) -> void
 Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration.IsEnabled.get -> bool
+Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration.OwnerTenantId.get -> string?
+Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration.OwnerTenantId.init -> void
+Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration.TakesOwnPromptReferenceOnly.get -> bool
+Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration.TakesOwnPromptReferenceOnly.init -> void
 Veriqa.Core.ChannelAdapter.MultiTenancy.CoreChannelDeclaration.UsesPolling.get -> bool
 Veriqa.Core.ChannelAdapter.MultiTenancy.IChannelClientBuilder<TClient>
 Veriqa.Core.ChannelAdapter.MultiTenancy.IChannelClientBuilder<TClient>.BuildAsync(Veriqa.Core.ChannelAdapter.MultiTenancy.ChannelCredentialContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Veriqa.Core.TransactionEngine.Common.Result<TClient!>!>
@@ -88,6 +105,13 @@ Veriqa.Core.ChannelAdapter.MultiTenancy.IChannelClientFactory
 Veriqa.Core.ChannelAdapter.MultiTenancy.IChannelClientFactory.GetOrCreateClientAsync<TClient>(Veriqa.Core.ChannelAdapter.MultiTenancy.ChannelCredentialContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Veriqa.Core.TransactionEngine.Common.Result<TClient!>!>
 Veriqa.Core.ChannelAdapter.MultiTenancy.IPollingTenantSource
 Veriqa.Core.ChannelAdapter.MultiTenancy.IPollingTenantSource.GetActivePollingTenantsAsync(string! channelType, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<System.Collections.Generic.IReadOnlyCollection<string?>!>!>!
+Veriqa.Core.ChannelAdapter.MultiTenancy.CompletionBehaviorConfigKeys
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem.Action.get -> string!
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem.Action.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem.CompletionBehaviorMenuItem() -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem.Text.get -> string!
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem.Text.init -> void
 Veriqa.Core.ChannelAdapter.MultiTenancy.LoginConfirmationConfigKeys
 Veriqa.Core.ChannelAdapter.MultiTenancy.OutcomeNoticeConfigKeys
 Veriqa.Core.ChannelAdapter.MultiTenancy.TransactionResolutionContext
@@ -98,6 +122,7 @@ Veriqa.Core.ChannelAdapter.Pipeline.AuthStartConfirmationOutcome.ChannelCannotCo
 Veriqa.Core.ChannelAdapter.Pipeline.AuthStartConfirmationOutcome.ConfirmationSubjectUnavailable = 4 -> Veriqa.Core.ChannelAdapter.Pipeline.AuthStartConfirmationOutcome
 Veriqa.Core.ChannelAdapter.Pipeline.AuthStartConfirmationOutcome.HandledInChannel = 1 -> Veriqa.Core.ChannelAdapter.Pipeline.AuthStartConfirmationOutcome
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelAdapterMetrics
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelIdentityMask
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.<Clone>$() -> Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies!
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.ChannelEndpointPolicies() -> void
@@ -116,8 +141,8 @@ Veriqa.Core.ChannelAdapter.Pipeline.ChannelLocalizationOptions.NeutralLocaleCult
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelLocalizationOptions.NeutralLocaleCultures.set -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.<Clone>$() -> Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts!
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.ChannelReplyTexts(string! ErrorMessageText, string? StaleLinkReplyText = null, string? UnaddressedReplyText = null) -> void
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.Deconstruct(out string! ErrorMessageText, out string? StaleLinkReplyText, out string? UnaddressedReplyText) -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.ChannelReplyTexts(string! ErrorMessageText, string? StaleLinkReplyText = null, string? UnaddressedReplyText = null, string? UnmatchedCodeReplyText = null) -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.Deconstruct(out string! ErrorMessageText, out string? StaleLinkReplyText, out string? UnaddressedReplyText, out string? UnmatchedCodeReplyText) -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.Equals(Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts? other) -> bool
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.ErrorMessageText.get -> string!
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.ErrorMessageText.init -> void
@@ -125,25 +150,32 @@ Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.StaleLinkReplyText.get -> 
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.StaleLinkReplyText.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.UnaddressedReplyText.get -> string?
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.UnaddressedReplyText.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.UnmatchedCodeReplyText.get -> string?
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.UnmatchedCodeReplyText.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelInboundProcessor
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelInboundProcessor.ProcessAsync(Veriqa.Core.ChannelAdapter.Domain.ChannelInboundResult! inboundResult, Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter, Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts! replyTexts, bool asksInChannelPrompt, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookPipeline
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.<Clone>$() -> Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport!
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.ChannelWebhookSupport(Veriqa.Core.ChannelAdapter.Abstractions.IUserAuthRateLimiter? UserAuthRateLimiter, Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptOrchestrator? PromptOrchestrator, Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer? PromptLocalizer, Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore? PromptMessageStore, Veriqa.Core.Configuration.IConfigurationResolver? ConfigurationResolver) -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.ChannelWebhookSupport(Veriqa.Core.Configuration.IConfigurationResolver? ConfigurationResolver) -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.ConfigurationResolver.get -> Veriqa.Core.Configuration.IConfigurationResolver?
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.ConfigurationResolver.init -> void
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.Deconstruct(out Veriqa.Core.ChannelAdapter.Abstractions.IUserAuthRateLimiter? UserAuthRateLimiter, out Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptOrchestrator? PromptOrchestrator, out Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer? PromptLocalizer, out Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore? PromptMessageStore, out Veriqa.Core.Configuration.IConfigurationResolver? ConfigurationResolver) -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.Deconstruct(out Veriqa.Core.Configuration.IConfigurationResolver? ConfigurationResolver) -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.Equals(Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport? other) -> bool
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.PromptLocalizer.get -> Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer?
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.PromptLocalizer.init -> void
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.PromptMessageStore.get -> Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore?
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.PromptMessageStore.init -> void
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.PromptOrchestrator.get -> Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptOrchestrator?
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.PromptOrchestrator.init -> void
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.UserAuthRateLimiter.get -> Veriqa.Core.ChannelAdapter.Abstractions.IUserAuthRateLimiter?
-Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.UserAuthRateLimiter.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRenderer
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.<Clone>$() -> Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient!
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.ChannelType.get -> string!
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.ChannelType.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.ChannelUserId.get -> string!
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.ChannelUserId.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.ConfirmationPromptRecipient(string! ChannelType, string! ChannelUserId, Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot? Identity) -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.Deconstruct(out string! ChannelType, out string! ChannelUserId, out Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot? Identity) -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.Equals(Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient? other) -> bool
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.Identity.get -> Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot?
+Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.Identity.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptContextFactory
-Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptContextFactory.CreateAsync(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction, string! channelType, string! channelUserId, string? recipientLocale, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Domain.ConfirmationPromptContext!>!
+Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptContextFactory.CreateAsync(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction, Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient! recipient, string? recipientLocale, string! surface, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Domain.ConfirmationPromptContext!>!
 Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer
 Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer.AvailableLocales.get -> System.Collections.Generic.IReadOnlySet<string!>!
 Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer.IsKnownKey(string! naturalKey) -> bool
@@ -152,17 +184,31 @@ Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer.ResolveOrBaseTe
 Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer.RegionalCultureFor(string! language) -> string?
 Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptOrchestrator
 Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptOrchestrator.AcceptsChannelDecisionAsync(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction, Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
-Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptOrchestrator.HandleAuthStartConfirmationAsync(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction, Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter, string! channelUserId, string? recipientLocale, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Pipeline.AuthStartConfirmationOutcome>!
+Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptOrchestrator.HandleAuthStartConfirmationAsync(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction, Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter, Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot! sender, string? recipientLocale, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Pipeline.AuthStartConfirmationOutcome>!
 Veriqa.Core.ChannelAdapter.Pipeline.IEffectiveConfirmationSurfaceResolver
 Veriqa.Core.ChannelAdapter.Pipeline.IEffectiveConfirmationSurfaceResolver.ResolveEffectiveSurfaceAsync(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction, Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Veriqa.Core.TransactionEngine.Domain.ConfirmationSurface>
-Veriqa.Core.ChannelAdapter.Pipeline.IOutcomeNoticeDisplayIntentSource
-Veriqa.Core.ChannelAdapter.Pipeline.IOutcomeNoticeDisplayIntentSource.ResolveAsync(Veriqa.Core.Configuration.ResolutionContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Veriqa.Core.ChannelAdapter.Domain.OutcomeNoticeDisplayIntent>
-Veriqa.Core.ChannelAdapter.Pipeline.IOutcomeReceiptText
-Veriqa.Core.ChannelAdapter.Pipeline.IOutcomeReceiptText.RenderAsync(Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress address, string? recipientLocale, string? recipientTimeZone, System.DateTimeOffset? outcomeMoment, Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource? transaction, Veriqa.Core.Configuration.ResolutionContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<string!>
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.Action.get -> Veriqa.Core.ChannelAdapter.Domain.CompletionBehaviorAction
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.Action.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.ActionByChannel.get -> System.Collections.Generic.IDictionary<string!, Veriqa.Core.ChannelAdapter.Domain.CompletionBehaviorAction>!
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.ActionByChannel.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.CompletionBehaviorOptions() -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.MenuItems.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem!>!
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.MenuItems.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.MenuItemsByChannel.get -> System.Collections.Generic.IDictionary<string!, System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem!>!>!
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.MenuItemsByChannel.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.RedirectButtonText.get -> string!
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.RedirectButtonText.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.RedirectUrl.get -> string?
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.RedirectUrl.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.RedirectUrlByChannel.get -> System.Collections.Generic.IDictionary<string!, string!>!
+Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.RedirectUrlByChannel.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.LoginConfirmationOptions
 Veriqa.Core.ChannelAdapter.Pipeline.LoginConfirmationOptions.LoginConfirmationOptions() -> void
 Veriqa.Core.ChannelAdapter.Pipeline.LoginConfirmationOptions.Mode.get -> Veriqa.Core.TransactionEngine.Domain.LoginConfirmationMode
 Veriqa.Core.ChannelAdapter.Pipeline.LoginConfirmationOptions.Mode.set -> void
+Veriqa.Core.ChannelAdapter.Pipeline.LoginConfirmationOptions.ModeByChannel.get -> System.Collections.Generic.IDictionary<string!, Veriqa.Core.TransactionEngine.Domain.LoginConfirmationMode>!
+Veriqa.Core.ChannelAdapter.Pipeline.LoginConfirmationOptions.ModeByChannel.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.MessageRenderMode
 Veriqa.Core.ChannelAdapter.Pipeline.MessageRenderMode.Html = 1 -> Veriqa.Core.ChannelAdapter.Pipeline.MessageRenderMode
 Veriqa.Core.ChannelAdapter.Pipeline.MessageRenderMode.PlainText = 0 -> Veriqa.Core.ChannelAdapter.Pipeline.MessageRenderMode
@@ -177,13 +223,15 @@ Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.ActionType.get -> stri
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.ActionType.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.ChannelType.get -> string?
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.ChannelType.init -> void
-Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.Deconstruct(out Veriqa.Core.ChannelAdapter.Domain.TransactionOutcome Outcome, out string! Surface, out string? TransactionType, out string? ActionType, out string? ChannelType) -> void
+Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.DeviceType.get -> string?
+Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.DeviceType.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.Deconstruct(out Veriqa.Core.ChannelAdapter.Domain.TransactionOutcome Outcome, out string! Surface, out string? TransactionType, out string? ActionType, out string? ChannelType, out string? DeviceType) -> void
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.Equals(Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress other) -> bool
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.Kind.get -> string!
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.Outcome.get -> Veriqa.Core.ChannelAdapter.Domain.TransactionOutcome
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.Outcome.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.OutcomeReceiptAddress() -> void
-Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.OutcomeReceiptAddress(Veriqa.Core.ChannelAdapter.Domain.TransactionOutcome Outcome, string! Surface, string? TransactionType = null, string? ActionType = null, string? ChannelType = null) -> void
+Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.OutcomeReceiptAddress(Veriqa.Core.ChannelAdapter.Domain.TransactionOutcome Outcome, string! Surface, string? TransactionType = null, string? ActionType = null, string? ChannelType = null, string? DeviceType = null) -> void
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.Surface.get -> string!
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.Surface.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.ToDimensions() -> Veriqa.Core.Configuration.ConfigDimensionValues
@@ -215,7 +263,13 @@ Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage.Kind.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage.ResolvedMessage(string! Kind, Veriqa.Core.TransactionEngine.MessageTemplates.MessageContract! Contract, System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateVariant!>! Templates, Veriqa.Core.Configuration.ConfigLevel? ContractLevel = null) -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage.Templates.get -> System.Collections.Generic.IReadOnlyList<Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateVariant!>!
 Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage.Templates.init -> void
+Veriqa.Core.ChannelAdapter.UI.AuthPageTheme
+Veriqa.Core.ChannelAdapter.UI.AuthPageTheme.Auto = 0 -> Veriqa.Core.ChannelAdapter.UI.AuthPageTheme
+Veriqa.Core.ChannelAdapter.UI.AuthPageTheme.Dark = 2 -> Veriqa.Core.ChannelAdapter.UI.AuthPageTheme
+Veriqa.Core.ChannelAdapter.UI.AuthPageTheme.Light = 1 -> Veriqa.Core.ChannelAdapter.UI.AuthPageTheme
 Veriqa.Core.ChannelAdapter.UI.CorePageBranding
+Veriqa.Core.ChannelAdapter.UI.CorePageBranding.BrandName.get -> string?
+Veriqa.Core.ChannelAdapter.UI.CorePageBranding.BrandName.init -> void
 Veriqa.Core.ChannelAdapter.UI.CorePageBranding.CorePageBranding() -> void
 Veriqa.Core.ChannelAdapter.UI.CorePageBranding.CssSriHash.get -> string?
 Veriqa.Core.ChannelAdapter.UI.CorePageBranding.CssSriHash.init -> void
@@ -225,6 +279,8 @@ Veriqa.Core.ChannelAdapter.UI.CorePageBranding.PrimaryColor.get -> string?
 Veriqa.Core.ChannelAdapter.UI.CorePageBranding.PrimaryColor.init -> void
 Veriqa.Core.ChannelAdapter.UI.CorePageBranding.PrimaryColorDark.get -> string?
 Veriqa.Core.ChannelAdapter.UI.CorePageBranding.PrimaryColorDark.init -> void
+Veriqa.Core.ChannelAdapter.UI.CorePageBranding.Theme.get -> string!
+Veriqa.Core.ChannelAdapter.UI.CorePageBranding.Theme.init -> void
 Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys
 Veriqa.Core.ChannelAdapter.UI.CorePageBrandingResolver
 Veriqa.Core.ChannelAdapter.UI.CorePageBrandingResolver.ResolveAsync(Veriqa.Core.Configuration.ResolutionContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.UI.CorePageBranding!>!
@@ -246,6 +302,15 @@ Veriqa.Core.ChannelAdapter.UI.CorePageResourceScope.Declare(string? stylesheetPa
 Veriqa.Core.ChannelAdapter.UI.CorePageResourceScope.IsDeclared.get -> bool
 Veriqa.Core.ChannelAdapter.UI.CorePageResourceScope.ScriptPath.get -> string?
 Veriqa.Core.ChannelAdapter.UI.CorePageResourceScope.StylesheetPath.get -> string?
+Veriqa.Core.ChannelAdapter.UI.CorePageTextConfigKeys
+Veriqa.Core.ChannelAdapter.UI.CorePageTextOverride
+Veriqa.Core.ChannelAdapter.UI.CorePageTextOverride.ByLanguage.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
+Veriqa.Core.ChannelAdapter.UI.CorePageTextOverride.ReplacementKey.get -> string?
+Veriqa.Core.ChannelAdapter.UI.CorePageTextResolver
+Veriqa.Core.ChannelAdapter.UI.CorePageTextResolver.ResolveAsync(Veriqa.Core.Configuration.ResolutionContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.UI.CorePageTexts!>!
+Veriqa.Core.ChannelAdapter.UI.CorePageTexts
+Veriqa.Core.ChannelAdapter.UI.CorePageTexts.Localize(Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer! localizer, string! naturalKey, string! language) -> string!
+Veriqa.Core.ChannelAdapter.UI.CorePageTextServiceCollectionExtensions
 Veriqa.Core.ChannelAdapter.UI.CorePageThemes
 Veriqa.Core.ChannelAdapter.UI.DesignPreset
 Veriqa.Core.ChannelAdapter.UI.DesignPreset.Branded = 3 -> Veriqa.Core.ChannelAdapter.UI.DesignPreset
@@ -266,6 +331,8 @@ const Veriqa.Core.ChannelAdapter.Constants.ChannelAdapterErrorCodes.UnsupportedE
 const Veriqa.Core.ChannelAdapter.Constants.ChannelAdapterErrorCodes.UnsupportedMessageKind = "unsupported_message_kind" -> string!
 const Veriqa.Core.ChannelAdapter.Constants.ChannelAdapterErrorCodes.WebhookValidationFailed = "webhook_validation_failed" -> string!
 const Veriqa.Core.ChannelAdapter.Constants.ChannelAdapterLimits.MaxRawMetadataSize = 4096 -> int
+const Veriqa.Core.ChannelAdapter.Constants.ChannelAdapterLimits.MaxWebhookBodySize = 1048576 -> int
+const Veriqa.Core.ChannelAdapter.Constants.ChannelAuditEventCodes.CompletionBehaviorClamped = "channel_completion_behavior_clamped" -> string!
 const Veriqa.Core.ChannelAdapter.Constants.ChannelInteractionAuditCodes.LinkExpired = "channel_link_expired" -> string!
 const Veriqa.Core.ChannelAdapter.Constants.ChannelInteractionAuditCodes.LinkNotAnswerable = "channel_link_not_answerable" -> string!
 const Veriqa.Core.ChannelAdapter.Constants.ChannelInteractionAuditCodes.SenderNotAdmitted = "channel_sender_not_admitted" -> string!
@@ -284,6 +351,7 @@ const Veriqa.Core.ChannelAdapter.MultiTenancy.OutcomeNoticeConfigKeys.DisplayInt
 const Veriqa.Core.ChannelAdapter.Pipeline.ChannelLocalizationOptions.DefaultBaseLocale = "en" -> string!
 const Veriqa.Core.ChannelAdapter.Pipeline.ChannelLocalizationOptions.DefaultLocalesPath = "wwwroot/locales" -> string!
 const Veriqa.Core.ChannelAdapter.Pipeline.ChannelLocalizationOptions.SectionName = "Veriqa:Channels:Localization" -> string!
+const Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorOptions.SectionName = "Veriqa:CompletionBehavior" -> string!
 const Veriqa.Core.ChannelAdapter.Pipeline.LoginConfirmationOptions.SectionName = "Veriqa:LoginConfirmation" -> string!
 const Veriqa.Core.ChannelAdapter.Pipeline.NaturalKeyContext.Separator = " | " -> string!
 const Veriqa.Core.ChannelAdapter.Pipeline.OutcomeNoticeOptions.SectionName = "Veriqa:Channels:OutcomeNotice" -> string!
@@ -294,7 +362,9 @@ const Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptSurfaces.InChannelPlain 
 const Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptSurfaces.InteractionPage = "interaction-page" -> string!
 const Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.CoreSectionName = "Veriqa:AuthPageDesign" -> string!
 const Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.DefaultPreset = Veriqa.Core.ChannelAdapter.UI.DesignPreset.Default -> Veriqa.Core.ChannelAdapter.UI.DesignPreset
+const Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.DefaultTheme = Veriqa.Core.ChannelAdapter.UI.AuthPageTheme.Auto -> Veriqa.Core.ChannelAdapter.UI.AuthPageTheme
 const Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.ThemeDimensionName = "theme" -> string!
+const Veriqa.Core.ChannelAdapter.UI.CorePageTextConfigKeys.TextDimensionName = "text" -> string!
 const Veriqa.Core.ChannelAdapter.UI.CorePageThemes.Auto = "auto" -> string!
 const Veriqa.Core.ChannelAdapter.UI.CorePageThemes.Dark = "dark" -> string!
 const Veriqa.Core.ChannelAdapter.UI.CorePageThemes.Light = "light" -> string!
@@ -314,6 +384,9 @@ override Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.ToString() 
 override Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.Equals(object? obj) -> bool
 override Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.GetHashCode() -> int
 override Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.ToString() -> string!
+override Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.ToString() -> string!
 override Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.Equals(object? obj) -> bool
 override Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.GetHashCode() -> int
 override Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.ToString() -> string!
@@ -346,6 +419,11 @@ static Veriqa.Core.ChannelAdapter.MultiTenancy.ChannelMultiTenancyServiceCollect
 static Veriqa.Core.ChannelAdapter.MultiTenancy.ChannelTenantContext.BeginScope(string? tenantId) -> System.IDisposable!
 static Veriqa.Core.ChannelAdapter.MultiTenancy.ChannelTenantContext.CurrentTenantId.get -> string?
 static Veriqa.Core.ChannelAdapter.MultiTenancy.ChannelTenantContext.IsEstablished.get -> bool
+static Veriqa.Core.ChannelAdapter.MultiTenancy.CompletionBehaviorConfigKeys.Action.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.Domain.CompletionBehaviorAction>!
+static Veriqa.Core.ChannelAdapter.MultiTenancy.CompletionBehaviorConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.ChannelAdapter.MultiTenancy.CompletionBehaviorConfigKeys.MenuItems.get -> Veriqa.Core.Configuration.ConfigKey<System.Collections.Generic.IReadOnlyList<Veriqa.Core.ChannelAdapter.Pipeline.CompletionBehaviorMenuItem!>!>!
+static Veriqa.Core.ChannelAdapter.MultiTenancy.CompletionBehaviorConfigKeys.RedirectButtonText.get -> Veriqa.Core.Configuration.ConfigKey<string!>!
+static Veriqa.Core.ChannelAdapter.MultiTenancy.CompletionBehaviorConfigKeys.RedirectUrl.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.ChannelAdapter.MultiTenancy.LoginConfirmationConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
 static Veriqa.Core.ChannelAdapter.MultiTenancy.LoginConfirmationConfigKeys.LoginConfirmation.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.TransactionEngine.Domain.LoginConfirmationMode>!
 static Veriqa.Core.ChannelAdapter.MultiTenancy.OutcomeNoticeConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
@@ -354,11 +432,15 @@ static Veriqa.Core.ChannelAdapter.MultiTenancy.TransactionResolutionContext.For(
 static Veriqa.Core.ChannelAdapter.MultiTenancy.TransactionResolutionContext.ForClient(string? clientTenantId, string? applicationId, string? uiConfigSelector) -> Veriqa.Core.Configuration.ResolutionContext!
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.operator !=(Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies? left, Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies? right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.operator ==(Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies? left, Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies? right) -> bool
+static Veriqa.Core.ChannelAdapter.Pipeline.ChannelIdentityMask.MaskEmail(string? email) -> string!
+static Veriqa.Core.ChannelAdapter.Pipeline.ChannelIdentityMask.MaskName(string? value) -> string?
+static Veriqa.Core.ChannelAdapter.Pipeline.ChannelIdentityMask.MaskPhoneNumber(string? phoneNumber) -> string?
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.operator !=(Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts? left, Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts? right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts.operator ==(Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts? left, Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts? right) -> bool
+static Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.operator !=(Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient? left, Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient? right) -> bool
+static Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient.operator ==(Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient? left, Veriqa.Core.ChannelAdapter.Pipeline.ConfirmationPromptRecipient? right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookPipeline.MapChannelWebhookEndpoints(this Microsoft.AspNetCore.Routing.IEndpointRouteBuilder! endpoints, Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies! policies) -> Microsoft.AspNetCore.Routing.IEndpointRouteBuilder!
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookPipeline.MapChannelWebhookEndpoints(this Microsoft.AspNetCore.Routing.IEndpointRouteBuilder! endpoints, string? rateLimitPolicyName = null) -> Microsoft.AspNetCore.Routing.IEndpointRouteBuilder!
-static Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookPipeline.ProcessInboundResultAsync(Veriqa.Core.ChannelAdapter.Domain.ChannelInboundResult! inboundResult, Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter, Veriqa.Core.TransactionEngine.Services.ITransactionService! transactionService, Veriqa.Core.TransactionEngine.Store.ITransactionStore! transactionStore, System.TimeProvider! timeProvider, Veriqa.Core.TransactionEngine.Identity.IIdentityResolutionService! identityResolutionService, Microsoft.Extensions.Logging.ILogger! logger, Veriqa.Core.ChannelAdapter.Pipeline.ChannelAdapterMetrics! metrics, Veriqa.Core.ChannelAdapter.Abstractions.IUserAuthRateLimiter? userAuthRateLimiter, Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptOrchestrator? confirmationPromptOrchestrator, Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer? promptLocalizer, Veriqa.Core.ChannelAdapter.Abstractions.IChannelPromptMessageStore? promptMessageStore, Veriqa.Core.ChannelAdapter.Pipeline.IOutcomeReceiptText! receiptText, Veriqa.Core.ChannelAdapter.Pipeline.IOutcomeNoticeDisplayIntentSource! displayIntentSource, Veriqa.Core.TransactionEngine.Events.ITransactionEventPublisher? eventPublisher, Veriqa.Core.ChannelAdapter.Pipeline.ChannelReplyTexts! replyTexts, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.None.get -> Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport!
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.operator !=(Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport? left, Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport? right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport.operator ==(Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport? left, Veriqa.Core.ChannelAdapter.Pipeline.ChannelWebhookSupport? right) -> bool
@@ -369,17 +451,21 @@ static Veriqa.Core.ChannelAdapter.Pipeline.NaturalKeyContext.BaseTextOf(string! 
 static Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.operator !=(Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress left, Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress.operator ==(Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress left, Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptAddress right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptSurfaces.ForChannel(Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter) -> string!
-static Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptText.Render(Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage! template, string? recipientLocale, string? recipientTimeZone, System.DateTimeOffset? outcomeMoment, Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource? transaction, Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer? localizer, Microsoft.Extensions.Logging.ILogger? logger) -> string!
+static Veriqa.Core.ChannelAdapter.Pipeline.OutcomeReceiptText.Render(Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage! template, string? recipientLocale, string? recipientTimeZone, System.DateTimeOffset? outcomeMoment, Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource? transaction, string! surface, Veriqa.Core.ChannelAdapter.Pipeline.IConfirmationPromptLocalizer? localizer, Microsoft.Extensions.Logging.ILogger? logger) -> string!
 static Veriqa.Core.ChannelAdapter.Pipeline.RenderedMessageText.operator !=(Veriqa.Core.ChannelAdapter.Pipeline.RenderedMessageText? left, Veriqa.Core.ChannelAdapter.Pipeline.RenderedMessageText? right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.RenderedMessageText.operator ==(Veriqa.Core.ChannelAdapter.Pipeline.RenderedMessageText? left, Veriqa.Core.ChannelAdapter.Pipeline.RenderedMessageText? right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage.operator !=(Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage? left, Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage? right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage.operator ==(Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage? left, Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage? right) -> bool
 static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.ChannelButtonColor.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.CustomCss.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource?>!
 static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.Preset.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.UI.DesignPreset>!
+static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.BrandName.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
 static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.PrimaryColor.get -> Veriqa.Core.Configuration.ConfigKey<string?>!
+static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingConfigKeys.Theme.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.UI.AuthPageTheme>!
 static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingRules.BrandPrimary(Veriqa.Core.ChannelAdapter.UI.DesignPreset effectivePreset, string? color) -> string?
 static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingRules.EffectivePreset(Veriqa.Core.ChannelAdapter.UI.DesignPreset declaredPreset, string? customCssPath) -> Veriqa.Core.ChannelAdapter.UI.DesignPreset
+static Veriqa.Core.ChannelAdapter.UI.CorePageBrandingRules.EffectiveTheme(Veriqa.Core.ChannelAdapter.UI.AuthPageTheme declared, Veriqa.Core.ChannelAdapter.UI.DesignPreset effectivePreset) -> string!
 static Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource.From(string? path, string? sriHash) -> Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource?
 static Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource.LayerOf(string? path, string? sriHash) -> Veriqa.Core.Configuration.LayerValue<Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource?>
 static Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource.operator !=(Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource? left, Veriqa.Core.ChannelAdapter.UI.CorePageCustomResource? right) -> bool
@@ -391,8 +477,13 @@ static Veriqa.Core.ChannelAdapter.UI.CorePageHead.BuildBrandedTokens(string? pri
 static Veriqa.Core.ChannelAdapter.UI.CorePageHead.BuildCustomCssLink(Veriqa.Core.ChannelAdapter.UI.CorePageBranding? branding) -> string!
 static Veriqa.Core.ChannelAdapter.UI.CorePageHead.BuildPageHead(Veriqa.Core.ChannelAdapter.UI.CorePageBranding? branding, string! rulesCss, string? extraCss = null) -> string!
 static Veriqa.Core.ChannelAdapter.UI.CorePageHead.BuildServicePageHead(Veriqa.Core.ChannelAdapter.UI.CorePageBranding? branding, string? extraCss = null) -> string!
+static Veriqa.Core.ChannelAdapter.UI.CorePageHead.BuildThemeAttribute(Veriqa.Core.ChannelAdapter.UI.CorePageBranding? branding) -> string!
 static Veriqa.Core.ChannelAdapter.UI.CorePageHead.IsAllowedUrlScheme(string! url) -> bool
 static Veriqa.Core.ChannelAdapter.UI.CorePageHead.IsValidBrandColor(string? color) -> bool
+static Veriqa.Core.ChannelAdapter.UI.CorePageTextConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.ChannelAdapter.UI.CorePageTextConfigKeys.Texts.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.UI.CorePageTextOverride?>!
+static Veriqa.Core.ChannelAdapter.UI.CorePageTexts.None.get -> Veriqa.Core.ChannelAdapter.UI.CorePageTexts!
+static Veriqa.Core.ChannelAdapter.UI.CorePageTextServiceCollectionExtensions.AddCorePageOverridableTexts(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Collections.Generic.IEnumerable<string!>! naturalKeys) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Veriqa.Core.ChannelAdapter.UI.CorePageThemes.Painted.get -> System.Collections.Generic.IReadOnlyList<string!>!
 static readonly Veriqa.Core.ChannelAdapter.Abstractions.UserAuthRateLimitResult.Allowed -> Veriqa.Core.ChannelAdapter.Abstractions.UserAuthRateLimitResult
 static readonly Veriqa.Core.ChannelAdapter.Domain.InitiatorAnomalyResult.None -> Veriqa.Core.ChannelAdapter.Domain.InitiatorAnomalyResult!
@@ -403,9 +494,17 @@ static readonly Veriqa.Core.ChannelAdapter.Domain.InitiatorAnomalyResult.None ->
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.<Clone>$() -> Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource!
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.ApplicationId.get -> string?
+Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.ApplicationName.get -> string?
+Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.ApplicationName.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.BrandName.get -> string?
+Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.BrandName.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.ApplicationId.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.CallerSlotValues.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.CallerSlotValues.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.ChannelIdentity.get -> Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot?
+Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.ChannelIdentity.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.RequestedAt.get -> System.DateTimeOffset?
+Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.RequestedAt.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.Equals(Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource? other) -> bool
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.InitiatorContext.get -> Veriqa.Core.TransactionEngine.Domain.InitiatorContextSnapshot?
 Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.InitiatorContext.init -> void
@@ -420,3 +519,109 @@ static Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.From(Veriqa.Cor
 static Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.From(Veriqa.Core.TransactionEngine.Events.TransactionEventContext! context) -> Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource!
 static Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.operator !=(Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource? left, Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource? right) -> bool
 static Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource.operator ==(Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource? left, Veriqa.Core.ChannelAdapter.Pipeline.TransactionSlotSource? right) -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.IPhoneRequestCorrelationStore
+Veriqa.Core.ChannelAdapter.Abstractions.IPhoneRequestCorrelationStore.FindAsync(string? tenantId, string! channelType, string! channelUserId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation?>!
+Veriqa.Core.ChannelAdapter.Abstractions.IPhoneRequestCorrelationStore.RemoveAsync(string? tenantId, string! channelType, string! channelUserId, Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Veriqa.Core.ChannelAdapter.Abstractions.IPhoneRequestCorrelationStore.SaveAsync(Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation! correlation, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.<Clone>$() -> Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation!
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.ChannelType.get -> string!
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.ChannelType.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.ChannelUserId.get -> string!
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.ChannelUserId.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.Equals(Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation? other) -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.ExpiresAt.get -> System.DateTimeOffset
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.ExpiresAt.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.PhoneRequestCorrelation() -> void
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.SecondaryAction.get -> Veriqa.Core.ChannelAdapter.Domain.PhoneStepAction
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.SecondaryAction.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.SecondaryButtonLabel.get -> string!
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.SecondaryButtonLabel.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.TenantId.get -> string?
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.TenantId.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.TransactionId.get -> Veriqa.Core.TransactionEngine.Domain.TransactionId
+Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.TransactionId.init -> void
+override Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.operator !=(Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation? left, Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation? right) -> bool
+static Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation.operator ==(Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation? left, Veriqa.Core.ChannelAdapter.Abstractions.PhoneRequestCorrelation? right) -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.ILinkHandleStore
+Veriqa.Core.ChannelAdapter.Abstractions.ILinkHandleStore.SaveAsync(Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord! record, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Veriqa.Core.ChannelAdapter.Abstractions.ILinkHandleStore.TakeAsync(string! handleHash, string! applicationId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord?>!
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.<Clone>$() -> Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord!
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.ApplicationId.get -> string!
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.ApplicationId.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.Equals(Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord? other) -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.ExpiresAt.get -> System.DateTimeOffset
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.ExpiresAt.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.HandleHash.get -> string!
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.HandleHash.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.LinkHandleRecord() -> void
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.TransactionId.get -> Veriqa.Core.TransactionEngine.Domain.TransactionId
+Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.TransactionId.init -> void
+override Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.operator !=(Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord? left, Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord? right) -> bool
+static Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord.operator ==(Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord? left, Veriqa.Core.ChannelAdapter.Abstractions.LinkHandleRecord? right) -> bool
+const Veriqa.Core.ChannelAdapter.Constants.ChannelAdapterErrorCodes.StartCodeIssueFailed = "start_code_issue_failed" -> string!
+const Veriqa.Core.ChannelAdapter.Pipeline.ChannelCodeStartOptions.DefaultCodeLength = 6 -> int
+const Veriqa.Core.ChannelAdapter.Pipeline.ChannelCodeStartOptions.MaxCodeLength = 10 -> int
+const Veriqa.Core.ChannelAdapter.Pipeline.ChannelCodeStartOptions.MinCodeLength = 6 -> int
+const Veriqa.Core.ChannelAdapter.Pipeline.ChannelCodeStartOptions.SectionName = "Veriqa:CodeStart" -> string!
+override Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.operator !=(Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode? left, Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode? right) -> bool
+static Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.operator ==(Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode? left, Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode? right) -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.<Clone>$() -> Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode!
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.ChannelStartCode() -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.Code.get -> string!
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.Code.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.Equals(Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode? other) -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.ExpiresAt.get -> System.DateTimeOffset
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.ExpiresAt.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.TransactionId.get -> Veriqa.Core.TransactionEngine.Domain.TransactionId
+Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode.TransactionId.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelStartCodeIssuer
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelStartCodeIssuer.GetOrIssueAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, System.DateTimeOffset expiresAt, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode!>!>!
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelStartCodeStore
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelStartCodeStore.FindByTransactionAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode?>!
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelStartCodeStore.TakeAsync(string! code, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode?>!
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelStartCodeStore.TryAddAsync(Veriqa.Core.ChannelAdapter.Abstractions.ChannelStartCode! record, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelCodeStartOptions
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelCodeStartOptions.ChannelCodeStartOptions() -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelCodeStartOptions.CodeLength.get -> int
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelCodeStartOptions.CodeLength.set -> void
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelMessageTemplates
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelMessageTemplates.ResolveAsync(Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter, string! kind, Veriqa.Core.ChannelAdapter.Domain.DeepLinkRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage!>!>!
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelMessageTemplates.ResolveAsync(Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter! adapter, string! kind, Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage!>!>!
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.<Clone>$() -> Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage!
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.ApplicationName.get -> string?
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.ApplicationName.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.Deconstruct(out Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage! Message, out string? Locale, out string? TimeZone, out string? ApplicationName) -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.Equals(Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage? other) -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.Locale.get -> string?
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.Locale.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.Message.get -> Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage!
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.Message.init -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.ResolvedChannelMessage(Veriqa.Core.ChannelAdapter.Pipeline.ResolvedMessage! Message, string? Locale, string? TimeZone, string? ApplicationName) -> void
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.TimeZone.get -> string?
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.TimeZone.init -> void
+override Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.operator !=(Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage? left, Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage? right) -> bool
+static Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.operator ==(Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage? left, Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage? right) -> bool
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.BrandName.get -> string?
+Veriqa.Core.ChannelAdapter.Abstractions.ResolvedChannelMessage.BrandName.init -> void
+const Veriqa.Core.ChannelAdapter.Pipeline.ChannelInboundDeduplicationOptions.SectionName = "Veriqa:Channels:InboundDeduplication" -> string!
+static readonly Veriqa.Core.ChannelAdapter.Pipeline.ChannelInboundDeduplicationOptions.DefaultWindow -> System.TimeSpan
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelInboundDeduplicationOptions
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelInboundDeduplicationOptions.ChannelInboundDeduplicationOptions() -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelInboundDeduplicationOptions.Window.get -> System.TimeSpan
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelInboundDeduplicationOptions.Window.set -> void

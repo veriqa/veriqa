@@ -19,6 +19,12 @@ namespace Veriqa.Core.ChannelAdapter.UI;
 public sealed class CorePageBranding
 {
     /// <summary>
+    /// Brand name the levels state (<see cref="CorePageBrandingConfigKeys.BrandName"/>) — a Natural Key
+    /// the page resolves through the locale files. Null — no level states one.
+    /// </summary>
+    public string? BrandName { get; init; }
+
+    /// <summary>
     /// URL of the integrator's stylesheet linked after the inline styles, so the integrator
     /// overrides the <c>--veriqa-*</c> tokens by source order. Null or empty — no link.
     /// </summary>
@@ -46,4 +52,20 @@ public sealed class CorePageBranding
     /// browser picks.
     /// </summary>
     public string? PrimaryColorDark { get; init; }
+
+    /// <summary>
+    /// Value of the <c>data-theme</c> attribute of the page — one of the theme names of
+    /// <see cref="CorePageThemes"/>, already derived from the declared color scheme and the effective
+    /// preset (<see cref="CorePageBrandingRules.EffectiveTheme"/>). The default is
+    /// <see cref="CorePageThemes.Auto"/>: a page whose branding was not resolved follows the browser
+    /// setting, which is what the shipped color scheme does.
+    /// </summary>
+    public string Theme { get; init; } = CorePageThemes.Auto;
+
+    /// <summary>
+    /// Colors of the buttons of the channels the page leads into, by channel type (key
+    /// <c>AuthPageDesign.ChannelButtonColor</c>); null — no level states one, and every button keeps the
+    /// color of its channel. Only the channels of the page are resolved, so the map names no other.
+    /// </summary>
+    internal IReadOnlyDictionary<string, string>? ChannelButtonColors { get; init; }
 }

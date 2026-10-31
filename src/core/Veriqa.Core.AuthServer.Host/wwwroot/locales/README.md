@@ -64,7 +64,36 @@ Rules that matter when editing these files:
   text;
 - add a context **only on a real collision**. A channel's terminal outcome text is not one: outcome
   receipts are messages of the mechanism (SPEC-036 TPL-123), whose wording per channel and surface
-  is chosen by the dimensions of the template key, not by a suffix on a Natural Key.
+  is chosen by the dimensions of the template key, not by a suffix on a Natural Key. The names of the
+  built-in messaging apps are the one other use: the name key `<Name> | channel` (see below).
+
+## Channel names and channel buttons
+
+The button of a messaging app is a template with a slot for the channel name: `Sign in with {0}` on a
+sign-in, `Confirm in {0}` on any other transaction. The slot takes:
+
+- for a built-in messaging app, the translation of its name key `<Name> | channel` (`Telegram | channel`,
+  `WeChat | channel` …). The same name appears on the button, on the tab and in the instruction, so
+  translating it once covers all three — `zh.json` names WeChat `微信`;
+- for a third-party channel, its declared label as is, untranslated.
+
+The pages translate the name; the response of the confirmation creation API keeps it untranslated.
+
+**A phrase for one channel outranks the template.** The page puts the English name into the template
+(`Confirm in Viber`) and looks that phrase up as a key of its own. The order is:
+
+1. an override of the phrase (`AuthPage.Texts`) — for a built-in messaging app only: the phrase of a
+   third-party channel is not among the texts that can be overridden;
+2. an override of the template;
+3. a translation of the phrase in the locale file;
+4. a translation of the template.
+
+So a language whose grammar the template cannot hold translates the template once and adds phrases
+only where needed — for Turkish, `"Confirm in {0}": "{0} üzerinden onayla"` and, for one channel,
+`"Confirm in Viber": "Viber'de onayla"`. A phrase is optional in an integrator's own locale file. In the
+files of this repository, a phrase added to one file goes into **every** file, like any other key — the
+parity gate requires it. No code names a phrase as a key, so it also takes a line with a reason in
+`build/english-first/i18n-lint/unused-keys.txt`.
 
 ## Adding a language
 

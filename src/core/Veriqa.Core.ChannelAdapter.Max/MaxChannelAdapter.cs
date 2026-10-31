@@ -11,6 +11,7 @@ using Max.BotClient;
 using Max.BotClient.Types;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Veriqa.Core.ChannelAdapter.Abstractions;
 using Veriqa.Core.ChannelAdapter.Constants;
@@ -33,7 +34,7 @@ namespace Veriqa.Core.ChannelAdapter.Max;
 /// Handles inbound events, sends confirmation prompts,
 /// notifications and manages deep links via the MAX Bot API.
 /// </summary>
-internal sealed class MaxChannelAdapter : IChannelAdapter
+internal sealed class MaxChannelAdapter : IChannelAdapter, IChannelBotName
 {
     /// <summary>
     /// Per-tenant channel client factory (CA-164/CA-166).
@@ -67,10 +68,10 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
     private readonly IConfirmationPromptLocalizer _promptLocalizer;
 
     /// <summary>
-    /// The single point at which the render points of this adapter obtain a resolved message —
-    /// through the canonical resolver (SPEC-036 TPL-001). Singleton, like this adapter.
+    /// The accessor this adapter takes the templates of its channel messages from: the core resolves
+    /// them through the canonical resolver (SPEC-036 TPL-001). Singleton, like this adapter.
     /// </summary>
-    private readonly IMessageTemplateAccessor _messageTemplates;
+    private readonly IChannelMessageTemplates _messageTemplates;
 
     /// <summary>
     /// HTTP client factory for the direct keyboard-clearing edit (attachments: []) — the Max.BotClient
@@ -78,6 +79,12 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
     /// per operation (no captive dependency in this singleton adapter).
     /// </summary>
     private readonly IHttpClientFactory _httpClientFactory;
+
+    /// <summary>
+    /// MAX Bot API address of this installation (<see cref="MaxOptions.ApiBaseUrl"/>) the direct HTTP
+    /// calls of the adapter are resolved against — the same address the platform client is built with.
+    /// </summary>
+    private readonly Uri _apiBaseUri;
 
     /// <summary>
     /// Clock behind the health-check stamps and the capture timestamps of the adapter.
@@ -92,18 +99,20 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
     /// <param name="resolver">Canonical layer resolver (source of the tenant's credentials).</param>
     /// <param name="logger">Logger.</param>
     /// <param name="promptLocalizer">Channel message localizer.</param>
-    /// <param name="messageTemplates">Accessor of the resolved messages of this adapter.</param>
+    /// <param name="messageTemplates">Accessor of the channel message templates of this adapter.</param>
     /// <param name="httpClientFactory">HTTP client factory for the direct keyboard-clearing edit.</param>
     /// <param name="timeProvider">Time provider.</param>
+    /// <param name="options">MAX adapter settings (the Bot API address).</param>
     public MaxChannelAdapter(
         IChannelClientFactory clientFactory,
         IMaxBotInfoProvider botInfoProvider,
         IConfigurationResolver resolver,
         ILogger<MaxChannelAdapter> logger,
         IConfirmationPromptLocalizer promptLocalizer,
-        IMessageTemplateAccessor messageTemplates,
+        IChannelMessageTemplates messageTemplates,
         IHttpClientFactory httpClientFactory,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IOptions<MaxOptions> options)
     {
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _botInfoProvider = botInfoProvider ?? throw new ArgumentNullException(nameof(botInfoProvider));
@@ -113,6 +122,9 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
         _messageTemplates = messageTemplates ?? throw new ArgumentNullException(nameof(messageTemplates));
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        ArgumentNullException.ThrowIfNull(options);
+
+        _apiBaseUri = new Uri(options.Value.ApiBaseUrl, UriKind.Absolute);
     }
 
     /// <inheritdoc />
@@ -125,21 +137,61 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
     private static readonly JsonSerializerOptions MaxJsonOptions = global::Max.BotClient.BotClientJsonOptions.Default;
 
     /// <summary>
-    /// Facts MAX declares about itself (SPEC-003 §6.1, SPEC-012 §4.4.1): like Telegram — inline
-    /// buttons, an editable own message, and a recipient locale in the update's user_locale field
-    /// (MAX Bot API, IETF BCP 47). Truly immutable sets.
+    /// Facts MAX declares about itself, the same in both update modes (SPEC-003 §6.1, SPEC-012 §4.4.1): like
+    /// Telegram — inline buttons, an editable own message, and a recipient locale in the update's
+    /// user_locale field (MAX Bot API, IETF BCP 47). The phone number is asked for with a
+    /// <c>request_contact</c> button and is proven by the signature of the shared contact (SPEC-041 L45).
+    /// A link to the claim completion form is drawn as a <c>link</c> button (SPEC-041 C76). After a
+    /// completed sign-in the chat can be sent a welcome message, a menu or a link to continue with
+    /// (SPEC-012 §4.9); the last two are a message with buttons under its text — <c>link</c> and
+    /// <c>callback</c> buttons. The polling loop reads every update off its raw body through the same
+    /// entry as the webhook, so the signature of a shared contact reaches the phone step in either mode.
+    /// Truly immutable sets.
     /// </summary>
-    private static readonly ChannelCapabilities DeclaredCapabilities = new()
+    private static readonly ChannelCapabilities MaxCapabilities = new()
     {
         SupportsInChannelConfirmation = true,
-        SupportedMessageKinds = new[] { ChannelMessageKind.PlainText }.ToFrozenSet(),
+        SupportedMessageKinds = new[]
+        {
+            ChannelMessageKind.PlainText,
+            ChannelMessageKind.PhoneNumberRequest,
+            ChannelMessageKind.ClaimFormLink,
+            ChannelMessageKind.ActionButtons
+        }.ToFrozenSet(),
         SupportsMessageUpdate = true,
         DeliversOutcomeNotice = true,
-        ProvidesRecipientLocale = true
+        ProvidesRecipientLocale = true,
+        RendersEmoji = true,
+        PhoneNumber = new PhoneNumberCapability
+        {
+            Acquisition = PhoneNumberAcquisition.OnRequest,
+            Proof = PhoneNumberProof.Proven
+        },
+        SupportedCompletionBehaviorActions = new[]
+        {
+            CompletionBehaviorAction.None,
+            CompletionBehaviorAction.WelcomeMessage,
+            CompletionBehaviorAction.Menu,
+            CompletionBehaviorAction.Redirect
+        }.ToFrozenSet(),
+        DefaultCompletionBehaviorAction = CompletionBehaviorAction.None
     };
 
     /// <inheritdoc />
-    public ChannelCapabilities Capabilities => DeclaredCapabilities;
+    public ChannelCapabilities Capabilities => MaxCapabilities;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Besides the markers of Veriqa buttons and deep links, a shared contact is claimed: it answers the
+    /// phone number request of claim completion and carries no marker of its own.
+    /// </remarks>
+    public bool OwnsInboundEvent(ChannelInboundRequest request)
+    {
+        var body = request.Body.Span;
+
+        return CallbackDataPrefixes.ContainsAnyMarker(body)
+            || body.IndexOf(MaxAdapterConstants.ContactAttachmentMarker) >= 0;
+    }
 
     /// <summary>
     /// Resolves the current tenant's MAX Bot client: the client is built/cached
@@ -169,17 +221,29 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
     }
 
     /// <inheritdoc />
-    public async Task<Result<ChannelInboundResult>> ProcessInboundEventAsync(
+    public Task<Result<ChannelInboundResult>> ProcessInboundEventAsync(
         ChannelInboundRequest request,
         CancellationToken cancellationToken = default)
+        => ProcessRawUpdateAsync(request.Body, cancellationToken);
+
+    /// <summary>
+    /// Processes one MAX update from its raw body — the one reception point of both update modes: the
+    /// webhook hands over the body of the request, the polling loop each element of the <c>updates</c>
+    /// array of its own <c>GET /updates</c>. The wire format is the adapter's business, and the raw body is
+    /// read where the client library model falls short: a shared contact, whose message the model leaves
+    /// empty and whose signature it has no field for, and the message a pressed button belongs to.
+    /// </summary>
+    /// <param name="body">Raw body of one update.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Result of processing the incoming event.</returns>
+    internal async Task<Result<ChannelInboundResult>> ProcessRawUpdateAsync(
+        ReadOnlyMemory<byte> body,
+        CancellationToken cancellationToken = default)
     {
-        // The wire format is the adapter's business: the core hands over the raw bytes. The polling
-        // loop, which already has a deserialized Update, enters through ProcessUpdateAsync — the two
-        // paths meet there, so there is exactly one branch of parsing logic.
         Update? update;
         try
         {
-            update = JsonSerializer.Deserialize<Update>(request.Body.Span, MaxJsonOptions);
+            update = JsonSerializer.Deserialize<Update>(body.Span, MaxJsonOptions);
         }
         catch (JsonException ex)
         {
@@ -192,25 +256,10 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
             return Result<ChannelInboundResult>.Success(new ChannelUnrelatedResult());
         }
 
-        return await ProcessUpdateAsync(update, cancellationToken);
-    }
-
-    /// <summary>
-    /// Processes an already deserialized MAX update — the entry point of the polling loop, which
-    /// receives the object from the platform library and must not serialize it back just to pass
-    /// through the neutral envelope.
-    /// </summary>
-    /// <param name="update">MAX update.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Result of processing the incoming event.</returns>
-    internal async Task<Result<ChannelInboundResult>> ProcessUpdateAsync(
-        Update update,
-        CancellationToken cancellationToken = default)
-    {
         // Handle the callback (inline button press)
         if (update.UpdateType is UpdateType.MessageCallback && update.Callback is not null)
         {
-            return await ProcessCallbackAsync(update, cancellationToken);
+            return await ProcessCallbackAsync(update, ReadCallbackMessageId(body), cancellationToken);
         }
 
         // Handle the bot start event (deep link navigation)
@@ -219,12 +268,50 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
             return await ProcessBotStartedAsync(update, cancellationToken);
         }
 
+        // Handle a shared contact — the answer to the phone number request (SPEC-041 L44), read off the
+        // raw body with its signature, where the rules of a shared contact live.
+        if (update.UpdateType is UpdateType.MessageCreated
+            && MaxSharedContact.TryRead(body, MaxJsonOptions, out var sharedContact))
+        {
+            return await ProcessContactMessageAsync(update, sharedContact, cancellationToken);
+        }
+
         // Other update types are unrelated to authentication
         _logger.LogDebug(
             "Received an irrelevant MAX update, UpdateType = {UpdateType}",
             update.UpdateType);
 
         return Result<ChannelInboundResult>.Success(new ChannelUnrelatedResult { RawEvent = update });
+    }
+
+    /// <summary>
+    /// Reads the id of the message a pressed button belongs to off the raw body of a
+    /// <c>message_callback</c> update (<c>message.body.mid</c>). The client library model has no public
+    /// setter for it, so the deserialized update never carries it.
+    /// </summary>
+    /// <param name="body">Raw update body.</param>
+    /// <returns>The message id; null — the update names no message, or names it in an unreadable form.</returns>
+    private static string? ReadCallbackMessageId(ReadOnlyMemory<byte> body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+
+            return root.ValueKind is JsonValueKind.Object
+                && root.TryGetProperty(MaxAdapterConstants.UpdateMessageField, out var message)
+                && message.ValueKind is JsonValueKind.Object
+                && message.TryGetProperty(MaxAdapterConstants.MessageBodyField, out var messageBody)
+                && messageBody.ValueKind is JsonValueKind.Object
+                && messageBody.TryGetProperty(MaxAdapterConstants.MessageBodyIdField, out var messageId)
+                && messageId.ValueKind is JsonValueKind.String
+                    ? messageId.GetString()
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <inheritdoc />
@@ -266,19 +353,21 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
 
             // Render the text from the confirmation context (SPEC-017 §7.2) in the recipient's language;
             // on a context without details — the default text (ICC-042), also localized by the passed
-            // locale (ICC-050). The wording is asked for at the FULL address the point has — the surface
-            // it is shown on and the channel refining it — over the ownership levels the transaction
-            // states, so a variant declared by a tenant, an application or a ui_config record answers
-            // instead of the shipped one (SPEC-036 TPL-116).
+            // locale (ICC-050). The template is resolved by the core, which takes the address and the
+            // owners itself — the in-channel surface, this channel and the levels the transaction states —
+            // so a variant declared by a tenant, an application or a ui_config record answers instead of
+            // the shipped one (SPEC-036 TPL-116); a template it cannot resolve sends nothing.
+            var promptTemplate = await _messageTemplates.ResolveAsync(
+                this, MessageKinds.ConfirmationPrompt, transactionId, cancellationToken);
+            if (promptTemplate.IsFailure)
+            {
+                return Result<ChannelMessageRef?>.Failure(promptTemplate.Error);
+            }
+
             var messageText = ConfirmationPromptRenderer.Render(
                 promptContext,
                 MessageTemplateNaturalKeys.PromptDefault,
-                await _messageTemplates.RequireAsync(
-                    MessageKinds.ConfirmationPrompt,
-                    MessageSurfaces.InChannel,
-                    ChannelTypes.Max,
-                    promptContext.Ownership,
-                    cancellationToken),
+                promptTemplate.Value.Message,
                 _promptLocalizer,
                 _logger);
 
@@ -344,18 +433,127 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
     public Task<Result<ChannelMessageRef?>> SendMessageAsync(
         ChannelMessage message,
         CancellationToken cancellationToken = default)
-        => SendTextAsync(message.ChannelUserId, message.Text, cancellationToken);
+    {
+        // A phone number request carries a keyboard: the button that shares the contact and a callback
+        // button of the secondary action, whose payload names the transaction (SPEC-041 L73).
+        if (message.PhoneNumberRequest is { } phoneRequest)
+        {
+            var secondaryPayload = PhoneStepButtonPayload.Of(phoneRequest.SecondaryAction, phoneRequest.TransactionId);
+            var request = new Message(message.Text)
+                .WithKeyboard(kb => kb
+                    .AddRow()
+                    .AddRequestContactButton(phoneRequest.ShareButtonLabel)
+                    .AddRow()
+                    .AddCallbackButton(phoneRequest.SecondaryButtonLabel, secondaryPayload));
+
+            return SendAsync(message.ChannelUserId, request, cancellationToken);
+        }
+
+        // A link to the claim completion form is one link button under the text (SPEC-041 C76): the
+        // messenger opens the page in its own or the system browser, and the bot never sees the press.
+        if (message.ClaimFormLink is { } formLink)
+        {
+            var link = new Message(message.Text)
+                .WithKeyboard(kb => kb
+                    .AddRow()
+                    .AddLinkButton(formLink.ButtonLabel, formLink.Url));
+
+            return SendAsync(message.ChannelUserId, link, cancellationToken);
+        }
+
+        // Buttons of a post-sign-in action are a keyboard under the text, one button in a row
+        // (SPEC-012 §4.9). A message none of whose buttons can be drawn is not sent at all: its text
+        // only introduces the buttons.
+        if (message.ActionButtons is { } actionButtons)
+        {
+            var buttons = SelectDrawableActionButtons(actionButtons);
+            if (buttons.Count == 0)
+            {
+                return Task.FromResult(Result<ChannelMessageRef?>.Failure(
+                    ChannelAdapterErrorCodes.MessageSendFailed,
+                    "None of the action buttons of the message can be drawn in MAX"));
+            }
+
+            var withButtons = new Message(message.Text)
+                .WithKeyboard(kb =>
+                {
+                    foreach (var button in buttons)
+                    {
+                        // The same test the selection above draws a link by: an empty address is no link.
+                        if (!string.IsNullOrEmpty(button.Url))
+                        {
+                            kb.AddRow().AddLinkButton(button.Label, button.Url);
+                        }
+                        else
+                        {
+                            // The payload goes to the platform as is, the ownership marker included. The
+                            // MAX Bot API documentation names no limit for the payload of a callback
+                            // button today, so nothing is checked here beforehand: the platform is the
+                            // judge, and its refusal fails the send.
+                            kb.AddRow().AddCallbackButton(button.Label, button.CallbackData!);
+                        }
+                    }
+                });
+
+            return SendAsync(message.ChannelUserId, withButtons, cancellationToken);
+        }
+
+        return SendAsync(message.ChannelUserId, new Message(message.Text), cancellationToken);
+    }
 
     /// <summary>
-    /// Sends a plain text message to the user and reports back the coordinates of what was sent.
+    /// Picks the buttons of a message that can be drawn, in the order they are listed. A button that is
+    /// malformed — neither a link nor a callback, or both — and a link button whose address exceeds the
+    /// length the platform names are left out with a warning; the rest are drawn.
+    /// </summary>
+    /// <param name="content">Buttons of the message.</param>
+    /// <returns>Buttons to draw; empty when none can be drawn.</returns>
+    private List<ChannelActionButton> SelectDrawableActionButtons(ActionButtonsContent content)
+    {
+        var drawable = new List<ChannelActionButton>(content.Buttons.Count);
+
+        foreach (var button in content.Buttons)
+        {
+            var hasUrl = !string.IsNullOrEmpty(button.Url);
+            var hasCallbackData = !string.IsNullOrEmpty(button.CallbackData);
+
+            if (hasUrl == hasCallbackData)
+            {
+                _logger.LogWarning(
+                    "An action button is not drawn in {ChannelType}: it must carry either a link or callback data, and only one of them",
+                    ChannelType);
+
+                continue;
+            }
+
+            // The address comes from the operator's settings and is not logged.
+            if (hasUrl && button.Url!.Length > MaxAdapterConstants.LinkButtonUrlMaxLength)
+            {
+                _logger.LogWarning(
+                    "An action button is not drawn in {ChannelType}: its link is {UrlLength} characters long, the platform limit is {MaxLength}",
+                    ChannelType,
+                    button.Url.Length,
+                    MaxAdapterConstants.LinkButtonUrlMaxLength);
+
+                continue;
+            }
+
+            drawable.Add(button);
+        }
+
+        return drawable;
+    }
+
+    /// <summary>
+    /// Sends a message to the user and reports back the coordinates of what was sent.
     /// </summary>
     /// <param name="channelUserId">Recipient within the channel.</param>
-    /// <param name="text">Message text.</param>
+    /// <param name="outgoing">Message to send — its text and keyboard.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Reference to the sent message, or a failure.</returns>
-    private async Task<Result<ChannelMessageRef?>> SendTextAsync(
+    private async Task<Result<ChannelMessageRef?>> SendAsync(
         string channelUserId,
-        string text,
+        Message outgoing,
         CancellationToken cancellationToken)
     {
         try
@@ -383,10 +581,10 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
                 return Result<ChannelMessageRef?>.Failure(clientResult.Error);
             }
 
-            // Send the text message
+            // Send the message
             var sentMessage = await clientResult.Value.SendMessage(
                 id: userId,
-                message: new Message(text),
+                message: outgoing,
                 cancellationToken: cancellationToken);
 
             _logger.LogDebug(
@@ -557,9 +755,11 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
 
     /// <inheritdoc />
     public async Task<Result<string>> GetDeepLinkAsync(
-        TransactionId transactionId,
+        DeepLinkRequest request,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
         try
         {
             // Resolve the tenant's deep link base URL via the seam (one resolve per operation).
@@ -583,11 +783,11 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
                 botUsername,
                 MaxAdapterConstants.DeepLinkStartParam,
                 MaxAdapterConstants.DeepLinkPrefix,
-                transactionId.ToString());
+                request.TransactionId.ToString());
 
             _logger.LogDebug(
                 "MAX deep link generated for transaction {TransactionId}",
-                transactionId.ToString());
+                request.TransactionId.ToString());
 
             return Result<string>.Success(deepLink);
         }
@@ -596,7 +796,7 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
             _logger.LogError(
                 ex,
                 "Error generating the MAX deep link for transaction {TransactionId}",
-                transactionId.ToString());
+                request.TransactionId.ToString());
 
             return Result<string>.Failure(
                 ChannelAdapterErrorCodes.DeepLinkGenerationFailed,
@@ -605,11 +805,25 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
     }
 
     /// <inheritdoc />
+    public ValueTask<string?> GetBotNameAsync(CancellationToken cancellationToken = default) =>
+        // The method names the chat the way the user sees it: the bot username behind an at-sign.
+        // The name only decorates a text, so a failure to obtain it — unresolved credentials, a
+        // refused Bot API call — is answered with no name and never thrown: the text then goes
+        // without the name. A cancelled request is not such a failure: the cancellation goes on to
+        // the caller.
+        ChannelBotNameReader.ReadAsync(
+            async token => await _botInfoProvider.GetBotUsernameAsync(token),
+            MaxAdapterConstants.BotUsernamePrefix,
+            ex => _logger.LogWarning(ex, "Failed to obtain the MAX bot username for the chat name"),
+            cancellationToken);
+
+    /// <inheritdoc />
     public async Task<Result<bool>> ReportOutcomeAsync(
         TransactionOutcomeNotice notice,
         CancellationToken cancellationToken = default)
     {
-        // MAX decides for itself how to show a terminal state; the core only states the intent.
+        // MAX decides for itself how to show the reported state — the end of the transaction or the
+        // claims completion it is waiting on; the core only states the intent.
         // The two obligations of a live press are independent and are discharged separately: the
         // callback is owed an answer whenever one was pressed, while the message the button belongs
         // to is editable only when the event carried its id. Order of addressing: token message id →
@@ -630,7 +844,32 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
         // /messages and NewMessageBody, read 2026-09-21). So the edit that takes the buttons off
         // leans on nothing undescribed: it reads the question back and sends both fields
         // explicitly — the question's own text and an empty `attachments`.
-        var mayReplacePrompt = notice.DisplayIntent is OutcomeNoticeDisplayIntent.ReplacePrompt;
+        //
+        // A terminal notice that names a phone number request skips both replacing steps whatever the
+        // intent says: the request is the last message in the chat, and a receipt written over the
+        // question would sit above it, out of order. The question is left as it is — by then the
+        // state of claims completion stands in its place and it has no buttons to take off — and
+        // the receipt arrives as a new message, below the request.
+        var intendsNewMessage = notice.DisplayIntent is not OutcomeNoticeDisplayIntent.ReplacePrompt;
+        var endsPhoneRequest = notice.IsTerminal && notice.PhoneRequestMessage is not null;
+        var mayReplacePrompt = !intendsNewMessage && !endsPhoneRequest;
+
+        // The end of the sign-in ends the phone number request too (SPEC-041 L73): its buttons are an
+        // attachment of the request message and come off by the reference the notice carries. This is
+        // independent of the intent and of how the receipt is shown, and — like taking the buttons off
+        // the question — stays out of the result of this operation. The state of claims completion
+        // leaves the request alone: the step it belongs to is still running.
+        if (notice.IsTerminal && notice.PhoneRequestMessage is { } phoneRequestMessage)
+        {
+            var phoneKeyboardResult = await RemovePromptKeyboardAsync(
+                phoneRequestMessage.MessageId, cancellationToken);
+            if (phoneKeyboardResult.IsFailure)
+            {
+                _logger.LogWarning(
+                    "Failed to take the keyboard off the MAX phone number request. Error: {ErrorCode}",
+                    phoneKeyboardResult.Error.Code);
+            }
+        }
 
         if (TryUnpackInboundToken(notice.InboundToken, out var callbackId, out var tokenMessageId))
         {
@@ -663,7 +902,7 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
             return ToOutcomeResult(promptEditResult);
         }
 
-        if (!mayReplacePrompt)
+        if (intendsNewMessage)
         {
             // NewMessage: the question keeps its text and loses its keyboard. Skipped entirely when
             // neither address is known (an id-less press without a stored prompt, a restarted
@@ -684,7 +923,7 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
             }
         }
 
-        var sendResult = await SendTextAsync(notice.ChannelUserId, notice.StatusText, cancellationToken);
+        var sendResult = await SendAsync(notice.ChannelUserId, new Message(notice.StatusText), cancellationToken);
         return sendResult.IsSuccess
             ? Result<bool>.Success(true)
             : Result<bool>.Failure(sendResult.Error);
@@ -887,8 +1126,12 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
             // Message.ToMessageBody() collapses an empty builder to "attachments": null and ClearKeyboard()
             // only nulls the local field — so this one edit is issued as a raw PUT with "attachments": [].
             // Unlike Telegram, whose editMessageText clears the keyboard via replyMarkup: null.
-            var requestUri = $"{MaxAdapterConstants.ApiBaseUrl}{MaxAdapterConstants.EditMessagePath}"
-                + $"?{MaxAdapterConstants.MessageIdQueryParam}={Uri.EscapeDataString(messageId)}";
+            // The method path is absolute and is resolved against the installation's address exactly as
+            // the SDK resolves its own, so both kinds of call reach the same host.
+            var requestUri = new Uri(
+                _apiBaseUri,
+                $"{MaxAdapterConstants.EditMessagePath}"
+                + $"?{MaxAdapterConstants.MessageIdQueryParam}={Uri.EscapeDataString(messageId)}");
 
             var payloadJson = JsonSerializer.Serialize(new { text = newText, attachments = Array.Empty<object?>() });
 
@@ -936,9 +1179,13 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
     /// Handles a callback event (inline button press).
     /// </summary>
     /// <param name="update">MAX update of type MessageCallback.</param>
+    /// <param name="messageId">Id of the message the pressed button belongs to; null — the update names none.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Processing result.</returns>
-    private Task<Result<ChannelInboundResult>> ProcessCallbackAsync(Update update, CancellationToken cancellationToken)
+    private Task<Result<ChannelInboundResult>> ProcessCallbackAsync(
+        Update update,
+        string? messageId,
+        CancellationToken cancellationToken)
     {
         var callback = update.Callback!;
 
@@ -962,7 +1209,7 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
         // Everything needed to address the interaction later goes into one opaque token: the core
         // carries it back untouched, so the platform terms stay inside this adapter. A MAX edit is
         // addressed by the message Mid alone, so the chat is not packed at all.
-        var inboundToken = PackInboundToken(callback.CallbackId, update.Message?.Mid);
+        var inboundToken = PackInboundToken(callback.CallbackId, messageId);
 
         // Determine the intent by the payload prefix
         if (payload.StartsWith(CallbackDataPrefixes.Confirm, StringComparison.Ordinal))
@@ -1017,9 +1264,205 @@ internal sealed class MaxChannelAdapter : IChannelAdapter
             }));
         }
 
+        if (PhoneStepButtonPayload.TryRead(payload, out var phoneStepAction, out var phoneStepTransactionIdStr))
+        {
+            return ProcessPhoneStepActionAsync(
+                update, user, phoneStepAction, phoneStepTransactionIdStr, cancellationToken);
+        }
+
+        // A press of a callback item of the post-sign-in menu (SPEC-012 §4.9). The marker alone, with
+        // no value after it, names no item: such a payload is left unrelated and is not answered.
+        if (payload.StartsWith(CallbackDataPrefixes.MenuItem, StringComparison.Ordinal)
+            && payload.Length > CallbackDataPrefixes.MenuItem.Length)
+        {
+            return ProcessMenuItemPressAsync(
+                update, user, payload[CallbackDataPrefixes.MenuItem.Length..], cancellationToken);
+        }
+
         // Unknown payload — an unrelated event
         return Task.FromResult(Result<ChannelInboundResult>.Success(
             new ChannelUnrelatedResult { RawEvent = update }));
+    }
+
+    /// <summary>
+    /// Handles a press of a callback item of the post-sign-in menu: answers the press and reports the
+    /// value of the item with the identity of the user who pressed it.
+    /// </summary>
+    /// <param name="update">MAX update of type MessageCallback.</param>
+    /// <param name="user">The user who pressed the button.</param>
+    /// <param name="value">Value of the item — what follows the marker in the payload; not empty.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Processing result.</returns>
+    private async Task<Result<ChannelInboundResult>> ProcessMenuItemPressAsync(
+        Update update,
+        User user,
+        string value,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "MAX menu item press received from user {UserIdHash}",
+            LogMasking.Fingerprint(user.UserId?.ToString(CultureInfo.InvariantCulture)));
+
+        // The press is answered right here, as a press of the phone step is: the result carries no
+        // interaction token for the core to hand back, and a press left unanswered keeps its loading
+        // indicator.
+        var callbackId = update.Callback?.CallbackId;
+        if (!string.IsNullOrEmpty(callbackId))
+        {
+            var answerResult = await AnswerCallbackAsync(callbackId, cancellationToken);
+            if (answerResult.IsFailure)
+            {
+                _logger.LogWarning(
+                    "Failed to answer the MAX callback of a menu item. Error: {ErrorCode}",
+                    answerResult.Error.Code);
+            }
+        }
+
+        return Result<ChannelInboundResult>.Success(new ChannelMenuItemPressedResult
+        {
+            Identity = ExtractIdentitySnapshotFromUser(user, update.UserLocale, _timeProvider.GetUtcNow()),
+            Value = value,
+            PressId = string.IsNullOrEmpty(callbackId) ? null : callbackId,
+            RawEvent = update
+        });
+    }
+
+    /// <summary>
+    /// Handles a press of the secondary button of the phone step (SPEC-041 L73).
+    /// </summary>
+    /// <param name="update">MAX update of type MessageCallback.</param>
+    /// <param name="user">The user who pressed the button.</param>
+    /// <param name="action">The action the button stands for.</param>
+    /// <param name="rawTransactionId">The raw transaction identifier of the payload.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Processing result.</returns>
+    private async Task<Result<ChannelInboundResult>> ProcessPhoneStepActionAsync(
+        Update update,
+        User user,
+        PhoneStepAction action,
+        string rawTransactionId,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "MAX phone step action {Action} received from user {UserIdHash}, transaction {TransactionId}",
+            action,
+            LogMasking.Fingerprint(user.UserId?.ToString(CultureInfo.InvariantCulture)),
+            rawTransactionId);
+
+        if (!TryParseEventTransactionId(rawTransactionId, out var transactionId))
+        {
+            return Result<ChannelInboundResult>.Success(new ChannelUnrelatedResult { RawEvent = update });
+        }
+
+        // The press is answered right here, as a confirmation press is answered with its receipt: the
+        // result of the phone step carries no interaction token for the core to hand back, and a press
+        // left unanswered keeps its loading indicator.
+        var callbackId = update.Callback?.CallbackId;
+        if (!string.IsNullOrEmpty(callbackId))
+        {
+            var answerResult = await AnswerCallbackAsync(callbackId, cancellationToken);
+            if (answerResult.IsFailure)
+            {
+                _logger.LogWarning(
+                    "Failed to answer the MAX callback of the phone step. Error: {ErrorCode}",
+                    answerResult.Error.Code);
+            }
+        }
+
+        return Result<ChannelInboundResult>.Success(new ChannelPhoneStepActionResult
+        {
+            TransactionId = transactionId,
+            Identity = ExtractIdentitySnapshotFromUser(user, update.UserLocale, _timeProvider.GetUtcNow()),
+            Action = action,
+            RawEvent = update
+        });
+    }
+
+    /// <summary>
+    /// Handles a message with a shared contact — the answer to the phone number request. Ownership
+    /// (SPEC-041 L45): the signature of the contact is HMAC-SHA256 of its vCard keyed with the token of
+    /// the bot that received it, and it alone decides. A contact without a matching signature — somebody
+    /// else's card, one sent without the button — is still reported,
+    /// marked as rejected, so the phone step can ask again (L46). The number comes from the signed
+    /// vCard, never from the unsigned <c>vcf_phone</c>, and is handed on in E.164 (L47); one that is
+    /// absent or has no E.164 form is handed on empty.
+    /// </summary>
+    /// <param name="update">MAX update of type MessageCreated.</param>
+    /// <param name="contact">The shared contact, read off the raw body of the update.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Processing result.</returns>
+    private async Task<Result<ChannelInboundResult>> ProcessContactMessageAsync(
+        Update update,
+        MaxSharedContact contact,
+        CancellationToken cancellationToken)
+    {
+        // The sender is vetted the way every event naming no transaction is (CA-193): present, not a
+        // bot, and in a dialog with the bot rather than in a group chat or a channel.
+        var sender = contact.Sender;
+        if (sender is null
+            || sender.UserId is null
+            || sender.IsBot is true
+            || contact.RecipientChatType is ChatType.Chat or ChatType.Channel)
+        {
+            _logger.LogDebug("MAX contact message rejected: no eligible sender or not a dialog");
+
+            return Result<ChannelInboundResult>.Success(new ChannelUnrelatedResult { RawEvent = update });
+        }
+
+        var vcfInfo = contact.VcfInfo;
+        var contactHash = contact.Hash;
+
+        // The number is handed on in E.164 by the one rule of the core (SPEC-003 CA-009): the platform
+        // writes it without the plus. A number with no E.164 form counts as absent; it does not touch
+        // the ownership, which the signature alone decides.
+        var phoneNumber = E164PhoneNumber.TryNormalize(
+            MaxContactSignature.ReadPhone(vcfInfo),
+            out var normalizedPhone)
+                ? normalizedPhone
+                : null;
+
+        var ownershipProven = false;
+        if (!string.IsNullOrEmpty(vcfInfo) && !string.IsNullOrEmpty(contactHash))
+        {
+            // The token of the bot of the ambient tenant — the one that received this update.
+            var credentialsResult = await ResolveCredentialsAsync(cancellationToken);
+            if (credentialsResult.IsFailure)
+            {
+                _logger.LogWarning(
+                    "MAX contact signature cannot be checked: credentials are unavailable. Error: {ErrorCode}",
+                    credentialsResult.Error.Code);
+            }
+            else
+            {
+                ownershipProven = MaxContactSignature.Verify(
+                    vcfInfo, contactHash, credentialsResult.Value.BotToken);
+            }
+        }
+
+        var senderIdHash = LogMasking.Fingerprint(sender.UserId.Value.ToString(CultureInfo.InvariantCulture));
+        if (ownershipProven)
+        {
+            _logger.LogInformation(
+                "Contact proven to belong to MAX user {UserIdHash}: HasNumber = {HasNumber}",
+                senderIdHash,
+                phoneNumber is not null);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "MAX contact is not proven to belong to the sender {UserIdHash}: HasSignature = {HasSignature}, HasNumber = {HasNumber}",
+                senderIdHash,
+                !string.IsNullOrEmpty(contactHash),
+                phoneNumber is not null);
+        }
+
+        return Result<ChannelInboundResult>.Success(new ChannelPhoneSharedResult
+        {
+            PhoneNumber = phoneNumber ?? string.Empty,
+            Identity = ExtractIdentitySnapshotFromUser(sender, contact.UserLocale, _timeProvider.GetUtcNow()),
+            OwnershipRejected = !ownershipProven,
+            RawEvent = update
+        });
     }
 
     /// <summary>

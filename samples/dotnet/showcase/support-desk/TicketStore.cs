@@ -37,6 +37,27 @@ public enum TicketAction
     Delete
 }
 
+/// <summary>How the customer asked the desk to get in touch about a ticket.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ContactMethod>))]
+public enum ContactMethod
+{
+    /// <summary>A callback to the confirmed phone number.</summary>
+    [JsonStringEnumMemberName(SampleContactMethods.Callback)]
+    Callback,
+
+    /// <summary>An answer to the confirmed e-mail address.</summary>
+    [JsonStringEnumMemberName(SampleContactMethods.Email)]
+    Email
+}
+
+/// <summary>
+/// A request to get in touch, as it stays with the ticket. The destination is part of the request,
+/// not of the session: it is still here after a sign-out, when the session has no contacts left.
+/// </summary>
+/// <param name="Method">How the desk should get in touch.</param>
+/// <param name="Destination">Where to, in the form the page shows: a phone number is kept masked.</param>
+public sealed record TicketContactRequest(ContactMethod Method, string Destination);
+
 /// <summary>What the backend decided about an operation once its confirmation ended.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ResolutionState>))]
 public enum ResolutionState
@@ -64,12 +85,14 @@ public enum ResolutionState
 /// <param name="Status">Where it stands.</param>
 /// <param name="CreatedAt">When it was opened.</param>
 /// <param name="LastMessage">Last line of the conversation.</param>
+/// <param name="ContactRequest">How the customer asked to be contacted about it, or null.</param>
 public sealed record Ticket(
     string Id,
     string Subject,
     TicketStatus Status,
     DateTimeOffset CreatedAt,
-    string LastMessage);
+    string LastMessage,
+    TicketContactRequest? ContactRequest);
 
 /// <summary>An operation waiting for its confirmation, or already decided.</summary>
 /// <param name="TransactionId">The confirmation transaction.</param>
@@ -89,9 +112,9 @@ public sealed record ResolutionView(
 /// <para>
 /// The list is not stored — it is SYNTHESISED from the <c>sub</c> claim by a pure function, so the
 /// same person sees the same tickets on every visit without the sample carrying a database. What IS
-/// stored is the difference the customer has made since: which tickets they closed and which they
-/// deleted. A restart of the process forgets that difference and the list returns to its synthesised
-/// state, which is exactly what a sample should do.
+/// stored is the difference the customer has made since: which tickets they closed, which they
+/// deleted, and how they asked to be contacted. A restart of the process forgets that difference
+/// and the list returns to its synthesised state, which is exactly what a sample should do.
 /// </para>
 /// </summary>
 public sealed class TicketStore
@@ -178,9 +201,13 @@ public sealed class TicketStore
             [
                 .. Synthesize(subject)
                     .Where(ticket => changes?.Deleted.Contains(ticket.Id) is not true)
-                    .Select(ticket => changes?.Resolved.Contains(ticket.Id) is true
-                        ? ticket with { Status = TicketStatus.Resolved }
-                        : ticket)
+                    .Select(ticket => changes is null
+                        ? ticket
+                        : ticket with
+                        {
+                            Status = changes.Resolved.Contains(ticket.Id) ? TicketStatus.Resolved : ticket.Status,
+                            ContactRequest = changes.ContactRequests.GetValueOrDefault(ticket.Id)
+                        })
             ];
         }
     }
@@ -193,6 +220,21 @@ public sealed class TicketStore
     /// <param name="ticketId">Identifier of the ticket.</param>
     public Ticket? Find(string subject, string ticketId) =>
         TicketsFor(subject).FirstOrDefault(ticket => ticket.Id == ticketId);
+
+    /// <summary>
+    /// Remembers how the customer asked to be contacted about a ticket, and where. Asking again
+    /// replaces the earlier request: the last one wins.
+    /// </summary>
+    /// <param name="subject">The <c>sub</c> claim of the customer.</param>
+    /// <param name="ticketId">The ticket the request is about.</param>
+    /// <param name="request">The method and the destination, the latter as the page shows it.</param>
+    public void RequestContact(string subject, string ticketId, TicketContactRequest request)
+    {
+        lock (_gate)
+        {
+            ChangesOf(subject).ContactRequests[ticketId] = request;
+        }
+    }
 
     /// <summary>Remembers which ticket a confirmation transaction acts on, for whom, and how.</summary>
     /// <param name="transactionId">The confirmation transaction.</param>
@@ -246,11 +288,7 @@ public sealed class TicketStore
 
             if (state is ResolutionState.Applied)
             {
-                if (!_changesBySubject.TryGetValue(resolution.Subject, out var changes))
-                {
-                    changes = new CustomerChanges();
-                    _changesBySubject[resolution.Subject] = changes;
-                }
+                var changes = ChangesOf(resolution.Subject);
 
                 // Applying is idempotent: two operations may be confirmed for one ticket, and the
                 // second then asks for an end state the first has already reached.
@@ -269,6 +307,19 @@ public sealed class TicketStore
 
             return View(resolution);
         }
+    }
+
+    /// <summary>The changes of one customer, created on their first change. Called under the gate.</summary>
+    /// <param name="subject">The <c>sub</c> claim of the customer.</param>
+    private CustomerChanges ChangesOf(string subject)
+    {
+        if (!_changesBySubject.TryGetValue(subject, out var changes))
+        {
+            changes = new CustomerChanges();
+            _changesBySubject[subject] = changes;
+        }
+
+        return changes;
     }
 
     /// <summary>
@@ -291,7 +342,8 @@ public sealed class TicketStore
                 Subjects[random.Next(Subjects.Length)],
                 Statuses[random.Next(Statuses.Length)],
                 DateAnchor.AddDays(-random.Next(MaxTicketAgeDays)).AddHours(-random.Next(24)),
-                LastMessages[random.Next(LastMessages.Length)]));
+                LastMessages[random.Next(LastMessages.Length)],
+                ContactRequest: null));
         }
 
         // Numbers are handed out after the sort, counting down from the newest ticket: they then read
@@ -353,6 +405,9 @@ public sealed class TicketStore
 
         /// <summary>Tickets the customer has deleted.</summary>
         public HashSet<string> Deleted { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>How the customer asked to be contacted, by ticket.</summary>
+        public Dictionary<string, TicketContactRequest> ContactRequests { get; } = new(StringComparer.Ordinal);
     }
 
     /// <summary>

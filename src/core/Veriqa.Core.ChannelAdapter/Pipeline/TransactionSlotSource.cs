@@ -12,16 +12,14 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 /// of that message are assembled from — the caller values of the transaction and the server values the
 /// core states about it (SPEC-036 TPL-124).
 /// <para>
-/// Public because it is SPI: it is the carrier <see cref="IOutcomeReceiptText"/> takes, and a host
-/// composing a render point of its own states it the same way the core does — from a live transaction,
-/// or from the attribution of a transaction event when the transaction is already gone.
+/// It is the carrier <see cref="IOutcomeReceiptText"/> takes; a render point states it from a live
+/// transaction, or from the attribution of a transaction event when the transaction is already gone.
 /// </para>
 /// </summary>
 public sealed record TransactionSlotSource
 {
     /// <summary>
-    /// Type of the transaction (login, confirmation); null when the render point does not know it. It
-    /// decides what the application slot is filled with.
+    /// Type of the transaction (login, confirmation); null when the render point does not know it.
     /// </summary>
     public required string? TransactionType { get; init; }
 
@@ -30,6 +28,17 @@ public sealed record TransactionSlotSource
     /// transaction states none.
     /// </summary>
     public string? ApplicationId { get; init; }
+
+    /// <summary>
+    /// Display name of the application the transaction took at its creation; null when it took none —
+    /// the application slot then shows <see cref="ApplicationId"/>.
+    /// </summary>
+    public string? ApplicationName { get; init; }
+
+    /// <summary>
+    /// Brand name the levels of the transaction stated at its creation, as configured; null when none.
+    /// </summary>
+    public string? BrandName { get; init; }
 
     /// <summary>
     /// Initiator context of the transaction, exactly as it was collected; null when there is none — a
@@ -45,6 +54,20 @@ public sealed record TransactionSlotSource
     public IReadOnlyDictionary<string, string>? CallerSlotValues { get; init; }
 
     /// <summary>
+    /// Channel snapshot of the account the message is about — the source of the masked identity slots
+    /// (SPEC-036 TPL-102, TPL-124); null when the render point knows no account. A live transaction states
+    /// the snapshot it was confirmed with; a render point that knows the account before the snapshot is
+    /// written (the sender of a channel event) states that one instead.
+    /// </summary>
+    public ChannelIdentitySnapshot? ChannelIdentity { get; init; }
+
+    /// <summary>
+    /// Moment the transaction was created — the value of the <c>requested_at</c> server slot; null when
+    /// the render point does not know it (the attribution of an event does not carry it).
+    /// </summary>
+    public DateTimeOffset? RequestedAt { get; init; }
+
+    /// <summary>
     /// The source of a live transaction.
     /// </summary>
     /// <param name="transaction">Transaction the message reports.</param>
@@ -57,14 +80,19 @@ public sealed record TransactionSlotSource
         {
             TransactionType = transaction.Type,
             ApplicationId = transaction.GetApplicationId(),
+            ApplicationName = transaction.GetApplicationName(),
+            BrandName = transaction.GetBrandName(),
             InitiatorContext = transaction.InitiatorContextSnapshot,
-            CallerSlotValues = transaction.ConfirmationSnapshot?.SlotValues
+            CallerSlotValues = transaction.ConfirmationSnapshot?.SlotValues,
+            ChannelIdentity = transaction.ChannelIdentitySnapshot,
+            RequestedAt = transaction.CreatedAt
         };
     }
 
     /// <summary>
     /// The source of a transaction that is already gone, from the attribution its event carries. The
-    /// attribution states no initiator context, so none is there.
+    /// attribution states neither an initiator context, nor a channel snapshot, nor the creation moment,
+    /// so none of them is there.
     /// </summary>
     /// <param name="context">Attribution of the transaction event.</param>
     /// <returns>The source.</returns>
@@ -76,8 +104,11 @@ public sealed record TransactionSlotSource
         {
             TransactionType = context.TransactionType,
             ApplicationId = context.ClientId,
+            ApplicationName = context.ApplicationName,
+            BrandName = context.BrandName,
             InitiatorContext = null,
-            CallerSlotValues = context.ConfirmationParameters?.SlotValues
+            CallerSlotValues = context.ConfirmationParameters?.SlotValues,
+            ChannelIdentity = null
         };
     }
 

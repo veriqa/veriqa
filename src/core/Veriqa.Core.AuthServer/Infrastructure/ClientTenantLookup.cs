@@ -30,13 +30,30 @@ internal static class ClientTenantLookup
     public static async Task<string?> ResolveAsync(
         HttpContext httpContext,
         string? clientId,
+        ILogger logger) =>
+        (await ResolveWithOutcomeAsync(httpContext, clientId, logger)).TenantId;
+
+    /// <summary>
+    /// Resolves the tenant of the calling client like <see cref="ResolveAsync"/>, and tells a failed
+    /// resolution apart from a client that states no tenant — the one caller that needs the difference
+    /// keeps the collected claims store off a sign-in whose tenant is unknown (SPEC-041 E62).
+    /// </summary>
+    /// <param name="httpContext">HTTP context (source of the resolver and of the cancellation token).</param>
+    /// <param name="clientId">Client identifier of the request.</param>
+    /// <param name="logger">Logger of the calling entry point.</param>
+    /// <returns>The tenant (null when none is stated or the resolution failed) and whether it failed.</returns>
+    public static async Task<ClientTenantResolution> ResolveWithOutcomeAsync(
+        HttpContext httpContext,
+        string? clientId,
         ILogger logger)
     {
         var resolver = httpContext.RequestServices.GetRequiredService<IClientTenantResolver>();
 
         try
         {
-            return await resolver.ResolveTenantAsync(clientId, httpContext.RequestAborted);
+            return new ClientTenantResolution(
+                await resolver.ResolveTenantAsync(clientId, httpContext.RequestAborted),
+                Failed: false);
         }
         catch (OperationCanceledException)
         {
@@ -48,7 +65,14 @@ internal static class ClientTenantLookup
                 exception,
                 "Tenant resolution failed for client {ClientId}; the request is resolved without a tenant level",
                 clientId);
-            return null;
+            return new ClientTenantResolution(null, Failed: true);
         }
     }
 }
+
+/// <summary>
+/// Answer of <see cref="ClientTenantLookup.ResolveWithOutcomeAsync"/>.
+/// </summary>
+/// <param name="TenantId">Tenant of the client; null — none stated, or the resolution failed.</param>
+/// <param name="Failed">Whether the resolver threw.</param>
+internal readonly record struct ClientTenantResolution(string? TenantId, bool Failed);

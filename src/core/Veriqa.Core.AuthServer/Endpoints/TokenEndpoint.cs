@@ -10,9 +10,11 @@ using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using Veriqa.Core.AuthServer.Configuration;
+using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Constants;
 using Veriqa.Core.AuthServer.Infrastructure;
 using Veriqa.Core.ChannelAdapter.Abstractions;
+using Veriqa.Core.Configuration;
 using Veriqa.Core.Contracts;
 using Veriqa.Core.TransactionEngine.Domain;
 using Veriqa.Core.TransactionEngine.Services;
@@ -247,9 +249,15 @@ public static class TokenEndpoint
         // its own; without offline_access it issues no refresh token.
         principal.SetScopes(scopes);
 
+        var claimScopes = await CatalogClaimScopes.ResolveAsync(
+            httpContext.RequestServices.GetRequiredService<IConfigurationResolver>(),
+            transaction.GetTenantId(),
+            transaction.GetApplicationId(),
+            httpContext.RequestAborted);
+
         foreach (var claim in principal.Claims)
         {
-            claim.SetDestinations(ClaimDestinationsHelper.GetDestinations(claim, scopeSet));
+            claim.SetDestinations(ClaimDestinationsHelper.GetDestinations(claim, scopeSet, claimScopes));
         }
 
         GetLogger(httpContext).LogDebug(
@@ -383,13 +391,23 @@ public static class TokenEndpoint
             }
         }
 
-        // Compute the destinations taking into account the scopes from the principal
+        // Compute the destinations taking into account the scopes from the principal and the catalog of the
+        // calling client — the tokens of a code or a refresh are issued here, so the gate of the catalog
+        // (SPEC-041 R21) has to hold here too. No transaction is left to read the tenant off, so it is
+        // resolved from the client, as /connect/authorize resolves it.
         var scopes = claimsPrincipal.GetScopes();
         var scopeSet = new HashSet<string>(scopes, StringComparer.Ordinal);
 
+        var clientId = httpContext.GetOpenIddictServerRequest()?.ClientId;
+        var claimScopes = await CatalogClaimScopes.ResolveAsync(
+            httpContext.RequestServices.GetRequiredService<IConfigurationResolver>(),
+            await ClientTenantLookup.ResolveAsync(httpContext, clientId, GetLogger(httpContext)),
+            clientId,
+            httpContext.RequestAborted);
+
         foreach (var claim in claimsPrincipal.Claims)
         {
-            claim.SetDestinations(ClaimDestinationsHelper.GetDestinations(claim, scopeSet));
+            claim.SetDestinations(ClaimDestinationsHelper.GetDestinations(claim, scopeSet, claimScopes));
         }
 
         return Results.SignIn(

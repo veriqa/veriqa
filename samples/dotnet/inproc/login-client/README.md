@@ -25,7 +25,7 @@ That is the point of the sample.
   all four channels `"Enabled": false`, and with none enabled the sign-in page has nothing to offer
   and reports `no_channels_available`. Enable the channel you want in
   `samples/dotnet/inproc/login/appsettings.json` (or `appsettings.Development.json`) and set its
-  credentials — a demo bot token for Telegram or MAX is the quickest route. This is required to
+  credentials — a demo Telegram bot token is the quickest route. This is required to
   *finish* a sign-in, not optional.
 
 ## Running
@@ -57,6 +57,17 @@ there is nothing to confirm in.
 
 `GET /signout` drops the local cookie and returns to `/`, which lets you replay the flow without
 clearing browser state by hand.
+
+Pressing **Cancel sign-in** on the Veriqa page brings the browser
+back with `error=access_denied`. The handler's `AccessDeniedPath` turns that answer into a redirect
+to `GET /signin-cancelled`, a plain page that says so; without the path the answer would be handled
+as any other failed return, below. The page is a route of its own because `/` challenges an anonymous
+visitor and would put the user straight back on the sign-in page.
+
+Any other failed return — `error=server_error` when the sign-in broke down on the issuer's side, for
+one — raises the handler's `OnRemoteFailure` event. The sample handles it and redirects to
+`GET /signin-failed`, an equally plain page that offers to start over and does not show the error
+text, which is written to the log instead; unhandled, that return ends in an HTTP 500.
 
 ## The pairing, and why it needs no configuration
 

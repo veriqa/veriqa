@@ -1,0 +1,36 @@
+#nullable enable
+const Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.SectionName = "Veriqa:Channels:WeChat" -> string!
+override Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.Equals(object? obj) -> bool
+override Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.GetHashCode() -> int
+override Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.ToString() -> string!
+static Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderWeChatExtensions.AddWeChat(this Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder! adapters) -> Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!
+static Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
+static Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatConfigKeys.Credentials.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials!>!
+static Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.operator !=(Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials? left, Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials? right) -> bool
+static Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.operator ==(Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials? left, Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials? right) -> bool
+Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilderWeChatExtensions
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatConfigKeys
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.ApiBaseUrl.get -> string!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.ApiBaseUrl.set -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.AppId.get -> string!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.AppId.set -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.AppSecret.get -> string!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.AppSecret.set -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.Enabled.get -> bool
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.Enabled.set -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.GetTenantCredentials() -> Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.Token.get -> string!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.Token.set -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatOptions.WeChatOptions() -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.<Clone>$() -> Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.AppId.get -> string!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.AppId.init -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.AppSecret.get -> string!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.AppSecret.init -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.Deconstruct(out string! AppId, out string! AppSecret, out string! Token) -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.Equals(Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials? other) -> bool
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.Token.get -> string!
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.Token.init -> void
+Veriqa.Core.ChannelAdapter.WeChat.Configuration.WeChatTenantCredentials.WeChatTenantCredentials(string! AppId, string! AppSecret, string! Token) -> void

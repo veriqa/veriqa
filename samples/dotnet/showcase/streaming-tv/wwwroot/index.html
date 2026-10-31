@@ -8,7 +8,7 @@
        Cache-Control: no-cache, but a proxy in front may rewrite that header — a tunnel's edge did,
        and the television then ran yesterday's app.js against today's page. A new name is the one
        thing no cache in between can serve stale. -->
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
   <!-- One page, four screens. Which one is on is decided in app.js from /api/session; nothing here
@@ -21,7 +21,9 @@
         <p class="brand brand-xl">NOVA STREAM</p>
         <p class="tagline">Sign in to watch anywhere</p>
         <a class="button button-primary" data-focusable href="/signin">Sign in</a>
-        <p class="hint">Sign in happens in the messenger you already use — no password, no e-mail form.</p>
+        <!-- Shown by app.js when a sign-in came back with an error; says nothing of what the error was. -->
+        <p class="hint" id="signin-failed" hidden>Sign-in did not go through. Please try again.</p>
+        <p class="hint">Sign in happens in the messaging app you already use — no password, no e-mail form.</p>
       </div>
     </section>
 
@@ -50,6 +52,8 @@
         <p class="brand brand-s">NOVA STREAM</p>
         <div class="top-bar-right">
           <span class="viewer" id="catalog-viewer"></span>
+          <!-- Age and favourite genre, as collected by Veriqa during the sign-in; empty when neither is known. -->
+          <span class="viewer viewer-traits" id="catalog-traits"></span>
           <div class="top-bar-avatar" id="catalog-avatar"></div>
           <a class="button button-ghost" data-focusable href="/signout">Sign out</a>
         </div>
@@ -75,6 +79,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

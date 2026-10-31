@@ -180,11 +180,19 @@ internal static partial class InitiatorContextFieldTable
             // Core slots valued outside the table into the same slot values as its rows: a row reusing
             // one of them would silently overwrite it or be overwritten.
             SlotNames.App,
+            SlotNames.BrandName,
             SlotNames.OutcomeAt,
+            SlotNames.RequestedAt,
             SlotNames.ValidUntil,
             SlotNames.Link,
             SlotNames.Lang,
-            SlotNames.QrCid
+            SlotNames.QrCid,
+            SlotNames.ChannelName,
+            SlotNames.BotName,
+            SlotNames.EmailMasked,
+            SlotNames.PhoneMasked,
+            SlotNames.UsernameMasked,
+            SlotNames.DisplayNameMasked
         };
 
         foreach (var row in rows)

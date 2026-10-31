@@ -22,6 +22,33 @@ namespace Veriqa.Core.AuthServer.DependencyInjection;
 internal static class VeriqaOpenIddictServerExtensions
 {
     /// <summary>
+    /// Separator the route constants of <see cref="OidcEndpoints"/> start with.
+    /// </summary>
+    private const char RoutePathSeparator = '/';
+
+    /// <summary>
+    /// The product's own set of scopes, in the order it is registered — what a deployment without a
+    /// catalog of scopes serves (SPEC-041 R2: bit for bit what it served before the catalog existed).
+    /// <list type="bullet">
+    /// <item><c>email</c> gates the email/email_verified claims (OIDC Core §5.4);</item>
+    /// <item><c>channel</c> gates the channel_type/channel_user_id claims (SPEC-003 CA-024) — without the
+    /// registration a client requesting it gets invalid_scope;</item>
+    /// <item><c>avatar</c> gates the picture claim (SPEC-002 §5.3); advertised in scopes_supported so a
+    /// relying party can discover that the avatar is requested by scope.</item>
+    /// </list>
+    /// </summary>
+    private static readonly string[] ProductScopes =
+    [
+        OpenIddictConstants.Scopes.OpenId,
+        OpenIddictConstants.Scopes.Profile,
+        OpenIddictConstants.Scopes.Email,
+        OpenIddictConstants.Scopes.Phone,
+        OpenIddictConstants.Scopes.OfflineAccess,
+        VeriqaScopes.Channel,
+        VeriqaScopes.Avatar
+    ];
+
+    /// <summary>
     /// Registers OpenIddict with Authorization Code Flow, Refresh Token Flow, PKCE,
     /// scopes, token endpoints, and certificate settings.
     /// </summary>
@@ -41,6 +68,14 @@ internal static class VeriqaOpenIddictServerExtensions
             .GetSection(OidcServerOptions.SectionName)
             .Get<OidcServerOptions>() ?? new OidcServerOptions();
 
+        // The core catalog of scopes and claims (SPEC-041 R2) — read here for the same reason the
+        // server settings are: the registration of scopes happens once, before the container exists.
+        // Only the list is bound: a flag of the section the binder cannot convert must stop the host in
+        // the validation of the options, with its address, and not here.
+        IReadOnlyList<ScopeDefinition> scopeCatalog = configuration
+            .GetSection(ScopesClaimsOptions.SectionName + ":" + nameof(ScopesClaimsOptions.Scopes))
+            .Get<List<ScopeDefinition>>() ?? [];
+
         // Re-leveling of token settings (CFG-220/224): the value comes from the declared key, not from
         // a direct serverOptions.X read scattered over the callback.
         // LIMITATION: the OpenIddict server is configured ONCE, by a SYNCHRONOUS callback that runs
@@ -57,6 +92,7 @@ internal static class VeriqaOpenIddictServerExtensions
             core.RegisterCore(AuthServerConfigKeys.EnableRefreshTokenRotation, () => serverOptions.EnableRefreshTokenRotation);
             core.RegisterCore(AuthServerConfigKeys.EnableRevocation, () => serverOptions.EnableRevocation);
             core.RegisterCore(AuthServerConfigKeys.Issuer, () => serverOptions.Issuer);
+            core.RegisterCore(ScopesClaimsConfigKeys.ScopeCatalog, () => scopeCatalog);
         });
 
         var accessTokenLifetimeSeconds = startupCore.Read(AuthServerConfigKeys.AccessTokenLifetimeSeconds);
@@ -65,6 +101,10 @@ internal static class VeriqaOpenIddictServerExtensions
         var enableRefreshTokenRotation = startupCore.Read(AuthServerConfigKeys.EnableRefreshTokenRotation);
         var enableRevocation = startupCore.Read(AuthServerConfigKeys.EnableRevocation);
         var issuer = startupCore.Read(AuthServerConfigKeys.Issuer);
+
+        // A catalog outside the domain of its key reads as no value; the startup validation stops such a
+        // host with the address of every broken rule, and until then the product's own set is registered.
+        var scopesToRegister = ScopesToRegister(startupCore.Read(ScopesClaimsConfigKeys.ScopeCatalog) ?? []);
 
         services.AddOpenIddict()
             .AddCore(options =>
@@ -115,20 +155,9 @@ internal static class VeriqaOpenIddictServerExtensions
                 options.Configure(openIddictServerOptions =>
                     openIddictServerOptions.CodeChallengeMethods.Remove(OpenIddictConstants.CodeChallengeMethods.Plain));
 
-                // Register the supported scopes.
-                // email — gates the email/email_verified claims (OIDC Core §5.4, review feedback)
-                // channel — gates the channel_type/channel_user_id claims (SPEC-003 CA-024);
-                //           without the registration a client requesting it gets invalid_scope
-                // avatar  — gates the picture claim (SPEC-002 §5.3); advertised in scopes_supported so a
-                //           relying party can discover that the avatar is requested by scope
-                options.RegisterScopes(
-                    OpenIddictConstants.Scopes.OpenId,
-                    OpenIddictConstants.Scopes.Profile,
-                    OpenIddictConstants.Scopes.Email,
-                    OpenIddictConstants.Scopes.Phone,
-                    OpenIddictConstants.Scopes.OfflineAccess,
-                    VeriqaScopes.Channel,
-                    VeriqaScopes.Avatar);
+                // Register the supported scopes — the core catalog, or the product's own set without one
+                // (see ScopesToRegister). OpenIddict builds scopes_supported of discovery from this.
+                options.RegisterScopes(scopesToRegister);
 
                 // picture in claims_supported: together with the avatar scope it is the signal to the
                 // relying party that the avatar exists and is read from userinfo.
@@ -136,10 +165,12 @@ internal static class VeriqaOpenIddictServerExtensions
 
                 // Endpoint configuration. The introspection endpoint (RFC 7662) is answered by OpenIddict
                 // itself and only to a client holding the introspection permission (ClientSeeder).
-                options.SetAuthorizationEndpointUris(OidcEndpoints.Authorize)
-                       .SetTokenEndpointUris(OidcEndpoints.Token)
-                       .SetUserInfoEndpointUris(OidcEndpoints.UserInfo)
-                       .SetIntrospectionEndpointUris(OidcEndpoints.Introspect);
+                // The addresses are handed over relative to the base address of the request (see
+                // RelativeToBaseAddress), so a deployment under a path base keeps it in every one of them.
+                options.SetAuthorizationEndpointUris(RelativeToBaseAddress(OidcEndpoints.Authorize))
+                       .SetTokenEndpointUris(RelativeToBaseAddress(OidcEndpoints.Token))
+                       .SetUserInfoEndpointUris(RelativeToBaseAddress(OidcEndpoints.UserInfo))
+                       .SetIntrospectionEndpointUris(RelativeToBaseAddress(OidcEndpoints.Introspect));
 
                 // Reference tokens, unconditionally: the access and refresh tokens a relying party
                 // receives are opaque identifiers, and their payload stays in the OpenIddict token store.
@@ -152,7 +183,7 @@ internal static class VeriqaOpenIddictServerExtensions
                 // Revocation Endpoint (RFC 7009). The value is read via the resolver.
                 if (enableRevocation)
                 {
-                    options.SetRevocationEndpointUris(OidcEndpoints.Revoke);
+                    options.SetRevocationEndpointUris(RelativeToBaseAddress(OidcEndpoints.Revoke));
                 }
 
                 // Token lifetimes — via the resolver (CFG-220, tenant ceiling → application stricter)
@@ -240,5 +271,41 @@ internal static class VeriqaOpenIddictServerExtensions
             });
 
         return services;
+    }
+
+    /// <summary>
+    /// Turns a route constant into the form OpenIddict resolves against the base address of the request —
+    /// scheme, host and <c>Request.PathBase</c>. An address with a leading separator is resolved from the
+    /// root of the host instead and loses the path base, both in the discovery document and when the
+    /// incoming request is matched to an endpoint. With an empty path base the two forms give the same
+    /// address, which is why a deployment at the root of the host is not affected.
+    /// </summary>
+    /// <param name="routePath">Route constant, starting with the separator.</param>
+    /// <returns>The same path without the leading separator.</returns>
+    private static string RelativeToBaseAddress(string routePath) => routePath.TrimStart(RoutePathSeparator);
+
+    /// <summary>
+    /// Scopes the OpenIddict server registers (SPEC-041 R2): the product's own set when the catalog is
+    /// empty, otherwise the scopes of the catalog in its order — the catalog replaces the product's set
+    /// as a whole. <c>openid</c> is registered in either case (SPEC-012 CFG-065), first when the
+    /// catalog does not name it.
+    /// </summary>
+    /// <param name="catalog">Core catalog of scopes and claims.</param>
+    /// <returns>Scope names to register.</returns>
+    private static string[] ScopesToRegister(IReadOnlyList<ScopeDefinition> catalog)
+    {
+        if (catalog.Count is 0)
+        {
+            return ProductScopes;
+        }
+
+        var names = catalog.Select(scope => scope.Name).ToList();
+
+        if (!names.Contains(OpenIddictConstants.Scopes.OpenId, StringComparer.Ordinal))
+        {
+            names.Insert(0, OpenIddictConstants.Scopes.OpenId);
+        }
+
+        return [.. names];
     }
 }

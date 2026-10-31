@@ -1,0 +1,19 @@
+{
+  "name": "veriqa-custom-channel-whatsapp-twilio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reference external adapter of a Veriqa HTTP channel: WhatsApp through Twilio.",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/main.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "standardwebhooks": "1.1.1",
+    "twilio": "6.1.2"
+  }
+}

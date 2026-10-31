@@ -5,6 +5,7 @@ using System.Diagnostics.Metrics;
 
 using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.TransactionEngine.Constants;
+using Veriqa.Core.TransactionEngine.Domain;
 
 namespace Veriqa.Core.TransactionEngine.Diagnostics;
 
@@ -90,5 +91,31 @@ internal sealed class TransactionMetrics
         _duration.Record(
             lifetime > TimeSpan.Zero ? lifetime.TotalSeconds : 0,
             new KeyValuePair<string, object?>(TransactionTelemetry.OutcomeTag, outcome));
+    }
+
+    /// <summary>
+    /// Records a terminal transition of the transaction: the outcome counter and the lifetime
+    /// histogram, measured from <c>CreatedAt</c> to <paramref name="now"/>.
+    /// </summary>
+    /// <remarks>
+    /// The lifetime is a difference of two stored moments rather than an elapsed-time reading:
+    /// the transaction may well have been created on another replica, so there is no local start
+    /// timestamp to subtract from.
+    /// The channel tag falls back from the channel that actually answered to the channel that was
+    /// asked, and then to the declared "nobody answered" value — which is the honest state of a
+    /// transaction that expired before any channel replied.
+    /// Every writer of a terminal state records through this one overload — the transaction service,
+    /// the cleanup pass and the expiry step they share — so the shape of the record has one home.
+    /// </remarks>
+    /// <param name="transaction">Transaction that has just reached its terminal state.</param>
+    /// <param name="outcome">Terminal outcome (see <see cref="TransactionOutcomes"/>).</param>
+    /// <param name="now">Moment of the transition, read off the writer's clock.</param>
+    public void RecordTerminated(Transaction transaction, string outcome, DateTimeOffset now)
+    {
+        var channelType = transaction.ChannelIdentitySnapshot?.ChannelType
+            ?? transaction.RequestedChannelType
+            ?? TransactionTelemetry.UnknownChannelType;
+
+        RecordTerminated(outcome, channelType, now - transaction.CreatedAt);
     }
 }

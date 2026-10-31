@@ -25,6 +25,12 @@ namespace Veriqa.Core.AuthServer.Endpoints;
 /// caller would tell "no such transaction" from "there is one, but it is over" by the look of the
 /// answer.
 /// </para>
+/// <para>
+/// The link to the form of the claims completion on the device that confirmed the sign-in (SPEC-041 N78)
+/// ends on the same page, with status 410, for the same reason: a form token that no longer acts must not
+/// tell "no such transaction" from "not this token" or "no longer this surface". The wording fits that
+/// link as it is — it names no sign-in and no confirmation, only a link that no longer leads anywhere.
+/// </para>
 /// </summary>
 internal static class TransactionEntryUnavailablePage
 {
@@ -66,7 +72,7 @@ internal static class TransactionEntryUnavailablePage
 
         return $$"""
             <!DOCTYPE html>
-            <html lang="{{contentLanguage}}">
+            <html lang="{{contentLanguage}}" {{CorePageHead.BuildThemeAttribute(branding)}}>
             <head>
               <meta charset="utf-8" />
               <meta name="viewport" content="width=device-width, initial-scale=1.0" />

@@ -21,6 +21,7 @@ using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.ChannelAdapter.DependencyInjection;
 using Veriqa.Core.ChannelAdapter.Pipeline;
 using Veriqa.Core.Configuration;
+using Veriqa.Core.TransactionEngine.Configuration;
 using Veriqa.Core.TransactionEngine.DependencyInjection;
 using Veriqa.ServiceDefaults;
 
@@ -65,29 +66,56 @@ return HostBootstrap.Run("Veriqa Auth Server terminated with a critical error", 
     builder.Services.ConfigureForwardedHeadersForProxy(builder.Configuration);
 
     // Wire up the Transaction Engine:
-    // If a connection string is set — EF Core is used on the provider Veriqa:TransactionEngine:Store:Provider
-    // selects from the provider table of this host (RelationalStoreProviders); the host owns the provider
-    // call and the migrations assembly (host-owned contract, SPEC-001 §10.2). Otherwise — InMemory (for
-    // development).
-    var transactionStoreConnectionString = builder.Configuration[InfrastructureConfigConstants.TransactionStoreConnectionStringKey];
+    // If a connection string is set, the store runs on the provider Veriqa:TransactionEngine:Store:Provider
+    // selects: EF Core on a relational provider of the host table (RelationalStoreProviders) — the host owns
+    // the provider call and the migrations assembly (host-owned contract, SPEC-001 §10.2) — or Redis.
+    // Otherwise — InMemory (for development), whatever the provider says. The provider is validated
+    // (fail-fast): an unrecognized value is a configuration error, not a silent fallback. The same decision
+    // is reused by the audit sink and the health checks.
+    var transactionStore = TransactionStoreSelection.Resolve(builder.Configuration);
 
-    if (!string.IsNullOrWhiteSpace(transactionStoreConnectionString))
+    // The collected claims store (SPEC-041 C37) is off unless switched on, and then it lives in the
+    // relational transaction database: an enabled store without that database refuses the start here.
+    var collectedClaimsStoreEnabled = ResolveCollectedClaimsStoreEnabled(builder.Configuration, transactionStore);
+
+    // The event publisher is independent of the store: its connection string switches it on.
+    var rabbitMqConnectionString = builder.Configuration[InfrastructureConfigConstants.RabbitMqConnectionStringKey];
+
+    // With no store registered here the engine falls back to InMemory on its own.
+    builder.Services.AddVeriqaTransactionEngine(builder.Configuration, engine =>
     {
-        // The provider is validated (fail-fast): an unrecognized value is a configuration error, not a
-        // silent fallback. The same resolver is reused in health checks.
-        var transactionStoreProvider = ResolveTransactionStoreProvider(builder.Configuration);
-
-        builder.Services.AddVeriqaTransactionEngine(builder.Configuration, engine =>
+        if (transactionStore?.Provider.RelationalProvider is { } transactionStoreProvider)
         {
             engine.UseEfCoreStore(transactionStoreProvider.BuildConfigurator(
                 RelationalStore.Transactions,
-                transactionStoreConnectionString));
-        });
-    }
-    else
-    {
-        builder.Services.AddVeriqaTransactionEngine(builder.Configuration);
-    }
+                transactionStore.ConnectionString));
+
+            // Same provider and connection string, the same migrations assembly, a history table of its own.
+            if (collectedClaimsStoreEnabled)
+            {
+                engine.UseEfCoreCollectedClaimsStore(transactionStoreProvider.BuildConfigurator(
+                    RelationalStore.CollectedClaims,
+                    transactionStore.ConnectionString));
+            }
+        }
+        else if (transactionStore is { } redisTransactionStore)
+        {
+            // Every option of the store comes from its section. The connection string is the host key, whose
+            // name differs from the option it fills (Configuration), so it is assigned after the bind.
+            engine.UseRedisStore(redis =>
+            {
+                builder.Configuration.GetSection(InfrastructureConfigConstants.TransactionStoreSectionName).Bind(redis);
+                redis.Configuration = redisTransactionStore.ConnectionString;
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(rabbitMqConnectionString))
+        {
+            // The section is bound as a whole: the connection string and every other option of the publisher.
+            engine.UseRabbitMqPublisher(rabbitMq =>
+                builder.Configuration.GetSection(InfrastructureConfigConstants.RabbitMqSectionName).Bind(rabbitMq));
+        }
+    });
 
     // Wire up the OpenIddict integration (OIDC server, EF Core, Cookie auth, ClientSeeder).
     // The store provider is owned by the host (host-owned contract, SPEC-001 §10.2): the core stays
@@ -118,17 +146,32 @@ return HostBootstrap.Run("Veriqa Auth Server terminated with a critical error", 
 
     builder.Services.AddVeriqaOpenIddict(builder.Configuration, builder.Environment, configureOpenIddictDatabase);
 
+    // Offline GeoIP of the initiator context check (SPEC-017 ICC-013), switched on by the path of the
+    // database the deployment mounts; the image ships none. Without the path the null provider of the core
+    // stays and the geo fields remain null (ICC-082). A path to a missing or unreadable file is the
+    // provider's own concern: it logs a warning and stays unavailable, the start goes on.
+    var geoIpDatabasePath = builder.Configuration[ConfigurationPath.Combine(
+        InitiatorContextOptions.SectionName,
+        nameof(InitiatorContextOptions.GeoIp),
+        nameof(InitiatorGeoIpOptions.DatabasePath))];
+
+    if (!string.IsNullOrWhiteSpace(geoIpDatabasePath))
+    {
+        builder.Services.AddMaxMindGeoIp();
+    }
+
     // Wire up the audit trail (SPEC-011): the bus receiver gated by the resolved Logging.Mode, the
     // append-only journal and the retention sweep. The sink has keys of its own, Veriqa:Logging:Store,
-    // each falling back to the same key of the transaction store (SPEC-012 CFG-252, SPEC-020
-    // MODE-NET-3-014), so a development run without a database keeps the journal in memory.
+    // each falling back to the same key of the relational transaction store (SPEC-012 CFG-252, SPEC-020
+    // MODE-NET-3-014), so a development run without a database keeps the journal in memory. A transaction
+    // store on Redis lends the sink nothing: a Redis connection string cannot be handed to an EF provider.
     //
     // Registered after the OpenIddict integration on purpose: bus handlers run one after another in
     // registration order on a single reader, so the real-time sign-in notification (registered inside
     // AddVeriqaOpenIddict) has to reach the browser before the journal insert, not after it. The
     // dependency is on the order of these two calls only — the audit registration itself needs nothing
     // from OpenIddict.
-    var auditStore = ResolveAuditStore(builder.Configuration);
+    var auditStore = ResolveAuditStore(builder.Configuration, transactionStore);
 
     builder.Services.AddVeriqaAuditTrail(audit =>
     {
@@ -149,20 +192,51 @@ return HostBootstrap.Run("Veriqa Auth Server terminated with a critical error", 
     // SPEC-012 CFG-253). A durable sink needs no check, which is why the registration is conditional.
     if (auditStore is null)
     {
+        // A transaction store on Redis has nothing to lend the sink, so the refusal names the sink key alone.
+        // Read from the Provider value, not from the resolved store: with Redis named and no connection
+        // string the store stays in memory, and the transaction connection string would cure nothing either.
+        var transactionStoreOnRedis = TransactionStoreProvider.NamesRedis(builder.Configuration);
+
         builder.Services.AddHostedService(serviceProvider => new AuditStoreStartupCheckService(
             // The environment is optional by design: it may be absent outside a generic host.
             serviceProvider.GetService<IHostEnvironment>(),
             serviceProvider.GetRequiredService<IConfigurationResolver>(),
-            serviceProvider.GetRequiredService<ILogger<AuditStoreStartupCheckService>>()));
+            serviceProvider.GetRequiredService<ILogger<AuditStoreStartupCheckService>>(),
+            transactionStoreOnRedis));
     }
 
-    // Wire up the channel adapters (Telegram, MAX, Email)
+    // The channel stores shared by several replicas live in Redis once their connection string is set; with
+    // the transaction store on Redis both share its connection, and a different string refuses the start.
+    var channelStores = RedisChannelStoreSelection.Resolve(builder.Configuration, transactionStore);
+
+    // Wire up the channel adapters, the HTTP channels and the web provider channels of the configuration.
+    // The order of the calls is the order the channels are offered in when the integrator configures none.
+    // The HTTP and the web provider channels are registered always: a configuration without such a channel
+    // section registers none, and a channel is added by configuration and a restart, not by a rebuild.
     builder.Services.AddVeriqaChannelAdapters(builder.Configuration, adapters =>
     {
+        // Every option of the stores comes from their section. The connection string is the host key, whose
+        // name differs from the option it fills (Configuration), so it is assigned after the bind. The
+        // satellite overrides the in-process stores whichever side of AddEmail() it is called on.
+        if (channelStores is not null)
+        {
+            adapters.UseRedisChannelStores(redis =>
+            {
+                builder.Configuration.GetSection(InfrastructureConfigConstants.ChannelStoresRedisSectionName).Bind(redis);
+                redis.Configuration = channelStores.SatelliteConfiguration;
+            });
+        }
+
+        adapters.AddMax();
         adapters.AddTelegram();
         adapters.AddWhatsApp();
-        adapters.AddMax();
+        adapters.AddMessenger();
+        adapters.AddInstagram();
+        adapters.AddWeChat();
+        adapters.AddViber();
         adapters.AddEmail();
+        adapters.AddHttpChannels();
+        adapters.AddWebProviders();
     });
 
     // Request rate limiting: endpoint-level policies + per-user rate limiter (TASK-016, SPEC-007 §6.1)
@@ -176,7 +250,11 @@ return HostBootstrap.Run("Veriqa Auth Server terminated with a critical error", 
     ConfigureDataProtection(builder);
 
     // Health checks for infrastructure dependencies
-    ConfigureHealthChecks(builder);
+    ConfigureHealthChecks(builder, transactionStore, auditStore, channelStores);
+
+    // The path base this host is deployed under (empty — the root of the host name). Read and validated
+    // before the application is built: a malformed value refuses the start.
+    var pathBase = ResolvePathBase(builder.Configuration);
 
     var app = builder.Build();
 
@@ -197,6 +275,42 @@ return HostBootstrap.Run("Veriqa Auth Server terminated with a critical error", 
     app.UseSecurityHeaders();
 
     app.UseForwardedHeaders();
+
+    // Deployment under a path base. A host without one skips the block, so its pipeline stays as it was.
+    if (pathBase.HasValue)
+    {
+        // The path base the server itself has already set (an IIS sub-application; Kestrel sets none, it
+        // refuses an address with a path at start) is remembered before the configured one is applied: the
+        // configured path base is nested into it, not put in its place.
+        var serverPathBaseKey = new object();
+
+        app.Use((context, next) =>
+        {
+            context.Items[serverPathBaseKey] = context.Request.PathBase;
+
+            return next(context);
+        });
+
+        // The proxy passed the path intact: the path base is split off Request.Path.
+        app.UsePathBase(pathBase);
+
+        // The proxy trimmed the path base, or the request came straight to the instance (a health probe):
+        // Request.Path is already the route and stays untouched, only the path base is stated. Assigned
+        // for every request, so links, redirects and cookie paths carry it in the configured spelling
+        // whichever way the request arrived.
+        app.Use((context, next) =>
+        {
+            var serverPathBase = (PathString)context.Items[serverPathBaseKey]!;
+
+            context.Request.PathBase = serverPathBase.Add(pathBase);
+
+            return next(context);
+        });
+
+        // Routing is placed explicitly: the routing a WebApplication adds on its own runs at the very
+        // start of the pipeline and would match the path before the path base is split off.
+        app.UseRouting();
+    }
 
     // Static file serving (wwwroot): SignalR JS client, localization (SPEC-007 §5, §12)
     app.UseStaticFiles();
@@ -285,8 +399,9 @@ static void ConfigureDataProtection(WebApplicationBuilder builder)
     if (!string.IsNullOrWhiteSpace(redisConnectionString))
     {
         // Create the multiplexer and register it as a keyed singleton to manage its lifecycle.
-        // Using a keyed service ("dataprotection") avoids a conflict with the TransactionEngine
-        // IConnectionMultiplexer (which is registered without a key via UseRedisStore()).
+        // Using a keyed service ("dataprotection") avoids a conflict with the non-keyed
+        // IConnectionMultiplexer of the Redis transaction store and channel stores (UseRedisStore(),
+        // UseRedisChannelStores()).
         var redis = ConnectionMultiplexer.Connect(redisConnectionString);
         builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("dataprotection", redis);
 
@@ -304,18 +419,87 @@ static void ConfigureDataProtection(WebApplicationBuilder builder)
 }
 
 /// <summary>
-/// Resolves the transaction store provider from Veriqa:TransactionEngine:Store:Provider against the
-/// provider table of this host. Empty/unset — PostgreSQL (the default). An unrecognized value is a
-/// configuration exception (fail-fast), so a typo ("Postgres", "MariaDB") does not lead to silently
-/// picking the wrong provider (InMemory is selected by the absence of a connection string).
+/// Reads the path base of the deployment from Veriqa:PathBase. Not set or empty — no path base. A value
+/// must start with a slash, must not end with one (so a lone slash is refused too) and must carry no
+/// query, fragment, whitespace, percent-encoding, backslash or dot segment ("." and ".."); several
+/// segments are allowed. Any other form is a configuration exception (fail-fast): a value the host
+/// would apply half-way gives addresses no proxy rule matches. Percent-encoding and dot segments are
+/// such values: the server decodes and normalizes the request path, so the path base written as it is
+/// would never be found in it.
 /// </summary>
-static RelationalStoreProvider ResolveTransactionStoreProvider(IConfiguration configuration)
+static PathString ResolvePathBase(IConfiguration configuration)
 {
-    var providerValue = configuration[InfrastructureConfigConstants.TransactionStoreProviderKey];
+    const char Separator = '/';
+    const char QueryDelimiter = '?';
+    const char FragmentDelimiter = '#';
+    const char PercentEncodingMarker = '%';
+    const char Backslash = '\\';
+    const string CurrentSegment = ".";
+    const string ParentSegment = "..";
 
-    return string.IsNullOrWhiteSpace(providerValue)
-        ? RelationalStoreProviders.PostgreSql
-        : RelationalStoreProviders.Resolve(InfrastructureConfigConstants.TransactionStoreProviderKey, providerValue);
+    var value = configuration[InfrastructureConfigConstants.PathBaseKey];
+
+    if (string.IsNullOrEmpty(value))
+    {
+        return PathString.Empty;
+    }
+
+    var wellFormed = value[0] == Separator
+        && value[^1] != Separator
+        && !value.Any(character =>
+            character is QueryDelimiter or FragmentDelimiter or PercentEncodingMarker or Backslash
+            || char.IsWhiteSpace(character))
+        && !value.Split(Separator).Any(segment => segment is CurrentSegment or ParentSegment);
+
+    if (!wellFormed)
+    {
+        throw new InvalidOperationException(
+            $"Unsupported value '{InfrastructureConfigConstants.PathBaseKey}' = '{value}'. " +
+            "The path base must start with '/', must not end with '/' and must not contain '?', '#', '%', " +
+            "'\\', whitespace or a '.' or '..' segment, for example '/auth/veriqa'. Leave the key empty to " +
+            "serve from the root.");
+    }
+
+    return new PathString(value);
+}
+
+/// <summary>
+/// Reads the switch of the collected claims store, Veriqa:CollectedClaims:Store:Enabled (false by default).
+/// The store borrows the provider and the connection string of the relational transaction store, so an
+/// enabled store with Redis named in Veriqa:TransactionEngine:Store:Provider (with or without a connection
+/// string), or without Veriqa:TransactionEngine:Store:ConnectionString, is a configuration exception
+/// (fail-fast) naming the keys — a silent "no store" would ask the users for their claims again at every
+/// sign-in while the operator believes they are kept.
+/// </summary>
+static bool ResolveCollectedClaimsStoreEnabled(IConfiguration configuration, TransactionStoreSelection? transactionStore)
+{
+    var enabled = configuration.GetValue<bool>(InfrastructureConfigConstants.CollectedClaimsStoreEnabledKey);
+
+    if (!enabled)
+    {
+        return false;
+    }
+
+    // Redis is checked first and from the Provider value alone: with Redis named, the connection string the
+    // next refusal asks for would only lead to this one.
+    if (TransactionStoreProvider.NamesRedis(configuration))
+    {
+        throw new InvalidOperationException(
+            $"'{InfrastructureConfigConstants.CollectedClaimsStoreEnabledKey}' = 'true' cannot be combined with " +
+            $"'{InfrastructureConfigConstants.TransactionStoreProviderKey}' = '{TransactionStoreProvider.RedisName}': " +
+            "the collected claims store lives in the relational transaction store database, and Redis has none. " +
+            "Use a relational transaction store or switch the collected claims store off.");
+    }
+
+    if (transactionStore is null)
+    {
+        throw new InvalidOperationException(
+            $"'{InfrastructureConfigConstants.CollectedClaimsStoreEnabledKey}' = 'true' requires " +
+            $"'{InfrastructureConfigConstants.TransactionStoreConnectionStringKey}': the collected claims store lives in " +
+            "the transaction store database. Set the connection string or switch the store off.");
+    }
+
+    return true;
 }
 
 /// <summary>
@@ -359,17 +543,19 @@ static OpenIddictStoreSelection? ResolveOpenIddictStore(IConfiguration configura
 
 /// <summary>
 /// Resolves the audit sink from Veriqa:Logging:Store (SPEC-012 CFG-252). Each key falls back on its own
-/// to the same key of the transaction store: no ConnectionString — the transaction connection string;
-/// no Provider — the transaction provider (empty there too — PostgreSQL). An empty effective connection
-/// string returns null: the journal stays in memory. A stated Provider is validated even then, so an
-/// unrecognized value always refuses the start.
+/// to the same key of the relational transaction store: no ConnectionString — the transaction connection
+/// string; no Provider — the transaction provider (empty there too — PostgreSQL). A transaction store on
+/// Redis lends neither: its connection string cannot be handed to an EF provider, so the sink then runs
+/// only on a connection string of its own, on its own Provider or else PostgreSQL. An empty effective
+/// connection string returns null: the journal stays in memory. A stated Provider is validated even then,
+/// so an unrecognized value always refuses the start.
 /// <para>
 /// A stated sink Provider over a borrowed connection string must match the transaction provider: that
 /// string belongs to the transaction database, and a different provider would silently point the
 /// journal at a database of another kind.
 /// </para>
 /// </summary>
-static AuditStoreSelection? ResolveAuditStore(IConfiguration configuration)
+static AuditStoreSelection? ResolveAuditStore(IConfiguration configuration, TransactionStoreSelection? transactionStore)
 {
     var ownProviderValue = configuration[InfrastructureConfigConstants.AuditStoreProviderKey];
     var ownProvider = string.IsNullOrWhiteSpace(ownProviderValue)
@@ -377,36 +563,33 @@ static AuditStoreSelection? ResolveAuditStore(IConfiguration configuration)
         : RelationalStoreProviders.Resolve(InfrastructureConfigConstants.AuditStoreProviderKey, ownProviderValue);
 
     var ownConnectionString = configuration[InfrastructureConfigConstants.AuditStoreConnectionStringKey];
-    var borrowsConnectionString = string.IsNullOrWhiteSpace(ownConnectionString);
-    var connectionString = borrowsConnectionString
-        ? configuration[InfrastructureConfigConstants.TransactionStoreConnectionStringKey]
-        : ownConnectionString;
 
-    if (string.IsNullOrWhiteSpace(connectionString))
+    if (!string.IsNullOrWhiteSpace(ownConnectionString))
+    {
+        // A connection string of its own: only the provider may be borrowed, and only a relational one.
+        var effectiveProvider = ownProvider
+            ?? TransactionStoreProvider.Resolve(configuration).RelationalProvider
+            ?? RelationalStoreProviders.PostgreSql;
+
+        return new AuditStoreSelection(effectiveProvider, ownConnectionString);
+    }
+
+    // Nothing to borrow — no durable transaction store, or one on Redis: the journal stays in memory.
+    if (transactionStore?.Provider.RelationalProvider is not { } transactionProvider)
     {
         return null;
     }
 
-    if (ownProvider is null)
+    if (ownProvider is not null && !ReferenceEquals(ownProvider, transactionProvider))
     {
-        return new AuditStoreSelection(ResolveTransactionStoreProvider(configuration), connectionString);
+        throw new InvalidOperationException(
+            $"'{InfrastructureConfigConstants.AuditStoreProviderKey}' = '{ownProviderValue}' differs from " +
+            $"'{InfrastructureConfigConstants.TransactionStoreProviderKey}', which resolves to '{transactionProvider.Name}', " +
+            $"while the audit store borrows '{InfrastructureConfigConstants.TransactionStoreConnectionStringKey}': " +
+            $"set '{InfrastructureConfigConstants.AuditStoreConnectionStringKey}' or use the same provider.");
     }
 
-    if (borrowsConnectionString)
-    {
-        var transactionProvider = ResolveTransactionStoreProvider(configuration);
-
-        if (!ReferenceEquals(ownProvider, transactionProvider))
-        {
-            throw new InvalidOperationException(
-                $"'{InfrastructureConfigConstants.AuditStoreProviderKey}' = '{ownProviderValue}' differs from " +
-                $"'{InfrastructureConfigConstants.TransactionStoreProviderKey}', which resolves to '{transactionProvider.Name}', " +
-                $"while the audit store borrows '{InfrastructureConfigConstants.TransactionStoreConnectionStringKey}': " +
-                $"set '{InfrastructureConfigConstants.AuditStoreConnectionStringKey}' or use the same provider.");
-        }
-    }
-
-    return new AuditStoreSelection(ownProvider, connectionString);
+    return new AuditStoreSelection(transactionProvider, transactionStore.ConnectionString);
 }
 
 /// <summary>
@@ -415,15 +598,22 @@ static AuditStoreSelection? ResolveAuditStore(IConfiguration configuration)
 /// OpenIddict DB: Veriqa:OpenIddict:Database:Provider (+ConnectionString) — the check is aligned
 /// with the provider selected for the store, so InMemory registers no relational check.
 /// Transaction DB: Veriqa:TransactionEngine:Store:ConnectionString (+Provider) — the check
-/// is aligned with the provider selected for the store.
-/// Audit DB: Veriqa:Logging:Store (with the fallback to the transaction store) — a separate check only
-/// when the effective connection string differs from the transaction one (SPEC-012 CFG-252).
+/// is aligned with the provider selected for the store; a store on Redis gets a Redis check instead.
+/// Audit DB: Veriqa:Logging:Store (with the fallback to the relational transaction store) — a separate
+/// check only when the effective connection string differs from the transaction one (SPEC-012 CFG-252).
 /// Check names are &lt;provider&gt;-&lt;store&gt; from the provider table (for example postgresql-transactions).
 /// Redis (SignalR): Veriqa:SignalR:RedisConnectionString.
 /// Redis (DataProtection): Veriqa:DataProtection:RedisConnectionString (a separate check when it differs from SignalR).
+/// Redis (transaction store): a separate check when its connection string differs from both above.
+/// Redis (channel stores): Veriqa:ChannelStores:Redis:ConnectionString — a separate check when it differs
+/// from the three above.
 /// RabbitMQ: Veriqa:Events:RabbitMq:ConnectionString (event publisher).
 /// </summary>
-static void ConfigureHealthChecks(WebApplicationBuilder builder)
+static void ConfigureHealthChecks(
+    WebApplicationBuilder builder,
+    TransactionStoreSelection? transactionStore,
+    AuditStoreSelection? auditStore,
+    RedisChannelStoreSelection? channelStores)
 {
     var checks = builder.Services.AddHealthChecks();
 
@@ -438,21 +628,19 @@ static void ConfigureHealthChecks(WebApplicationBuilder builder)
         openIddictProvider.AddHealthCheck(checks, RelationalStore.OpenIddict, dbConnectionString!);
     }
 
-    // Transaction store DB: the health check follows the same provider configuration
-    // as the store itself (Veriqa:TransactionEngine:Store:Provider)
-    var transactionDbConnectionString = builder.Configuration[InfrastructureConfigConstants.TransactionStoreConnectionStringKey];
+    // Transaction store DB: the health check follows the same provider decision as the store itself
+    // (Veriqa:TransactionEngine:Store:Provider). A store on Redis is probed with the Redis checks below.
+    string? transactionDbConnectionString = null;
 
-    if (!string.IsNullOrWhiteSpace(transactionDbConnectionString))
+    if (transactionStore?.Provider.RelationalProvider is { } transactionStoreProvider)
     {
-        ResolveTransactionStoreProvider(builder.Configuration)
-            .AddHealthCheck(checks, RelationalStore.Transactions, transactionDbConnectionString);
+        transactionDbConnectionString = transactionStore.ConnectionString;
+        transactionStoreProvider.AddHealthCheck(checks, RelationalStore.Transactions, transactionDbConnectionString);
     }
 
     // Audit DB: the journal on the transaction database is already probed by the check above, so a
     // check of its own is registered only when the sink points elsewhere (ordinal comparison, as the
-    // Redis pair below does it).
-    var auditStore = ResolveAuditStore(builder.Configuration);
-
+    // Redis checks below do it).
     if (auditStore is not null
         && !string.Equals(auditStore.ConnectionString, transactionDbConnectionString, StringComparison.Ordinal))
     {
@@ -466,7 +654,7 @@ static void ConfigureHealthChecks(WebApplicationBuilder builder)
     {
         checks.AddRedis(
             signalRRedis,
-            name: "redis-signalr",
+            name: InfrastructureHealthCheckNames.RedisSignalR,
             tags: [InfrastructureConfigConstants.ReadinessTag]);
     }
 
@@ -479,7 +667,29 @@ static void ConfigureHealthChecks(WebApplicationBuilder builder)
     {
         checks.AddRedis(
             dpRedis,
-            name: "redis-dataprotection",
+            name: InfrastructureHealthCheckNames.RedisDataProtection,
+            tags: [InfrastructureConfigConstants.ReadinessTag]);
+    }
+
+    // Redis (transaction store): a check of its own unless one of the checks above probes the same Redis.
+    var transactionRedis = transactionStore is { Provider.IsRedis: true } ? transactionStore.ConnectionString : null;
+
+    if (transactionRedis is not null && !IsRedisProbed(transactionRedis, signalRRedis, dpRedis))
+    {
+        checks.AddRedis(
+            transactionRedis,
+            name: InfrastructureHealthCheckNames.RedisTransactions,
+            tags: [InfrastructureConfigConstants.ReadinessTag]);
+    }
+
+    // Redis (channel stores): a check of its own unless one of the checks above probes the same Redis — a
+    // connection shared with the transaction store is always probed by now.
+    if (channelStores is not null
+        && !IsRedisProbed(channelStores.ConnectionString, signalRRedis, dpRedis, transactionRedis))
+    {
+        checks.AddRedis(
+            channelStores.ConnectionString,
+            name: InfrastructureHealthCheckNames.RedisChannelStores,
             tags: [InfrastructureConfigConstants.ReadinessTag]);
     }
 
@@ -499,10 +709,20 @@ static void ConfigureHealthChecks(WebApplicationBuilder builder)
                 };
                 return connectionFactory.CreateConnectionAsync();
             },
-            name: "rabbitmq-events",
+            name: InfrastructureHealthCheckNames.RabbitMqEvents,
             tags: [InfrastructureConfigConstants.ReadinessTag]);
     }
 }
+
+/// <summary>
+/// Tells whether a Redis connection string is already probed by a check registered for another
+/// connection string (ordinal comparison: one Redis behind the same string gets one check).
+/// </summary>
+/// <param name="connectionString">Connection string of the dependency to probe.</param>
+/// <param name="probedConnectionStrings">Connection strings already probed; null or empty entries probe nothing.</param>
+/// <returns>true — the same connection string is already probed.</returns>
+static bool IsRedisProbed(string connectionString, params string?[] probedConnectionStrings) =>
+    probedConnectionStrings.Any(probed => string.Equals(connectionString, probed, StringComparison.Ordinal));
 
 /// <summary>
 /// Writes the channel health report as JSON: the overall status plus, for every check in it, its

@@ -30,10 +30,12 @@ public sealed class AuthPageDesignOptions
 
     /// <summary>
     /// Page color scheme (SPEC-015 §2.2): Auto (follows the system setting), Light (light/white),
-    /// Dark (dark). Default — <see cref="Enums.AuthPageTheme.Auto"/>. An explicit Light/Dark value
-    /// takes precedence over the preset's color scheme.
+    /// Dark (dark). An explicit Light/Dark value takes precedence over the preset's color scheme. The
+    /// setting covers every page the core generates — the sign-in window and the service pages. The
+    /// shipped value (<see cref="AuthPageTheme.Auto"/>) is taken from the owner of the key, for the
+    /// reason <see cref="Preset"/> states.
     /// </summary>
-    public Enums.AuthPageTheme Theme { get; set; } = Enums.AuthPageTheme.Auto;
+    public AuthPageTheme Theme { get; set; } = CorePageBrandingConfigKeys.DefaultTheme;
 
     /// <summary>
     /// Logo URL of the brand row of the sign-in page, read in every preset but
@@ -102,6 +104,18 @@ public sealed class AuthPageDesignOptions
     /// </para>
     /// </summary>
     public string? FooterHtml { get; set; }
+
+    /// <summary>
+    /// Content of the block the sign-in page shows in place of the QR code and the channel choice once
+    /// the hop has started — text or markup. Null or blank — the page's own localized text.
+    /// <para>
+    /// The value is MARKUP of the same admitted shape as <see cref="FooterHtml"/>
+    /// (<see cref="Resolution.AuthServerConfigKeys.PageHopInstructionHtml"/>) and is emitted
+    /// unsanitized. It carries no style: the block is styled by the page's rules and by the custom
+    /// stylesheet. The value is a Natural Key, translated by the host locale files.
+    /// </para>
+    /// </summary>
+    public string? HopInstructionHtml { get; set; }
 
     /// <summary>
     /// Path to a custom CSS file. Null — the standard CSS.

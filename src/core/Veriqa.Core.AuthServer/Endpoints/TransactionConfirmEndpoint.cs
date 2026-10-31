@@ -7,8 +7,11 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.Extensions.Options;
 
 using Veriqa.Core.AuthServer.Configuration;
+using Veriqa.Core.AuthServer.Configuration.Enums;
+using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Constants;
 using Veriqa.Core.AuthServer.Infrastructure;
+using Veriqa.Core.AuthServer.InitiatorContext;
 using Veriqa.Core.AuthServer.UI;
 using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
@@ -39,6 +42,13 @@ namespace Veriqa.Core.AuthServer.Endpoints;
 /// sequence every other path uses. What is genuinely this endpoint's own is the precondition of
 /// answering and the reading of a refused write.
 /// </para>
+/// <para>
+/// It also takes the cancel button of the pages held by the session identifier (SPEC-007 UI-122) — "Cancel
+/// confirmation" of the entry page of a confirmation and "Cancel sign-in" or "Cancel confirmation" of the
+/// scanner page of the unified hop QR code: the same refusal the "No" records, the same receipt, under a
+/// precondition of its own — such a page is held by whoever holds its address, whether a channel was entered
+/// or not.
+/// </para>
 /// </summary>
 public static class TransactionConfirmEndpoint
 {
@@ -57,11 +67,23 @@ public static class TransactionConfirmEndpoint
     /// <param name="RequestLanguage">Language detected from the request.</param>
     /// <param name="PageLanguage">Language of the pages of a found transaction; equal to
     /// <paramref name="RequestLanguage"/> until a transaction is resolved.</param>
+    /// <param name="NamesCallerValues">Whether a receipt of this request may name the values the calling
+    /// party supplied. A receipt of an answer given on the question page may — that page showed the subject
+    /// (SPEC-036 TPL-123); a receipt of a cancel names them only where the page of the button shows the subject
+    /// (SPEC-039 R51), since the cancel is not given from the question.</param>
+    /// <param name="TextResolver">Resolver of the text overrides of the receipt.</param>
+    /// <param name="OpenedOn">The kind of the device the request comes from — the caption of the action under
+    /// the outcome is chosen by it (<see cref="OutcomeCloseAction"/>); null — unknown.</param>
+    /// <param name="CspNonce">CSP nonce of the request; null — none.</param>
     private readonly record struct ConfirmSurface(
         IConfirmationPromptLocalizer Localizer,
         CorePageBrandingResolver BrandingResolver,
         string RequestLanguage,
-        string PageLanguage);
+        string PageLanguage,
+        bool NamesCallerValues,
+        CorePageTextResolver TextResolver,
+        string? OpenedOn,
+        string? CspNonce);
 
     /// <summary>
     /// What the precondition of answering found for the addressed identifier.
@@ -76,8 +98,9 @@ public static class TransactionConfirmEndpoint
 
         /// <summary>
         /// A transaction is there, but this page is not where it is answered: it is not a
-        /// confirmation, it carries no channel identity to sign an answer with, or it is over for a
-        /// reason other than its time — a decision on it is already recorded.
+        /// confirmation, it carries no channel identity to sign an answer with, its answer is bound to
+        /// another browser, or it is over for a reason other than its time — a decision on it is
+        /// already recorded.
         /// </summary>
         NotAnswerable,
 
@@ -113,12 +136,13 @@ public static class TransactionConfirmEndpoint
         ILogger Logger);
 
     /// <summary>
-    /// Registers the question page (GET) and the two answers (POST).
+    /// Registers the question page (GET), the two answers (POST) and the cancel of the entry page and of the
+    /// scanner page (POST).
     /// </summary>
     /// <param name="endpoints">Endpoint route builder.</param>
-    /// <param name="rateLimitPolicyName">Rate limiting policy name (null — no limiting). The three
-    /// routes share ONE budget: asking the question and answering it are one act, and a route of them
-    /// left with a budget of its own would be the way around the other two.</param>
+    /// <param name="rateLimitPolicyName">Rate limiting policy name (null — no limiting). The four
+    /// routes share ONE budget: asking the question, answering it and cancelling are one act, and a route of
+    /// them left with a budget of its own would be the way around the others.</param>
     /// <returns>The route builder for chaining.</returns>
     public static IEndpointRouteBuilder MapTransactionConfirmEndpoint(
         this IEndpointRouteBuilder endpoints,
@@ -127,12 +151,14 @@ public static class TransactionConfirmEndpoint
         var question = endpoints.MapGet(OidcEndpoints.TransactionConfirmPage, HandleQuestionAsync);
         var accept = endpoints.MapPost(OidcEndpoints.TransactionConfirmAccept, HandleAcceptAsync);
         var decline = endpoints.MapPost(OidcEndpoints.TransactionConfirmDecline, HandleDeclineAsync);
+        var cancel = endpoints.MapPost(OidcEndpoints.TransactionCancel, HandleCancelAsync);
 
         if (!string.IsNullOrEmpty(rateLimitPolicyName))
         {
             question.RequireRateLimiting(rateLimitPolicyName);
             accept.RequireRateLimiting(rateLimitPolicyName);
             decline.RequireRateLimiting(rateLimitPolicyName);
+            cancel.RequireRateLimiting(rateLimitPolicyName);
         }
 
         return endpoints;
@@ -145,23 +171,29 @@ public static class TransactionConfirmEndpoint
         HttpContext httpContext,
         ITransactionService transactionService,
         ITransactionStore transactionStore,
-        IConfirmationPromptContextFactory promptContextFactory,
+        CoreConfirmPageAnswerMark answerMark,
         IAntiforgery antiforgery,
         IConfirmationPromptLocalizer promptLocalizer,
         IOptions<VeriqaOptions> veriqaOptions,
         CorePageBrandingResolver brandingResolver,
+        CorePageTextResolver textResolver,
         IAuthPageLanguageRegistry languageRegistry,
+        IUserAgentNormalizer userAgentNormalizer,
+        AuthPageSettingsResolver pageSettings,
         ILoggerFactory loggerFactory,
         TimeProvider timeProvider)
     {
         var cancellationToken = httpContext.RequestAborted;
-        var surface = BuildSurface(httpContext, promptLocalizer, veriqaOptions, brandingResolver, languageRegistry);
+        var surface = BuildSurface(
+            httpContext, promptLocalizer, veriqaOptions, brandingResolver, languageRegistry, textResolver, userAgentNormalizer);
         var journal = new RefusalJournal(
             httpContext, timeProvider, loggerFactory.CreateLogger(typeof(TransactionConfirmEndpoint)));
 
         var lookup = await ResolveAnswerableAsync(
             httpContext.Request.Query[OidcConstants.SessionIdParameterName].FirstOrDefault(),
+            httpContext.Request,
             transactionStore,
+            answerMark,
             timeProvider,
             cancellationToken);
 
@@ -183,18 +215,12 @@ public static class TransactionConfirmEndpoint
 
         surface = ForTransaction(surface, transaction, veriqaOptions, languageRegistry);
 
-        // The channel parameters come off the snapshot the channel attached. The subject branch of the
-        // factory does not read them — it words the question out of the transaction — but the contract
-        // of the factory asks for them, and a second entry point "give me the subject text" is exactly
-        // the second implementation this task must not create.
-        var promptContext = await promptContextFactory.CreateAsync(
-            transaction,
-            transaction.ChannelIdentitySnapshot?.ChannelType ?? string.Empty,
-            transaction.ChannelIdentitySnapshot?.ChannelUserId ?? string.Empty,
-            surface.PageLanguage,
-            cancellationToken);
+        // The question is worded by the one method both question pages word it with (SPEC-007 UI-123): for a
+        // confirmation it is the subject, as the chat carries it.
+        var question = await WebConfirmPage.ResolveQuestionAsync(
+            httpContext, transaction, surface.Localizer, surface.PageLanguage);
 
-        if (promptContext is not SubjectConfirmationPromptContext subject)
+        if (question is null)
         {
             // No wording of the subject — the question is not asked at all, and a sign-in text must
             // never stand in for it (SPEC-039 E28). The transaction ends here rather than living out
@@ -204,19 +230,32 @@ public static class TransactionConfirmEndpoint
             return await UnavailableAsync(surface, cancellationToken);
         }
 
-        var branding = await surface.BrandingResolver.ResolveAsync(
-            TransactionResolutionContext.For(transaction), cancellationToken);
+        // Branded by the levels of its own transaction, and its title and answers take the overrides of the
+        // same levels (SPEC-012 CFG-254).
+        var resolution = TransactionResolutionContext.For(transaction);
+        var branding = await surface.BrandingResolver.ResolveAsync(resolution, cancellationToken);
+        var texts = await textResolver.ResolveAsync(resolution, cancellationToken);
 
         var tokens = antiforgery.GetAndStoreTokens(httpContext);
+        var pathBase = httpContext.Request.PathBase.Value ?? string.Empty;
 
-        var html = TransactionConfirmPage.BuildQuestion(
+        // The one question page of the core, the one the sign-in answers on (SPEC-007 UI-123): the page is
+        // served in Pending only — the precondition above admits nothing else — so it counts the deadline
+        // down and watches the status, and once the status no longer matches it the browser goes to this
+        // very address, which the precondition answers by the rules of this page (SPEC-039 C15, R51).
+        var watch = await WebConfirmPage.ResolveWatchAsync(httpContext, transaction, pageSettings, pathBase, timeProvider);
+
+        var html = WebConfirmPage.Build(
+            WebConfirmPage.ForConfirmation(transaction, question),
             sessionId: SessionIdMapper.ToSessionId(transaction.Id),
             antiforgeryFormFieldName: tokens.FormFieldName,
             antiforgeryToken: tokens.RequestToken,
-            promptText: subject.PromptText,
-            pathBase: httpContext.Request.PathBase.Value ?? string.Empty,
+            pathBase: pathBase,
+            cspNonce: httpContext.Items[SecurityHeaderConstants.CspNonceItemKey] as string,
+            watch: watch,
             localizer: surface.Localizer,
             language: surface.PageLanguage,
+            texts: texts,
             branding: branding);
 
         return Results.Content(html, AuthPageConstants.HtmlContentType, Encoding.UTF8);
@@ -229,6 +268,7 @@ public static class TransactionConfirmEndpoint
         HttpContext httpContext,
         ITransactionService transactionService,
         ITransactionStore transactionStore,
+        CoreConfirmPageAnswerMark answerMark,
         IIdentityResolutionService identityResolutionService,
         IAntiforgery antiforgery,
         IOutcomeReceiptText receiptText,
@@ -236,22 +276,26 @@ public static class TransactionConfirmEndpoint
         IOptions<VeriqaOptions> veriqaOptions,
         CorePageBrandingResolver brandingResolver,
         IAuthPageLanguageRegistry languageRegistry,
+        CorePageTextResolver textResolver,
+        IUserAgentNormalizer userAgentNormalizer,
         ILoggerFactory loggerFactory,
         TimeProvider timeProvider)
     {
-        var antiforgeryFailure = await ValidateAntiforgeryAsync(antiforgery, httpContext);
+        var antiforgeryFailure = await AuthorizeCallbackEndpoint.ValidateAntiforgeryAsync(httpContext, antiforgery);
         if (antiforgeryFailure is not null)
         {
             return antiforgeryFailure;
         }
 
         var cancellationToken = httpContext.RequestAborted;
-        var surface = BuildSurface(httpContext, promptLocalizer, veriqaOptions, brandingResolver, languageRegistry);
+        var surface = BuildSurface(
+            httpContext, promptLocalizer, veriqaOptions, brandingResolver, languageRegistry, textResolver, userAgentNormalizer);
         var journal = new RefusalJournal(
             httpContext, timeProvider, loggerFactory.CreateLogger(typeof(TransactionConfirmEndpoint)));
 
         var lookup = await ResolveAnswerableAsync(
-            await ReadSessionIdAsync(httpContext), transactionStore, timeProvider, cancellationToken);
+            await ReadSessionIdAsync(httpContext), httpContext.Request, transactionStore, answerMark, timeProvider,
+            cancellationToken);
 
         if (lookup.Transaction is not { } transaction)
         {
@@ -262,6 +306,8 @@ public static class TransactionConfirmEndpoint
 
         if (lookup.Precondition is not PagePrecondition.Answerable)
         {
+            await ExpireAtLateDecisionAsync(lookup.Precondition, transaction, transactionService);
+
             return await AnswerRefusedPreconditionAsync(
                 lookup.Precondition, transaction, receiptText, surface, journal, cancellationToken);
         }
@@ -291,6 +337,8 @@ public static class TransactionConfirmEndpoint
                 cancellationToken);
         }
 
+        await ReportToChatAsync(httpContext, finalizeResult.Value);
+
         // The moment of the outcome is the one the completion wrote down: the finalizer returns the
         // fresh instance, and the one read before the call is the stale one.
         return await ReceiptAsync(
@@ -305,28 +353,33 @@ public static class TransactionConfirmEndpoint
         HttpContext httpContext,
         ITransactionService transactionService,
         ITransactionStore transactionStore,
+        CoreConfirmPageAnswerMark answerMark,
         IAntiforgery antiforgery,
         IOutcomeReceiptText receiptText,
         IConfirmationPromptLocalizer promptLocalizer,
         IOptions<VeriqaOptions> veriqaOptions,
         CorePageBrandingResolver brandingResolver,
         IAuthPageLanguageRegistry languageRegistry,
+        CorePageTextResolver textResolver,
+        IUserAgentNormalizer userAgentNormalizer,
         ILoggerFactory loggerFactory,
         TimeProvider timeProvider)
     {
-        var antiforgeryFailure = await ValidateAntiforgeryAsync(antiforgery, httpContext);
+        var antiforgeryFailure = await AuthorizeCallbackEndpoint.ValidateAntiforgeryAsync(httpContext, antiforgery);
         if (antiforgeryFailure is not null)
         {
             return antiforgeryFailure;
         }
 
         var cancellationToken = httpContext.RequestAborted;
-        var surface = BuildSurface(httpContext, promptLocalizer, veriqaOptions, brandingResolver, languageRegistry);
+        var surface = BuildSurface(
+            httpContext, promptLocalizer, veriqaOptions, brandingResolver, languageRegistry, textResolver, userAgentNormalizer);
         var journal = new RefusalJournal(
             httpContext, timeProvider, loggerFactory.CreateLogger(typeof(TransactionConfirmEndpoint)));
 
         var lookup = await ResolveAnswerableAsync(
-            await ReadSessionIdAsync(httpContext), transactionStore, timeProvider, cancellationToken);
+            await ReadSessionIdAsync(httpContext), httpContext.Request, transactionStore, answerMark, timeProvider,
+            cancellationToken);
 
         if (lookup.Transaction is not { } transaction)
         {
@@ -342,6 +395,8 @@ public static class TransactionConfirmEndpoint
         // clock it reads is the one the engine measures the TTL by.
         if (lookup.Precondition is not PagePrecondition.Answerable)
         {
+            await ExpireAtLateDecisionAsync(lookup.Precondition, transaction, transactionService);
+
             return await AnswerRefusedPreconditionAsync(
                 lookup.Precondition, transaction, receiptText, surface, journal, cancellationToken);
         }
@@ -369,10 +424,149 @@ public static class TransactionConfirmEndpoint
                 cancellationToken);
         }
 
+        await ReportToChatAsync(httpContext, failResult.Value);
+
         // The refusal has just been written down; its moment is the one that write recorded.
         return await ReceiptAsync(
             TransactionOutcome.Declined, transaction, failResult.Value.UpdatedAt, receiptText,
             surface, cancellationToken);
+    }
+
+    /// <summary>
+    /// Handles the cancel button of the pages held by the session identifier (SPEC-007 UI-122) — "Cancel
+    /// confirmation" of the entry page of a confirmation and "Cancel sign-in" or "Cancel confirmation" of the
+    /// scanner page of the unified hop QR code: records the refusal the "No" records, shows the receipt of it,
+    /// worded by the type of the transaction, and, when the question still stood in the chat, replaces it
+    /// there with the receipt of the refusal (SPEC-003 CA-235). Both types are taken the same way.
+    /// </summary>
+    /// <remarks>
+    /// The holder of the address of the page cancels — the identifier of the transaction is what such a page
+    /// is opened by (SPEC-039 C15, SPEC-025 HOP-146), and no browser nonce is checked: a confirmation was
+    /// created server-to-server, and the phone that scanned the unified QR code of a sign-in is not the
+    /// browser that started it. Neither a channel snapshot nor the answer mark is asked for: the user may
+    /// cancel before entering a channel, and from whichever browser holds the page. The cancel is taken only
+    /// while the transaction is Pending — a channel that has already confirmed is not overturned by it (see
+    /// <see cref="ResolveCancellableAsync"/>). The answer to the browser is the receipt of the page, not a
+    /// redirect: the page that posts here leaves for no client <c>redirect_uri</c>. The sign-in window
+    /// learns the refusal from the status of the transaction and takes <c>access_denied</c> to its client by
+    /// the callback, as after a refusal in the channel.
+    /// </remarks>
+    private static async Task<IResult> HandleCancelAsync(
+        HttpContext httpContext,
+        ITransactionService transactionService,
+        ITransactionStore transactionStore,
+        IConfigurationResolver configurationResolver,
+        IAntiforgery antiforgery,
+        IOutcomeReceiptText receiptText,
+        IConfirmationPromptLocalizer promptLocalizer,
+        IOptions<VeriqaOptions> veriqaOptions,
+        CorePageBrandingResolver brandingResolver,
+        IAuthPageLanguageRegistry languageRegistry,
+        CorePageTextResolver textResolver,
+        IUserAgentNormalizer userAgentNormalizer,
+        ILoggerFactory loggerFactory,
+        TimeProvider timeProvider)
+    {
+        var antiforgeryFailure = await AuthorizeCallbackEndpoint.ValidateAntiforgeryAsync(httpContext, antiforgery);
+        if (antiforgeryFailure is not null)
+        {
+            return antiforgeryFailure;
+        }
+
+        var cancellationToken = httpContext.RequestAborted;
+        var surface = BuildSurface(
+            httpContext, promptLocalizer, veriqaOptions, brandingResolver, languageRegistry, textResolver, userAgentNormalizer);
+        var journal = new RefusalJournal(
+            httpContext, timeProvider, loggerFactory.CreateLogger(typeof(TransactionConfirmEndpoint)));
+
+        var lookup = await ResolveCancellableAsync(
+            await ReadSessionIdAsync(httpContext), transactionStore, timeProvider, cancellationToken);
+
+        if (lookup.Transaction is not { } transaction)
+        {
+            return await UnavailableAsync(surface, cancellationToken);
+        }
+
+        // The cancel is not given from the question, so its receipt discloses no more than the page of the
+        // button shows: the values of the calling party only where that page shows the subject (SPEC-036
+        // TPL-123, SPEC-039 R51). A sign-in carries no values of a calling party, and its receipt names none.
+        surface = ForTransaction(surface, transaction, veriqaOptions, languageRegistry) with
+        {
+            NamesCallerValues = await configurationResolver.ShowsSubjectOnAsync(
+                TransactionResolutionContext.For(transaction),
+                ConfirmationSubjectSurface.InteractionPage,
+                cancellationToken)
+        };
+
+        if (lookup.Precondition is not PagePrecondition.Answerable)
+        {
+            await ExpireAtLateDecisionAsync(lookup.Precondition, transaction, transactionService);
+
+            return await AnswerRefusedPreconditionAsync(
+                lookup.Precondition, transaction, receiptText, surface, journal, cancellationToken);
+        }
+
+        // The refusal the "No" records — one meaning, one code, one audit trail. CancellationToken.None:
+        // the refusal must be recorded even if the browser goes away.
+        var failResult = await transactionService.FailTransactionAsync(
+            transaction.Id,
+            TransactionErrorCodes.DeclinedByUser,
+            transaction.ConcurrencyToken,
+            CancellationToken.None);
+
+        if (failResult.IsFailure)
+        {
+            // A transaction moved between the read above and this write wins — a channel that confirmed
+            // it — so a receipt of a refusal here would be untrue. Nothing was moved by this request, so
+            // there is nothing to close after.
+            return await AnswerRefusedDecisionAsync(
+                failResult.Error.Code,
+                transaction,
+                closeOnDownstreamRefusal: false,
+                transactionService,
+                receiptText,
+                surface,
+                journal,
+                cancellationToken);
+        }
+
+        // A sign-in cancelled in its claims completion is shown the refusal in the channel the user came
+        // through, as after "Cancel sign-in" of the sign-in window (SPEC-003 CA-142); the reporter takes only
+        // a transaction that entered the completion, which a confirmation never does.
+        await ClaimCompletionActionEndpoints.ReportOutcomeToChannelAsync(httpContext, failResult.Value);
+
+        // The question may still stand before the user in the chat: the reporter of the cancel of the sign-in
+        // window replaces it there with the receipt of the refusal, worded by the type of the transaction, and
+        // decides itself on the transaction as read before this write. The receipt reporter of the question
+        // page is not called: the cancel is not the answer the chat was sent to the page for. A host that
+        // composes no channel contour has no reporter, and there is no chat to tell.
+        if (httpContext.RequestServices.GetService<ISignInCancelChannelReporter>() is { } cancelReporter)
+        {
+            await cancelReporter.ReportAsync(transaction, failResult.Value, CancellationToken.None);
+        }
+
+        return await ReceiptAsync(
+            TransactionOutcome.Declined, transaction, failResult.Value.UpdatedAt, receiptText,
+            surface, cancellationToken);
+    }
+
+    /// <summary>
+    /// Shows the answer just written on this page in the chat that was sent here for it — the chat the
+    /// notice of the hand-over went to (SPEC-012 CFG-266): a confirmation is answered in the chat as a
+    /// sign-in is. Only an answer qualifies, and this page writes one only on a transaction that
+    /// awaited it (<see cref="ResolveAnswerableAsync"/>). A host that composes no channel contour has no
+    /// reporter, and there is no chat to tell. CancellationToken.None — a browser that goes away must not
+    /// cancel the message of an answer already written.
+    /// </summary>
+    /// <param name="httpContext">Current request.</param>
+    /// <param name="decided">The transaction as the successful write of the answer returned it.</param>
+    /// <returns>The completed operation.</returns>
+    private static async Task ReportToChatAsync(HttpContext httpContext, Transaction decided)
+    {
+        if (httpContext.RequestServices.GetService<IWebConfirmationReceiptReporter>() is { } receiptReporter)
+        {
+            await receiptReporter.ReportAsync(decided, CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -383,20 +577,32 @@ public static class TransactionConfirmEndpoint
     /// <param name="veriqaOptions">Product options (the configured default language).</param>
     /// <param name="brandingResolver">Resolver of the effective page branding.</param>
     /// <param name="languageRegistry">Data-driven registry of supported languages.</param>
+    /// <param name="textResolver">Resolver of the text overrides of the receipt.</param>
+    /// <param name="userAgentNormalizer">Normalizer of the User-Agent of the request.</param>
     /// <returns>The render context of this request.</returns>
     private static ConfirmSurface BuildSurface(
         HttpContext httpContext,
         IConfirmationPromptLocalizer promptLocalizer,
         IOptions<VeriqaOptions> veriqaOptions,
         CorePageBrandingResolver brandingResolver,
-        IAuthPageLanguageRegistry languageRegistry)
+        IAuthPageLanguageRegistry languageRegistry,
+        CorePageTextResolver textResolver,
+        IUserAgentNormalizer userAgentNormalizer)
     {
         var requestLanguage = AuthPageStrings.DetectLanguage(
             httpContext.Request.Headers.AcceptLanguage.ToString(),
             veriqaOptions.Value.Localization.DefaultLanguage,
             languageRegistry.SupportedLanguages);
 
-        return new ConfirmSurface(promptLocalizer, brandingResolver, requestLanguage, requestLanguage);
+        return new ConfirmSurface(
+            promptLocalizer,
+            brandingResolver,
+            requestLanguage,
+            requestLanguage,
+            NamesCallerValues: true,
+            textResolver,
+            OutcomeCloseAction.OpenedOn(httpContext, userAgentNormalizer),
+            httpContext.Items[SecurityHeaderConstants.CspNonceItemKey] as string);
     }
 
     /// <summary>
@@ -426,30 +632,6 @@ public static class TransactionConfirmEndpoint
     }
 
     /// <summary>
-    /// Validates the AntiForgery token of a state-changing POST.
-    /// </summary>
-    /// <param name="antiforgery">AntiForgery service.</param>
-    /// <param name="httpContext">Request context.</param>
-    /// <returns>The refusal to return, or null when the token is valid.</returns>
-    private static async Task<IResult?> ValidateAntiforgeryAsync(IAntiforgery antiforgery, HttpContext httpContext)
-    {
-        try
-        {
-            await antiforgery.ValidateRequestAsync(httpContext);
-            return null;
-        }
-        catch (AntiforgeryValidationException)
-        {
-            // A ProblemDetails and not the neutral page: this is a malformed request rather than an
-            // answer to a question, and the same refusal the sign-in confirmation returns.
-            return Results.Problem(
-                detail: "Invalid or missing confirmation token.",
-                statusCode: StatusCodes.Status400BadRequest,
-                title: OidcErrorCodes.OidcRequestInvalid);
-        }
-    }
-
-    /// <summary>
     /// Reads the session_id out of the posted form.
     /// </summary>
     /// <remarks>
@@ -473,8 +655,9 @@ public static class TransactionConfirmEndpoint
 
     /// <summary>
     /// The single precondition of answering, shared by the question and by both answers: the
-    /// identifier parses, the transaction exists, it is a confirmation, the core is waiting for an
-    /// answer on its own page for it, and its lifetime has not run out.
+    /// identifier parses, the transaction exists, it is a confirmation, an answer bound to a browser
+    /// comes from that browser, the core is waiting for an answer on its own page for it, and its
+    /// lifetime has not run out.
     /// </summary>
     /// <remarks>
     /// The transaction is read from the STORE rather than from the transaction service, because the
@@ -490,23 +673,21 @@ public static class TransactionConfirmEndpoint
     /// </para>
     /// </remarks>
     /// <param name="sessionId">Public identifier as the request stated it.</param>
+    /// <param name="request">The request, whose answer mark is read.</param>
     /// <param name="transactionStore">Transaction store.</param>
+    /// <param name="answerMark">The answer mark a channel hands the browser it attached the identity from.</param>
     /// <param name="timeProvider">Clock of the engine — the same one the TTL is measured by.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>What was found, with the transaction it was found over.</returns>
     private static async Task<AnswerableLookup> ResolveAnswerableAsync(
         string? sessionId,
+        HttpRequest request,
         ITransactionStore transactionStore,
+        CoreConfirmPageAnswerMark answerMark,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        var transactionId = SessionIdMapper.ToTransactionId(sessionId);
-        if (transactionId is null)
-        {
-            return new AnswerableLookup(PagePrecondition.Unknown, null);
-        }
-
-        var transaction = await transactionStore.GetByIdAsync(transactionId.Value, cancellationToken);
+        var transaction = await FindAsync(sessionId, transactionStore, cancellationToken);
         if (transaction is null)
         {
             return new AnswerableLookup(PagePrecondition.Unknown, null);
@@ -522,11 +703,21 @@ public static class TransactionConfirmEndpoint
             return new AnswerableLookup(PagePrecondition.NotAnswerable, transaction);
         }
 
-        // WHY the transaction is over is what the two codes tell apart. The cleanup moves a transaction
-        // whose TTL ran out into Expired and only drops it a retention later, so that state is itself
-        // the record of an expiry; every other terminal state means a decision was recorded, which is
-        // not one. Both readings of the same fact are kept, because they are the same fact seen on
-        // either side of the cleanup pass.
+        // An answer the channel bound to the browser that proved the channel — the one the letter was
+        // followed in — is taken from that browser alone (SPEC-039 C15). Any other browser is told what
+        // an unknown identifier is told, whatever the state: an expiry receipt would already say to it
+        // that the transaction exists.
+        if (transaction.SubjectBinding is { AnswerBrowserBound: true }
+            && !answerMark.IsPresentFor(request, transaction))
+        {
+            return new AnswerableLookup(PagePrecondition.NotAnswerable, transaction);
+        }
+
+        // WHY the transaction is over is what the two codes tell apart. The cleanup — or a decision
+        // that met the deadline — moves a transaction whose TTL ran out into Expired, and the record is
+        // only dropped a retention later, so that state is itself the record of an expiry; every other
+        // terminal state means a decision was recorded, which is not one. Both readings of the same
+        // fact are kept, because they are the same fact seen on either side of that move.
         if (transaction.State is TransactionState.Expired)
         {
             return new AnswerableLookup(PagePrecondition.Expired, transaction);
@@ -541,6 +732,102 @@ public static class TransactionConfirmEndpoint
             ? new AnswerableLookup(PagePrecondition.Expired, transaction)
             : new AnswerableLookup(PagePrecondition.Answerable, transaction);
     }
+
+    /// <summary>
+    /// The precondition of the cancel of the entry page of a confirmation and of the scanner page of either
+    /// type, told in the codes of the precondition of answering: the identifier parses, the transaction exists
+    /// and is a sign-in or a confirmation — refused as <see cref="PagePrecondition.NotAnswerable"/> otherwise;
+    /// its lifetime has not run out — <see cref="PagePrecondition.Expired"/> otherwise; and it is still Pending
+    /// — <see cref="PagePrecondition.NotAnswerable"/> once a channel has confirmed it or it has ended. Then it
+    /// is <see cref="PagePrecondition.Answerable"/>, with a channel snapshot or without one and whatever
+    /// browser sends it — a sign-in waiting for the answer on the question page of the core or in its claims
+    /// completion included, as on the sign-in window.
+    /// </summary>
+    /// <remarks>
+    /// Read from the STORE for the reason <see cref="ResolveAnswerableAsync"/> states: a cancel submitted
+    /// after the TTL is told the truth. A Confirmed transaction is not cancelled: the user has answered "yes"
+    /// in the channel, and a cancel from the page must not turn that answer into a refusal while the
+    /// completion is still being written.
+    /// </remarks>
+    /// <param name="sessionId">Public identifier as the request stated it.</param>
+    /// <param name="transactionStore">Transaction store.</param>
+    /// <param name="timeProvider">Clock of the engine — the same one the TTL is measured by.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>What was found, with the transaction it was found over.</returns>
+    private static async Task<AnswerableLookup> ResolveCancellableAsync(
+        string? sessionId,
+        ITransactionStore transactionStore,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var transaction = await FindAsync(sessionId, transactionStore, cancellationToken);
+        if (transaction is null)
+        {
+            return new AnswerableLookup(PagePrecondition.Unknown, null);
+        }
+
+        // The two types whose pages carry the button; a type added later decides on its own whether its
+        // pages do.
+        if (transaction.Type is not (TransactionTypes.Login or TransactionTypes.Confirmation))
+        {
+            return new AnswerableLookup(PagePrecondition.NotAnswerable, transaction);
+        }
+
+        if (transaction.State is TransactionState.Expired)
+        {
+            return new AnswerableLookup(PagePrecondition.Expired, transaction);
+        }
+
+        if (transaction.State is not TransactionState.Pending)
+        {
+            return new AnswerableLookup(PagePrecondition.NotAnswerable, transaction);
+        }
+
+        return transaction.IsExpired(timeProvider.GetUtcNow())
+            ? new AnswerableLookup(PagePrecondition.Expired, transaction)
+            : new AnswerableLookup(PagePrecondition.Answerable, transaction);
+    }
+
+    /// <summary>
+    /// Reads the transaction the request names out of the store.
+    /// </summary>
+    /// <param name="sessionId">Public identifier as the request stated it.</param>
+    /// <param name="transactionStore">Transaction store.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The transaction; null when the identifier does not parse or nothing is stored under it.</returns>
+    private static async Task<Transaction?> FindAsync(
+        string? sessionId,
+        ITransactionStore transactionStore,
+        CancellationToken cancellationToken)
+    {
+        var transactionId = SessionIdMapper.ToTransactionId(sessionId);
+
+        return transactionId is null
+            ? null
+            : await transactionStore.GetByIdAsync(transactionId.Value, cancellationToken);
+    }
+
+    /// <summary>
+    /// Has the engine move a confirmation whose deadline a submitted answer met into Expired — the
+    /// decision is when the expiry becomes known, and the transaction no longer waits for the next
+    /// cleanup pass (SPEC-001 §8.3). The engine leaves alone a transaction already Expired.
+    /// </summary>
+    /// <remarks>
+    /// Only for the answers, not for opening the question page: a decision is what the deadline is
+    /// enforced against. And only on the expiry precondition, which is decided after the checks that
+    /// keep a holder of somebody else's identifier from acting on the transaction at all.
+    /// </remarks>
+    /// <param name="precondition">What the precondition found.</param>
+    /// <param name="transaction">Transaction the request named.</param>
+    /// <param name="transactionService">Transaction service.</param>
+    /// <returns>The completed operation.</returns>
+    private static Task ExpireAtLateDecisionAsync(
+        PagePrecondition precondition,
+        Transaction transaction,
+        ITransactionService transactionService)
+        => precondition is PagePrecondition.Expired
+            ? transactionService.ExpireOverdueAsync(transaction.Id, CancellationToken.None)
+            : Task.CompletedTask;
 
     /// <summary>
     /// Answers a request the precondition refused, and records that refusal once.
@@ -569,8 +856,8 @@ public static class TransactionConfirmEndpoint
         await RecordPageRefusalAsync(journal, transaction, AuditCodeOf(precondition), null);
 
         return precondition is PagePrecondition.Expired
-            // Nothing was written for an expiry — the moment being reported is the TTL itself, which
-            // is when this transaction ended, not when the visitor found out.
+            // The moment being reported is the TTL itself, which is when this transaction ended — not
+            // when the visitor found out, nor when the expiry was written down.
             ? await ReceiptAsync(
                 TransactionOutcome.Expired, transaction, transaction.ExpiresAt, receiptText, surface,
                 cancellationToken)
@@ -839,23 +1126,32 @@ public static class TransactionConfirmEndpoint
                 OutcomeReceiptSurfaces.CorePage,
                 transaction.Type,
                 transaction.ConfirmationSnapshot?.ActionType,
-                transaction.ChannelIdentitySnapshot?.ChannelType),
+                transaction.ChannelIdentitySnapshot?.ChannelType,
+                transaction.InitiatorContextSnapshot?.DeviceType),
             surface.PageLanguage,
             // The zone the transaction states, beside the language the page is served in: one pair,
             // read off the transaction the same way every other consumer of it reads the zone.
             transaction.GetUiTimeZone(),
             outcomeMoment,
-            // Every receipt of this page answers a decision submitted from the question this page
-            // showed, so it may name the subject that question named (SPEC-036 TPL-123), beside what
-            // the core states about the transaction (TPL-124).
-            TransactionSlotSource.From(transaction),
+            // A receipt of an answer given on the question this page showed may name the subject that
+            // question named (SPEC-036 TPL-123), beside what the core states about the transaction
+            // (TPL-124); a receipt of a cancel names it only where the page of the button showed it.
+            surface.NamesCallerValues
+                ? TransactionSlotSource.From(transaction)
+                : TransactionSlotSource.From(transaction).WithoutCallerValues(),
             ownership,
             cancellationToken);
 
         var branding = await surface.BrandingResolver.ResolveAsync(ownership, cancellationToken);
+        var texts = await surface.TextResolver.ResolveAsync(ownership, cancellationToken);
 
         var html = TransactionConfirmPage.BuildReceipt(
-            text, surface.Localizer, surface.PageLanguage, branding);
+            text,
+            surface.Localizer,
+            surface.PageLanguage,
+            branding,
+            new ReceiptCloseAction(
+                OutcomeCloseAction.ApplicationName(transaction, surface.OpenedOn), texts, surface.CspNonce));
 
         return Results.Content(html, AuthPageConstants.HtmlContentType, Encoding.UTF8);
     }

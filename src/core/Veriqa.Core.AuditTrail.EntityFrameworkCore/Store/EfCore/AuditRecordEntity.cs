@@ -106,6 +106,12 @@ internal class AuditRecordEntity
     public string? ChannelInboundVerification { get; set; }
 
     /// <summary>
+    /// Metadata attribute: basis of a deletion of collected claims — a token of the closed dictionary.
+    /// Null on every record that is not such a deletion, and on the rows written before the column existed.
+    /// </summary>
+    public string? DeletionBasis { get; set; }
+
+    /// <summary>
     /// Metadata attribute: declared kind of the confirmed operation. Null unless the deployment
     /// turned the parameters of the confirmed operation on.
     /// </summary>

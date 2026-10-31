@@ -127,7 +127,7 @@ public static class LoggingConfigKeys
     /// <para>
     /// The shipped value below stays a statement of the CORE level: the default of a key is reached
     /// where the record of the core level said nothing, and above the core a level that stated
-    /// nothing simply cedes to the one below (<c>PathConfigKeyRegistrar.ReadOnce</c>). So a tenant
+    /// nothing simply cedes to the one below (<see cref="DeclaredConfigKey{T}.StatedAtStep"/>). So a tenant
     /// that never wrote the setting does not answer with the shipped mode in place of its own core.
     /// </para>
     /// <para>

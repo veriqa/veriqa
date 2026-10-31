@@ -35,7 +35,7 @@ namespace Veriqa.Core.ChannelAdapter.Telegram;
 /// Handles inbound events, sends confirmation prompts,
 /// notifications, and manages the deep link.
 /// </summary>
-internal sealed class TelegramChannelAdapter : IChannelAdapter
+internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
 {
     /// <summary>
     /// Per-tenant channel client factory (CA-164/CA-166).
@@ -69,10 +69,10 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
     private readonly IConfirmationPromptLocalizer _promptLocalizer;
 
     /// <summary>
-    /// The single point at which the render points of this adapter obtain a resolved message —
-    /// through the canonical resolver (SPEC-036 TPL-001). Singleton, like this adapter.
+    /// The accessor this adapter takes the templates of its channel messages from: the core resolves
+    /// them through the canonical resolver (SPEC-036 TPL-001). Singleton, like this adapter.
     /// </summary>
-    private readonly IMessageTemplateAccessor _messageTemplates;
+    private readonly IChannelMessageTemplates _messageTemplates;
 
     /// <summary>
     /// Clock behind the health-check stamps and the capture timestamps of the adapter.
@@ -87,7 +87,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
     /// <param name="resolver">Canonical layer resolver (source of the tenant's credentials).</param>
     /// <param name="logger">Logger.</param>
     /// <param name="promptLocalizer">Channel message localizer.</param>
-    /// <param name="messageTemplates">Accessor of the resolved messages of this adapter.</param>
+    /// <param name="messageTemplates">Accessor of the channel message templates of this adapter.</param>
     /// <param name="timeProvider">Time provider.</param>
     public TelegramChannelAdapter(
         IChannelClientFactory clientFactory,
@@ -95,7 +95,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
         IConfigurationResolver resolver,
         ILogger<TelegramChannelAdapter> logger,
         IConfirmationPromptLocalizer promptLocalizer,
-        IMessageTemplateAccessor messageTemplates,
+        IChannelMessageTemplates messageTemplates,
         TimeProvider timeProvider)
     {
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -120,19 +120,59 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
     /// <summary>
     /// Facts Telegram declares about itself (SPEC-003 §6.1, SPEC-012 §4.4.1): cheap inline buttons —
     /// native UX; the Bot API can edit the bot's own message; the recipient locale arrives with the
-    /// user's language_code. Truly immutable sets.
+    /// user's language_code. The phone number is asked for with a <c>request_contact</c> keyboard button
+    /// and is proven to be the sender's when the shared contact names the sender and is not forwarded
+    /// (SPEC-041 L45). A link to the claim completion form is drawn as an inline URL button (SPEC-041
+    /// C76). After a completed sign-in the chat can be sent a welcome message, a menu or a link to
+    /// continue with (SPEC-012 §4.9); the last two are a message with inline buttons under its text —
+    /// URL buttons and callback buttons. Truly immutable sets.
     /// </summary>
     private static readonly ChannelCapabilities DeclaredCapabilities = new()
     {
         SupportsInChannelConfirmation = true,
-        SupportedMessageKinds = new[] { ChannelMessageKind.PlainText }.ToFrozenSet(),
+        SupportedMessageKinds = new[]
+        {
+            ChannelMessageKind.PlainText,
+            ChannelMessageKind.PhoneNumberRequest,
+            ChannelMessageKind.ClaimFormLink,
+            ChannelMessageKind.ActionButtons
+        }.ToFrozenSet(),
         SupportsMessageUpdate = true,
         DeliversOutcomeNotice = true,
-        ProvidesRecipientLocale = true
+        ProvidesRecipientLocale = true,
+        RendersEmoji = true,
+        PhoneNumber = new PhoneNumberCapability
+        {
+            Acquisition = PhoneNumberAcquisition.OnRequest,
+            Proof = PhoneNumberProof.Proven
+        },
+        SupportedCompletionBehaviorActions = new[]
+        {
+            CompletionBehaviorAction.None,
+            CompletionBehaviorAction.WelcomeMessage,
+            CompletionBehaviorAction.Menu,
+            CompletionBehaviorAction.Redirect
+        }.ToFrozenSet(),
+        DefaultCompletionBehaviorAction = CompletionBehaviorAction.None
     };
 
     /// <inheritdoc />
     public ChannelCapabilities Capabilities => DeclaredCapabilities;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Besides the markers of Veriqa buttons and deep links, a shared contact is claimed: it answers the
+    /// phone number request of claim completion and carries no marker of its own. The label of the
+    /// secondary keyboard button of that request arrives as plain text and is NOT recognized here — a
+    /// router that owns the bot hands it to its own bot.
+    /// </remarks>
+    public bool OwnsInboundEvent(ChannelInboundRequest request)
+    {
+        var body = request.Body.Span;
+
+        return CallbackDataPrefixes.ContainsAnyMarker(body)
+            || body.IndexOf(TelegramAdapterConstants.ContactFieldMarker) >= 0;
+    }
 
     /// <summary>
     /// Resolves the Telegram Bot client of the current tenant: the client is built/cached
@@ -291,19 +331,21 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
 
             // Render the text from the confirmation context (SPEC-017 §7.2) in the recipient's language;
             // on a context without details — the default text (ICC-042), also localized by the passed
-            // locale (ICC-050). The wording is asked for at the FULL address the point has — the surface
-            // it is shown on and the channel refining it — over the ownership levels the transaction
-            // states, so a variant declared by a tenant, an application or a ui_config record answers
-            // instead of the shipped one (SPEC-036 TPL-116).
+            // locale (ICC-050). The template is resolved by the core, which takes the address and the
+            // owners itself — the in-channel surface, this channel and the levels the transaction states —
+            // so a variant declared by a tenant, an application or a ui_config record answers instead of
+            // the shipped one (SPEC-036 TPL-116); a template it cannot resolve sends nothing.
+            var promptTemplate = await _messageTemplates.ResolveAsync(
+                this, MessageKinds.ConfirmationPrompt, transactionId, cancellationToken);
+            if (promptTemplate.IsFailure)
+            {
+                return Result<ChannelMessageRef?>.Failure(promptTemplate.Error);
+            }
+
             var messageText = ConfirmationPromptRenderer.Render(
                 promptContext,
                 MessageTemplateNaturalKeys.PromptDefault,
-                await _messageTemplates.RequireAsync(
-                    MessageKinds.ConfirmationPrompt,
-                    MessageSurfaces.InChannel,
-                    ChannelTypes.Telegram,
-                    promptContext.Ownership,
-                    cancellationToken),
+                promptTemplate.Value.Message,
                 _promptLocalizer,
                 _logger);
 
@@ -345,18 +387,124 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
     public Task<Result<ChannelMessageRef?>> SendMessageAsync(
         ChannelMessage message,
         CancellationToken cancellationToken = default)
-        => SendTextAsync(message.ChannelUserId, message.Text, cancellationToken);
+    {
+        // A phone number request carries a keyboard: the button that shares the contact and a plain
+        // button with the label of the secondary action (SPEC-041 L73). The keyboard hides itself once a
+        // button of it is pressed, and is taken down for good by the terminal receipt of the sign-in
+        // (ReportOutcomeAsync, the new-message step) — the expiry of the transaction included. Until
+        // that receipt it stays in place: when the step ends without a press — the window of an
+        // Optional number runs out — and, when a web step follows the phone step, for as long as that
+        // step lasts. A contact shared from it after the step is over finds no waiting request and is
+        // not taken.
+        if (message.PhoneNumberRequest is { } phoneRequest)
+        {
+            var keyboard = new ReplyKeyboardMarkup(new[]
+            {
+                new[] { KeyboardButton.WithRequestContact(phoneRequest.ShareButtonLabel) },
+                new[] { new KeyboardButton(phoneRequest.SecondaryButtonLabel) }
+            })
+            {
+                OneTimeKeyboard = true,
+                ResizeKeyboard = true
+            };
+
+            return SendTextAsync(message.ChannelUserId, message.Text, keyboard, cancellationToken);
+        }
+
+        // A link to the claim completion form is one inline URL button under the text (SPEC-041 C76):
+        // the messenger opens the page in its own or the system browser, and the bot never sees the press.
+        if (message.ClaimFormLink is { } formLink)
+        {
+            var linkKeyboard = new InlineKeyboardMarkup(
+                InlineKeyboardButton.WithUrl(formLink.ButtonLabel, formLink.Url));
+
+            return SendTextAsync(message.ChannelUserId, message.Text, linkKeyboard, cancellationToken);
+        }
+
+        // Buttons of a post-sign-in action are an inline keyboard under the text, one button in a row
+        // (SPEC-012 §4.9). A message none of whose buttons can be drawn is not sent at all: its text
+        // only introduces the buttons.
+        if (message.ActionButtons is { } actionButtons)
+        {
+            var rows = BuildActionButtonRows(actionButtons);
+            if (rows.Count == 0)
+            {
+                return Task.FromResult(Result<ChannelMessageRef?>.Failure(
+                    ChannelAdapterErrorCodes.MessageSendFailed,
+                    "None of the action buttons of the message can be drawn in Telegram"));
+            }
+
+            return SendTextAsync(message.ChannelUserId, message.Text, new InlineKeyboardMarkup(rows), cancellationToken);
+        }
+
+        return SendTextAsync(message.ChannelUserId, message.Text, replyMarkup: null, cancellationToken);
+    }
 
     /// <summary>
-    /// Sends a plain text message to the user and reports back the coordinates of what was sent.
+    /// Turns the buttons of a message into rows of an inline keyboard, one button in a row, in the order
+    /// they are listed. A button that is malformed — neither a link nor a callback, or both — and a
+    /// callback button whose payload exceeds the budget the platform names are left out with a warning;
+    /// the rest are drawn.
+    /// </summary>
+    /// <param name="content">Buttons of the message.</param>
+    /// <returns>Rows of the keyboard; empty when no button can be drawn.</returns>
+    private List<IEnumerable<InlineKeyboardButton>> BuildActionButtonRows(ActionButtonsContent content)
+    {
+        var rows = new List<IEnumerable<InlineKeyboardButton>>(content.Buttons.Count);
+
+        foreach (var button in content.Buttons)
+        {
+            var hasUrl = !string.IsNullOrEmpty(button.Url);
+            var hasCallbackData = !string.IsNullOrEmpty(button.CallbackData);
+
+            if (hasUrl == hasCallbackData)
+            {
+                _logger.LogWarning(
+                    "An action button is not drawn in {ChannelType}: it must carry either a link or callback data, and only one of them",
+                    ChannelType);
+
+                continue;
+            }
+
+            if (hasUrl)
+            {
+                rows.Add([InlineKeyboardButton.WithUrl(button.Label, button.Url!)]);
+
+                continue;
+            }
+
+            // The payload goes to the platform as is, the ownership marker included. Its value comes
+            // from the operator's settings and is not logged.
+            var payloadBytes = Encoding.UTF8.GetByteCount(button.CallbackData!);
+            if (payloadBytes > TelegramAdapterConstants.CallbackDataMaxBytes)
+            {
+                _logger.LogWarning(
+                    "An action button is not drawn in {ChannelType}: its callback payload is {PayloadBytes} bytes, the platform limit is {MaxBytes}",
+                    ChannelType,
+                    payloadBytes,
+                    TelegramAdapterConstants.CallbackDataMaxBytes);
+
+                continue;
+            }
+
+            rows.Add([InlineKeyboardButton.WithCallbackData(button.Label, button.CallbackData!)]);
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Sends a text message to the user and reports back the coordinates of what was sent.
     /// </summary>
     /// <param name="channelUserId">Recipient within the channel.</param>
     /// <param name="text">Message text.</param>
+    /// <param name="replyMarkup">Keyboard shown with the message; null — none.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Reference to the sent message, or a failure.</returns>
     private async Task<Result<ChannelMessageRef?>> SendTextAsync(
         string channelUserId,
         string text,
+        ReplyMarkup? replyMarkup,
         CancellationToken cancellationToken)
     {
         try
@@ -388,6 +536,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
             var sentMessage = await clientResult.Value.SendMessage(
                 chatId: chatId,
                 text: text,
+                replyMarkup: replyMarkup,
                 cancellationToken: cancellationToken);
 
             _logger.LogDebug(
@@ -554,9 +703,11 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
 
     /// <inheritdoc />
     public async Task<Result<string>> GetDeepLinkAsync(
-        TransactionId transactionId,
+        DeepLinkRequest request,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
         try
         {
             // Resolve the tenant's deep link base URL via the seam (one resolve per operation).
@@ -579,11 +730,11 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
                 botUsername,
                 "?start=",
                 TelegramAdapterConstants.DeepLinkPrefix,
-                transactionId.ToString());
+                request.TransactionId.ToString());
 
             _logger.LogDebug(
                 "Deep link generated for transaction {TransactionId}",
-                transactionId.ToString());
+                request.TransactionId.ToString());
 
             return Result<string>.Success(deepLink);
         }
@@ -592,7 +743,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
             _logger.LogError(
                 ex,
                 "Error generating the deep link for transaction {TransactionId}",
-                transactionId.ToString());
+                request.TransactionId.ToString());
 
             return Result<string>.Failure(
                 ChannelAdapterErrorCodes.DeepLinkGenerationFailed,
@@ -601,11 +752,25 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
     }
 
     /// <inheritdoc />
+    public ValueTask<string?> GetBotNameAsync(CancellationToken cancellationToken = default) =>
+        // The method names the chat the way the user sees it: the bot username behind an at-sign.
+        // The name only decorates a text, so a failure to obtain it — unresolved credentials, a
+        // refused Bot API call — is answered with no name and never thrown: the text then goes
+        // without the name. A cancelled request is not such a failure: the cancellation goes on to
+        // the caller.
+        ChannelBotNameReader.ReadAsync(
+            async token => await _botInfoProvider.GetBotUsernameAsync(token),
+            TelegramAdapterConstants.BotUsernamePrefix,
+            ex => _logger.LogWarning(ex, "Failed to obtain the Telegram bot username for the chat name"),
+            cancellationToken);
+
+    /// <inheritdoc />
     public async Task<Result<bool>> ReportOutcomeAsync(
         TransactionOutcomeNotice notice,
         CancellationToken cancellationToken = default)
     {
-        // Telegram decides for itself how to show a terminal state; the core only states the intent.
+        // Telegram decides for itself how to show the reported state — the end of the transaction or
+        // the claims completion it is waiting on; the core only states the intent.
         // The two obligations of a live press are independent and are discharged separately: the
         // callback is owed an answer whenever one was pressed, while the message the button belongs
         // to is editable only when the event carried its coordinates. Order of addressing: token
@@ -621,7 +786,16 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
         // — token coordinates, then the stored prompt reference — and the first addressable one wins:
         // the second is not tried. This holds for the whole operation — a confirmation, a decline and
         // an expiry alike — because the ladder below is the only path any of them takes.
-        var mayReplacePrompt = notice.DisplayIntent is OutcomeNoticeDisplayIntent.ReplacePrompt;
+        //
+        // A terminal notice that names a phone number request skips both replacing steps whatever the
+        // intent says (SPEC-041 L73): the keyboard of the request is a reply keyboard, and only a new
+        // message can take it down. The question is left as it is — by then the state of claims
+        // completion stands in its place — and the receipt arrives as a new message. This is what an
+        // expiry with a request still waiting in the chat goes through, and the receipt that ends
+        // claims completion.
+        var intendsNewMessage = notice.DisplayIntent is not OutcomeNoticeDisplayIntent.ReplacePrompt;
+        var takesDownPhoneRequest = notice.IsTerminal && notice.PhoneRequestMessage is not null;
+        var mayReplacePrompt = !intendsNewMessage && !takesDownPhoneRequest;
 
         if (TryUnpackInboundToken(notice.InboundToken, out var callbackQueryId, out var tokenMessage))
         {
@@ -655,7 +829,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
             return ToOutcomeResult(promptEditResult);
         }
 
-        if (!mayReplacePrompt)
+        if (intendsNewMessage)
         {
             // NewMessage: the question keeps its text and loses its keyboard. Addressed by the same
             // order as an edit above — token coordinates first, the stored reference second — and
@@ -680,9 +854,16 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
         }
 
         // Nothing addressable left (polling without a stored prompt, a restarted process on a path
-        // that carried no token), or nothing the intent allows to replace: the status still reaches
-        // the user, as a new message.
-        var sendResult = await SendTextAsync(notice.ChannelUserId, notice.StatusText, cancellationToken);
+        // that carried no token), nothing the intent allows to replace, or a phone number request to
+        // take down: the status still reaches the user, as a new message.
+        //
+        // A terminal receipt also takes down the keyboard of a phone number request (SPEC-041 L73):
+        // a reply keyboard can only be removed by a new message — the edits above accept inline
+        // markup alone. A chat that shows no such keyboard loses nothing by it. The state of claims
+        // completion leaves the keyboard alone: it arrives after the request it would take away.
+        ReplyMarkup? replyMarkup = notice.IsTerminal ? new ReplyKeyboardRemove() : null;
+        var sendResult = await SendTextAsync(
+            notice.ChannelUserId, notice.StatusText, replyMarkup, cancellationToken);
         return sendResult.IsSuccess
             ? Result<bool>.Success(true)
             : Result<bool>.Failure(sendResult.Error);
@@ -1022,8 +1203,55 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
             });
         }
 
+        // A press of a callback item of the post-sign-in menu (SPEC-012 §4.9). The marker alone, with
+        // no value after it, names no item: such a payload is left unrelated and is not answered.
+        if (data.StartsWith(CallbackDataPrefixes.MenuItem, StringComparison.Ordinal)
+            && data.Length > CallbackDataPrefixes.MenuItem.Length)
+        {
+            return await ProcessMenuItemPressAsync(
+                callbackQuery, data[CallbackDataPrefixes.MenuItem.Length..], cancellationToken);
+        }
+
         // Unknown prefix — an irrelevant event
         return Result<ChannelInboundResult>.Success(new ChannelUnrelatedResult { RawEvent = callbackQuery });
+    }
+
+    /// <summary>
+    /// Handles a press of a callback item of the post-sign-in menu: answers the press and reports the
+    /// value of the item with the identity of the user who pressed it.
+    /// </summary>
+    /// <param name="callbackQuery">Callback query from Telegram.</param>
+    /// <param name="value">Value of the item — what follows the marker in the payload; not empty.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The processing result.</returns>
+    private async Task<Result<ChannelInboundResult>> ProcessMenuItemPressAsync(
+        CallbackQuery callbackQuery,
+        string value,
+        CancellationToken cancellationToken)
+    {
+        var user = callbackQuery.From;
+
+        _logger.LogInformation(
+            "Menu item press received from user {UserIdHash}",
+            LogMasking.Fingerprint(user.Id.ToString(CultureInfo.InvariantCulture)));
+
+        // The press is answered right here: the result carries no interaction token for the core to
+        // hand back, and a press left unanswered keeps its loading indicator.
+        var answerResult = await AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken);
+        if (answerResult.IsFailure)
+        {
+            _logger.LogWarning(
+                "Failed to answer the Telegram callback query of a menu item. Error: {ErrorCode}",
+                answerResult.Error.Code);
+        }
+
+        return Result<ChannelInboundResult>.Success(new ChannelMenuItemPressedResult
+        {
+            Identity = ExtractIdentitySnapshotFromUser(user, _timeProvider.GetUtcNow()),
+            Value = value,
+            PressId = callbackQuery.Id,
+            RawEvent = callbackQuery
+        });
     }
 
     /// <summary>
@@ -1050,10 +1278,12 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
         // carried along, so the core can answer such a message when the registration declares a text
         // for it (SPEC-003 CA-201); From is non-null here because ValidateMessageContext — the single
         // caller's gate — refuses a message without one. No avatar is requested: a network call per
-        // arbitrary message buys nothing here.
+        // arbitrary message buys nothing here. The text travels too: the secondary button of the phone
+        // number request is a plain keyboard button, and its label is all its press sends (SPEC-041 L73).
         return Result<ChannelInboundResult>.Success(new ChannelUnaddressedResult
         {
             Identity = ExtractIdentitySnapshotFromUser(message.From!, _timeProvider.GetUtcNow()),
+            Text = message.Text,
             RawEvent = message
         });
     }
@@ -1152,7 +1382,10 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
 
     /// <summary>
     /// Handles a message with a contact (phone number).
-    /// Validation CA-004: Contact.UserId must match From.Id.
+    /// Ownership (CA-004, SPEC-041 L45): the contact names the sender (<c>Contact.UserId == From.Id</c>)
+    /// and the message is not forwarded. A contact that fails it — somebody else's card, a card from the
+    /// address book without a user id, a forwarded one — is still reported, marked as rejected, so the
+    /// phone step can ask again (L46).
     /// </summary>
     /// <param name="message">Message with a contact.</param>
     /// <returns>The processing result.</returns>
@@ -1168,29 +1401,39 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter
                 "Sender info is missing in the contact message");
         }
 
-        // CA-004: check that the contact belongs to the sender
-        if (contact.UserId is null || contact.UserId != user.Id)
+        var ownershipRejected = contact.UserId is null
+            || contact.UserId != user.Id
+            || message.ForwardOrigin is not null;
+
+        if (ownershipRejected)
         {
             _logger.LogWarning(
-                "Contact does not belong to the sender: Contact.UserIdHash = {ContactUserIdHash}, From.IdHash = {FromIdHash}",
+                "Contact does not belong to the sender: Contact.UserIdHash = {ContactUserIdHash}, From.IdHash = {FromIdHash}, Forwarded = {Forwarded}",
                 LogMasking.Fingerprint(contact.UserId?.ToString(CultureInfo.InvariantCulture)),
+                LogMasking.Fingerprint(user.Id.ToString(CultureInfo.InvariantCulture)),
+                message.ForwardOrigin is not null);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Phone number received from user {UserIdHash}",
                 LogMasking.Fingerprint(user.Id.ToString(CultureInfo.InvariantCulture)));
-
-            return Result<ChannelInboundResult>.Failure(
-                ChannelAdapterErrorCodes.PhoneExtractionFailed,
-                "The contact does not belong to the message sender");
         }
 
-        var identity = ExtractIdentitySnapshotFromUser(user, _timeProvider.GetUtcNow());
-
-        _logger.LogInformation(
-            "Phone number received from user {UserIdHash}",
-            LogMasking.Fingerprint(user.Id.ToString(CultureInfo.InvariantCulture)));
+        // The number is handed on in E.164 by the one rule of the core (SPEC-041 L47, SPEC-003 CA-009):
+        // the platform states no format of the field. A number with no E.164 form counts as absent; it
+        // does not touch the ownership, which the check above alone decides.
+        var phoneNumber = E164PhoneNumber.TryNormalize(
+            contact.PhoneNumber,
+            out var normalizedPhone)
+                ? normalizedPhone
+                : string.Empty;
 
         return Result<ChannelInboundResult>.Success(new ChannelPhoneSharedResult
         {
-            PhoneNumber = contact.PhoneNumber,
-            Identity = identity,
+            PhoneNumber = phoneNumber,
+            Identity = ExtractIdentitySnapshotFromUser(user, _timeProvider.GetUtcNow()),
+            OwnershipRejected = ownershipRejected,
             RawEvent = message
         });
     }

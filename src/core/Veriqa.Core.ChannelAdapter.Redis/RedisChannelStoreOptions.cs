@@ -12,7 +12,9 @@ namespace Veriqa.Core.ChannelAdapter.Redis;
 /// another one. Record lifetimes are not configured here: a token or a correlation lives exactly as
 /// long as the entity says it does (<c>ExpiresAt</c>), and prompt coordinates live as long as the
 /// longest transaction the engine can create, plus the margin in which the expiry event that
-/// consumes them is published. The single lifetime that has no owning entity — the retention of
+/// consumes them is published; a phone number request correlation, a link handle and a start code
+/// live until their own <c>ExpiresAt</c>; the state of the page of a web provider channel lives until the
+/// moment its writer states. The single lifetime that has no owning entity — the retention of
 /// processed message-ids — is settable below.
 /// </remarks>
 public sealed class RedisChannelStoreOptions
@@ -36,6 +38,31 @@ public sealed class RedisChannelStoreOptions
     /// Default key prefix of the processed inbound message-ids (deduplication of redelivery).
     /// </summary>
     public const string DefaultProcessedMessageKeyPrefix = "veriqa:ch:email:msg:";
+
+    /// <summary>
+    /// Default prefix of the keys of the email completion of the web step.
+    /// </summary>
+    public const string DefaultEmailClaimCompletionKeyPrefix = "veriqa:ch:email:claim:";
+
+    /// <summary>
+    /// Default key prefix of the phone number request correlations.
+    /// </summary>
+    public const string DefaultPhoneRequestCorrelationKeyPrefix = "veriqa:ch:phone:";
+
+    /// <summary>
+    /// Default key prefix of the link handles.
+    /// </summary>
+    public const string DefaultLinkHandleKeyPrefix = "veriqa:ch:link:";
+
+    /// <summary>
+    /// Default key prefix of the start codes.
+    /// </summary>
+    public const string DefaultStartCodeKeyPrefix = "veriqa:ch:code:";
+
+    /// <summary>
+    /// Default key prefix of the state of the pages of the web provider channels.
+    /// </summary>
+    public const string DefaultWebProviderStateKeyPrefix = "veriqa:ch:webprovider:";
 
     /// <summary>
     /// Default retention of a processed message-id record — matches the in-process default, so
@@ -79,6 +106,43 @@ public sealed class RedisChannelStoreOptions
     /// Default: "veriqa:ch:email:msg:".
     /// </summary>
     public string ProcessedMessageKeyPrefix { get; set; } = DefaultProcessedMessageKeyPrefix;
+
+    /// <summary>
+    /// Prefix of the keys of the email completion of the web step: the records of the transactions, the
+    /// index of the link tokens and the counters of the completion mails. What follows it names neither
+    /// an address nor a channel account in clear text — only their fingerprints.
+    /// Default: "veriqa:ch:email:claim:".
+    /// </summary>
+    public string EmailClaimCompletionKeyPrefix { get; set; } = DefaultEmailClaimCompletionKeyPrefix;
+
+    /// <summary>
+    /// Prefix of the phone number request correlation keys. What follows it is a hash of the chat,
+    /// never the channel user identifier itself.
+    /// Default: "veriqa:ch:phone:".
+    /// </summary>
+    public string PhoneRequestCorrelationKeyPrefix { get; set; } = DefaultPhoneRequestCorrelationKeyPrefix;
+
+    /// <summary>
+    /// Prefix of the link handle keys. What follows it is the fingerprint of the handle, never the
+    /// handle itself.
+    /// Default: "veriqa:ch:link:".
+    /// </summary>
+    public string LinkHandleKeyPrefix { get; set; } = DefaultLinkHandleKeyPrefix;
+
+    /// <summary>
+    /// Prefix of the keys of the short codes a sign-in is started by (the records by code and the
+    /// records by transaction). What follows it is a hash, never the code itself.
+    /// Default: "veriqa:ch:code:".
+    /// </summary>
+    public string StartCodeKeyPrefix { get; set; } = DefaultStartCodeKeyPrefix;
+
+    /// <summary>
+    /// Prefix of the keys of the state of the pages of the web provider channels: the sessions of the
+    /// pages, the questions, the feeds of the accounts and the outcomes. What follows it names neither
+    /// the mark a browser holds nor an account in clear text — only their hashes.
+    /// Default: "veriqa:ch:webprovider:".
+    /// </summary>
+    public string WebProviderStateKeyPrefix { get; set; } = DefaultWebProviderStateKeyPrefix;
 
     /// <summary>
     /// How long the record of a processed inbound email is kept for deduplication of provider

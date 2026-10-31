@@ -4,7 +4,7 @@
 namespace Veriqa.Core.ChannelAdapter.UI;
 
 /// <summary>
-/// The two rules that turn resolved design values into the branding of a generated page. They live in
+/// The rules that turn resolved design values into the branding of a generated page. They live in
 /// ONE place on purpose: the sign-in window and the service pages must not be able to answer "is this
 /// page branded" differently, and both reach these rules — the window through the auth server's own
 /// design object, the service pages through <see cref="CorePageBrandingResolver"/>.
@@ -33,4 +33,20 @@ public static class CorePageBrandingRules
         effectivePreset is DesignPreset.Branded && CorePageHead.IsValidBrandColor(color)
             ? color
             : null;
+
+    /// <summary>
+    /// Value of the <c>data-theme</c> attribute of a page (SPEC-015 §2.2): an explicit Light or Dark
+    /// wins; Auto follows the browser setting (<c>prefers-color-scheme</c>), except that the Dark
+    /// preset (SPEC-012 §4.2) yields a dark page as well.
+    /// </summary>
+    /// <param name="declared">Color scheme the levels resolved to.</param>
+    /// <param name="effectivePreset">Preset already resolved by <see cref="EffectivePreset"/>.</param>
+    /// <returns>One of the theme names of <see cref="CorePageThemes"/>.</returns>
+    public static string EffectiveTheme(AuthPageTheme declared, DesignPreset effectivePreset) =>
+        declared switch
+        {
+            AuthPageTheme.Light => CorePageThemes.Light,
+            AuthPageTheme.Dark => CorePageThemes.Dark,
+            _ => effectivePreset is DesignPreset.Dark ? CorePageThemes.Dark : CorePageThemes.Auto
+        };
 }

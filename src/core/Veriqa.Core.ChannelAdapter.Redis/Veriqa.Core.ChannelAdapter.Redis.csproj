@@ -12,7 +12,7 @@
     <PackageId>Veriqa.Core.ChannelAdapter.Redis</PackageId>
     <Authors>Veriqa</Authors>
     <Description>Redis-backed channel stores for Veriqa — prompt coordinates, Email action tokens and Email push correlations shared across replicas (satellite package).</Description>
-    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;channels;redis</PackageTags>
+    <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;channels;redis;scale-out</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license
          file has to travel inside the package. -->
@@ -31,10 +31,11 @@
 
   <ItemGroup>
     <!-- The channel contour carries IChannelPromptMessageStore and the builder this package extends;
-         the Email satellite carries the two Email ports. Both are referenced explicitly because both
-         are implemented here. -->
+         the Email satellite carries the Email ports, the web provider satellite the state store of its
+         pages. All are referenced explicitly because all are implemented here. -->
     <ProjectReference Include="..\Veriqa.Core.ChannelAdapter\Veriqa.Core.ChannelAdapter.csproj" />
     <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.Email\Veriqa.Core.ChannelAdapter.Email.csproj" />
+    <ProjectReference Include="..\Veriqa.Core.ChannelAdapter.WebProviders\Veriqa.Core.ChannelAdapter.WebProviders.csproj" />
   </ItemGroup>
 
 </Project>

@@ -8,9 +8,11 @@ using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 using Veriqa.Core.ChannelAdapter.Abstractions;
+using Veriqa.Core.ChannelAdapter.Email.ClaimCompletion;
 using Veriqa.Core.ChannelAdapter.Email.Services;
 using Veriqa.Core.ChannelAdapter.Redis;
 using Veriqa.Core.ChannelAdapter.Redis.Stores;
+using Veriqa.Core.ChannelAdapter.WebProviders.State;
 
 namespace Veriqa.Core.ChannelAdapter.DependencyInjection;
 
@@ -18,23 +20,30 @@ namespace Veriqa.Core.ChannelAdapter.DependencyInjection;
 public static class ChannelAdapterBuilderRedisExtensions
 {
     /// <summary>
-    /// Uses Redis-backed channel stores (prompt coordinates, Email action tokens and Email push
-    /// correlations) instead of the in-process defaults, so a magic link opened on another replica
-    /// still resolves.
+    /// Uses Redis-backed channel stores (prompt coordinates, phone number request correlations, link
+    /// handles, start codes, Email action tokens, Email push correlations, the store of the email
+    /// completion and the state of the pages of the web provider channels) instead of the in-process
+    /// defaults, so a magic link opened on another replica still resolves, and so does a shared contact
+    /// that lands on a replica other than the one that asked for it; a link handle issued by one
+    /// replica is exchanged by another, a start code shown by one replica starts the sign-in on another,
+    /// and a code of the email completion sent by one replica is checked by another; the page of a web
+    /// provider channel shows its question, its feed and its outcome whichever replica the browser
+    /// lands on.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Supported extension point: the implementation is complete, but no host in this repository
-    /// wires it (hosts keep the in-process defaults). Its degradation is therefore not tracked by CI
-    /// — validate it in the consuming host when you enable it.
+    /// Supported extension point: the shipped standalone host wires it by configuration — a
+    /// connection string in <c>Veriqa:ChannelStores:Redis:ConnectionString</c>; without it the host
+    /// keeps the in-process defaults. CI does not run that host against a live Redis — validate the
+    /// connection in the consuming host when you enable it.
     /// </para>
     /// <para>
-    /// The three ports are registered unconditionally, so the result does not depend on whether this
-    /// call comes before or after <c>AddEmail()</c>: the shipped in-process defaults are registered
-    /// with <c>TryAddSingleton</c>, and a <c>TryAdd</c> here would lose to them and silently leave
-    /// the deployment on in-process stores. The multiplexer, by contrast, is registered with
-    /// <c>TryAddSingleton</c> — the Transaction Engine Redis satellite registers one too, and a
-    /// second unconditional registration would shadow it. Which of the two multiplexer registrations
+    /// The eight ports are registered unconditionally, so the result does not depend on whether this
+    /// call comes before or after <c>AddEmail()</c> or <c>AddWebProviders()</c>: the shipped in-process
+    /// defaults are registered with <c>TryAddSingleton</c>, and a <c>TryAdd</c> here would lose to them
+    /// and silently leave the deployment on in-process stores. The multiplexer, by contrast, is
+    /// registered with <c>TryAddSingleton</c> — the Transaction Engine Redis satellite registers one
+    /// too, and a second unconditional registration would shadow it. Which of the two multiplexer registrations
     /// ends up winning is judged when the host starts, so a conflicting connection string is caught
     /// whichever of the two calls came first.
     /// </para>
@@ -88,10 +97,15 @@ public static class ChannelAdapterBuilderRedisExtensions
             new RedisChannelStoreConnectionSource(adapters.Services, ownRegistration));
 
         // Unconditional: the in-process defaults are TryAdd-registered, so this call must win
-        // regardless of the order it appears in relative to AddEmail().
+        // regardless of the order it appears in relative to AddEmail() and AddWebProviders().
         adapters.Services.AddSingleton<IChannelPromptMessageStore, RedisChannelPromptMessageStore>();
+        adapters.Services.AddSingleton<IPhoneRequestCorrelationStore, RedisPhoneRequestCorrelationStore>();
+        adapters.Services.AddSingleton<ILinkHandleStore, RedisLinkHandleStore>();
+        adapters.Services.AddSingleton<IChannelStartCodeStore, RedisChannelStartCodeStore>();
         adapters.Services.AddSingleton<IEmailActionTokenStore, RedisEmailActionTokenStore>();
         adapters.Services.AddSingleton<IEmailPushCorrelationStore, RedisEmailPushCorrelationStore>();
+        adapters.Services.AddSingleton<IEmailClaimCompletionStore, RedisEmailClaimCompletionStore>();
+        adapters.Services.AddSingleton<IWebProviderStateStore, RedisWebProviderStateStore>();
 
         adapters.Services.AddHostedService<RedisChannelStoreStartupValidator>();
 
