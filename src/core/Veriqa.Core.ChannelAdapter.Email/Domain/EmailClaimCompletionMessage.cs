@@ -40,6 +40,17 @@ public sealed record EmailClaimCompletionMessage(
     public required ResolutionContext Ownership { get; init; }
 
     /// <summary>
+    /// Type of the transaction the mail is sent for: the wording of the mail is addressed by it, as for
+    /// <see cref="EmailLoginMessage.TransactionType"/>. Null — the wording of the kind itself answers.
+    /// </summary>
+    public string? TransactionType { get; init; }
+
+    /// <summary>
+    /// Action the transaction confirms, as for <see cref="EmailLoginMessage.ActionType"/>; null — none.
+    /// </summary>
+    public string? ActionType { get; init; }
+
+    /// <summary>
     /// Time zone the expiry of the mail is shown in (an IANA identifier); null — UTC with the marker
     /// that says so. It travels beside <see cref="Locale"/>, as for <see cref="EmailLoginMessage.TimeZone"/>.
     /// </summary>

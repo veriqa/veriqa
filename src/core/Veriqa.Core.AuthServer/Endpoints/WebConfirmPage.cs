@@ -211,9 +211,8 @@ internal static class WebConfirmPage
         try
         {
             prompt = await services.GetRequiredService<IMessageTemplateAccessor>().RequireAsync(
-                MessageKinds.ConfirmationPrompt,
-                MessageSurfaces.CorePage,
-                string.IsNullOrEmpty(channelType) ? null : channelType,
+                TransactionMessageAddress.Of(
+                    MessageKinds.ConfirmationPrompt, MessageSurfaces.CorePage, transaction, channelType),
                 context.Ownership,
                 cancellationToken);
         }

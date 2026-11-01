@@ -507,6 +507,7 @@ public static partial class EmailAuthEndpoints
             InitiatorContext = promptContext,
             TimeZone = recipientTimeZone,
             TransactionType = transaction.Type,
+            ActionType = transaction.ConfirmationSnapshot?.ActionType,
             Code = code,
             CarriesLink = signInModes.PullCarriesLink
         };

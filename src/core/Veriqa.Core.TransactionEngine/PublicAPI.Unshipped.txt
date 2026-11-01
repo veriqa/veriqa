@@ -847,7 +847,6 @@ const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.OutcomeErrorInChannel = "Something went wrong ⚠️ Go back to the sign-in page and start again." -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.OutcomeErrorNeutral = "Something went wrong. Go back to the sign-in page and start again." -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.OutcomeTooManyAttempts = "Too many attempts. Wait a minute and start the sign-in again." -> string!
-const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillMailIntro = "This mail confirms sign-in to Veriqa. Do not change the subject or the body of the mail." -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillMailSubject = "Sign in" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillWithoutPayload = "Send this message to sign in." -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PromptAnomalyGeneric = "⚠ This request looks unusual — confirm only if it was you" -> string!
@@ -1227,6 +1226,19 @@ const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailTextIntro = "A confirmation was requested." -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailSubject = "Confirmation for {app}" -> string!
 const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationMailTitle = "Confirmation required" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillMailIntro = "This mail confirms sign-in. Do not change the subject or the body of the mail." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillMailSubjectWithApp = "Sign in to {app}: {token}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillMailSubjectWithToken = "Sign in: {token}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.PrefillMailBody = "{prefill_intro}\n\nToken: {token}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationPrefillWithoutPayload = "Send this message to continue." -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationWhatsappPrefillWithApp = "Confirm in {app}\nSend this message to continue.\n\nAccess code\n{code}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationWhatsappPrefillWithoutApp = "Send this message to continue.\n\nAccess code\n{code}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationWhatsappRuledPrefillWithApp = "------------------------\n   CONFIRM IN {app}\n------------------------\nJust send this message.\n\nAccess code:\n{code}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationWhatsappRuledPrefillWithoutApp = "------------------------\nJust send this message to continue.\n------------------------\n\nAccess code:\n{code}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationPrefillMailSubject = "Confirm" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationPrefillMailSubjectWithApp = "Confirm in {app}: {token}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationPrefillMailSubjectWithToken = "Confirm: {token}" -> string!
+const Veriqa.Core.TransactionEngine.MessageTemplates.MessageTemplateNaturalKeys.ConfirmationPrefillMailBody = "This mail continues the confirmation. Do not change the subject or the body of the mail.\n\nToken: {token}" -> string!
 Veriqa.Core.TransactionEngine.Services.OidcContext.ApplicationName.get -> string?
 Veriqa.Core.TransactionEngine.Services.OidcContext.ApplicationName.init -> void
 Veriqa.Core.TransactionEngine.Services.OidcContext.BrandName.get -> string?

@@ -13,7 +13,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.Contracts</PackageId>
     <Authors>Veriqa</Authors>
-    <Title>Custom channel adapter contracts for passwordless login</Title>
+    <Title>Custom channel adapter contracts for passwordless QR code login</Title>
     <Description>Veriqa Core Contracts — MIT-licensed contracts for building channel adapters against the Veriqa authentication core (IChannelAdapter, Result, TransactionId).</Description>
     <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;contracts;channel-adapter;custom-channel;spi</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

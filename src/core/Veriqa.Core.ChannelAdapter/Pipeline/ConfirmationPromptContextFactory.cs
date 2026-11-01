@@ -264,9 +264,10 @@ internal sealed class ConfirmationPromptContextFactory : IConfirmationPromptCont
         }
 
         // Neither the surface nor the channel is named: the wording of a subject does not depend on
-        // where it is shown, and an axis that is not named is not asked about at all. The ownership
-        // context is the transaction's — the application level takes part, because it is the
-        // application that picks the contract of the message (SPEC-039 R3/C14, SPEC-036 TPL-112).
+        // where it is shown, and an axis that is not named is not asked about at all. Nor are the type and
+        // the action type: the action type IS the kind here, and a declaration has no group to narrow it by.
+        // The ownership context is the transaction's — the application level takes part, because it is
+        // the application that picks the contract of the message (SPEC-039 R3/C14, SPEC-036 TPL-112).
         var message = await _messageTemplates.FindAsync(
             actionType,
             surface: null,

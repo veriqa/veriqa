@@ -227,9 +227,80 @@ public static class MessageTemplateNaturalKeys
     public const string PrefillMailSubject = "Sign in";
 
     /// <summary>
-    /// Opening line of the mail prefill whose body carries the correlation token: it asks the user not to
-    /// edit what he is about to send, since the token travels in the text.
+    /// Opening line of the mail prefill whose body carries the correlation token, when the application name
+    /// is unavailable: it asks the user not to edit what they are about to send, since the token travels in
+    /// the text.
     /// </summary>
     public const string PrefillMailIntro =
-        "This mail confirms sign-in to Veriqa. Do not change the subject or the body of the mail.";
+        "This mail confirms sign-in. Do not change the subject or the body of the mail.";
+
+    /// <summary>
+    /// Subject of the mail prefill that carries the correlation token and names the application.
+    /// </summary>
+    public const string PrefillMailSubjectWithApp = "Sign in to {app}: {token}";
+
+    /// <summary>
+    /// Subject of the mail prefill that carries the correlation token, when the application name is
+    /// unavailable.
+    /// </summary>
+    public const string PrefillMailSubjectWithToken = "Sign in: {token}";
+
+    /// <summary>
+    /// Body of the mail prefill that carries the correlation token. The application is named by the
+    /// subject alone: the whole mail goes into the link and its QR code.
+    /// </summary>
+    public const string PrefillMailBody = "{prefill_intro}\n\nToken: {token}";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="PrefillWithoutPayload"/>: the transaction goes on after the
+    /// message is sent, since the question of a confirmation is asked on its page.
+    /// </summary>
+    public const string ConfirmationPrefillWithoutPayload =
+        "Send this message to continue.";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="WhatsappPrefillWithApp"/>.
+    /// </summary>
+    public const string ConfirmationWhatsappPrefillWithApp =
+        "Confirm in {app}\nSend this message to continue.\n\nAccess code\n{code}";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="WhatsappPrefillWithoutApp"/>.
+    /// </summary>
+    public const string ConfirmationWhatsappPrefillWithoutApp =
+        "Send this message to continue.\n\nAccess code\n{code}";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="WhatsappRuledPrefillWithApp"/>.
+    /// </summary>
+    public const string ConfirmationWhatsappRuledPrefillWithApp =
+        "------------------------\n   CONFIRM IN {app}\n------------------------\nJust send this message.\n\nAccess code:\n{code}";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="WhatsappRuledPrefillWithoutApp"/>.
+    /// </summary>
+    public const string ConfirmationWhatsappRuledPrefillWithoutApp =
+        "------------------------\nJust send this message to continue.\n------------------------\n\nAccess code:\n{code}";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="PrefillMailSubject"/>.
+    /// </summary>
+    public const string ConfirmationPrefillMailSubject = "Confirm";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="PrefillMailSubjectWithApp"/>.
+    /// </summary>
+    public const string ConfirmationPrefillMailSubjectWithApp = "Confirm in {app}: {token}";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="PrefillMailSubjectWithToken"/>.
+    /// </summary>
+    public const string ConfirmationPrefillMailSubjectWithToken = "Confirm: {token}";
+
+    /// <summary>
+    /// Confirmation wording of <see cref="PrefillMailBody"/>, stated in the text so that the wording of a
+    /// confirmation needs no contract of its own beside the contract of the kind.
+    /// </summary>
+    public const string ConfirmationPrefillMailBody =
+        "This mail continues the confirmation. Do not change the subject or the body of the mail.\n\nToken: {token}";
 }

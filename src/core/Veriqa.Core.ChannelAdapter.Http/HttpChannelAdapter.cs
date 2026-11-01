@@ -540,9 +540,9 @@ internal sealed class HttpChannelAdapter : IChannelAdapter, IChannelDisplayMetad
 
     /// <summary>
     /// Renders the prefill text of a deep link the way the built-in channels render it (SPEC-042 C37,
-    /// SPEC-003 §10.4): the <c>deeplink-prefill</c> template at the address "in-channel surface + the
-    /// channel type of this registration + the purpose of the link + the owners of the transaction", in
-    /// the language of the transaction, with the application name and the sign-in code
+    /// SPEC-003 §10.4): the <c>deeplink-prefill</c> template at the address "the type and the action
+    /// type of the transaction + in-channel surface + the channel type of this registration + the purpose
+    /// of the link + the owners of the transaction", in the language of the transaction, with the application name and the sign-in code
     /// <c>auth_&lt;transaction&gt;</c> as the values of their slots. Whether the code is in the text is the
     /// template's: the core always fills the <c>{code}</c> slot but does not require the template to state
     /// it. A template the core cannot resolve, or a ladder none of whose steps states the plain-text

@@ -6,10 +6,14 @@ The sign-in device shows a QR code, the user signs in to the provider on the pho
 confirms there, and the sign-in completes on the device. No password is typed on the sign-in device,
 and your application receives the same standard OpenID Connect tokens as from any other channel.
 
+![Signing in on a computer with Google: the phone camera scans the QR code, the user picks a Google account, taps Yes on the confirmation page, and sees "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-google-cross-device.webp)
+
 Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
 authentication through popular messaging apps and email, over standard OpenID Connect.
 Documentation: [Sign in with a provider account](https://veriqa.app/docs/scenarios/provider-account-sign-in),
 setup: [Channel setup](https://veriqa.app/docs/guides/channels#sign-in-with-a-provider-account).
+
+Gallery: [sign-in and confirmation in a Google account](https://gitlab.com/veriqa/veriqa/-/blob/main/gallery-and-docs/README.md#google). Use cases: [second factor and step-up](https://veriqa.app/docs/scenarios/step-up), [all use cases](https://veriqa.app/docs/scenarios/overview).
 
 ## About this package
 

@@ -70,6 +70,12 @@ public sealed record EmailLoginMessage(
     public string? TransactionType { get; init; }
 
     /// <summary>
+    /// Action the transaction confirms: the wording of the mail is addressed by it under
+    /// <see cref="TransactionType"/>. Null — the transaction confirms no declared action.
+    /// </summary>
+    public string? ActionType { get; init; }
+
+    /// <summary>
     /// Code of the mail, entered on the page the address was typed into (message kinds
     /// <c>sign-in-code-mail</c> and <c>sign-in-code-link-mail</c>); null — the mail carries no code, and it
     /// is the mail of the magic link (<c>sign-in-mail</c>).

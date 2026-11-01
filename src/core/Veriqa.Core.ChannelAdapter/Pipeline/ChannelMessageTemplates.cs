@@ -20,9 +20,9 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 /// The core implementation of <see cref="IChannelMessageTemplates"/>: one instance serves every
 /// channel. It resolves through <see cref="IMessageTemplateAccessor"/> — the single point a message of
 /// the channel contour is resolved at — and holds no channel of its own: the channel is read off the
-/// adapter on each call, the surface is always the in-channel one, and the ownership levels, the
-/// locale, the time zone and the application name come from the transaction. A call for a link request
-/// names the purpose of the link as well.
+/// adapter on each call, the surface is always the in-channel one, and the type and the action type of
+/// the address, the ownership levels, the locale, the time zone and the application name come from the
+/// transaction. A call for a link request names the purpose of the link as well.
 /// </summary>
 internal sealed class ChannelMessageTemplates : IChannelMessageTemplates
 {
@@ -147,21 +147,17 @@ internal sealed class ChannelMessageTemplates : IChannelMessageTemplates
                 ? ResolutionContext.Core
                 : TransactionResolutionContext.For(transaction);
 
-            var message = linkPurpose is null
-                ? await _messageTemplates.RequireAsync(
-                    kind,
-                    MessageSurfaces.InChannel,
-                    channelType,
-                    ownership,
-                    cancellationToken)
-                : await _messageTemplates.RequireAsync(
-                    ConfigDimensionValues.Of(
-                        (MessageTemplateConfigKeys.KindDimensionName, kind),
-                        (MessageTemplateConfigKeys.SurfaceDimensionName, MessageSurfaces.InChannel),
-                        (MessageTemplateConfigKeys.ChannelDimensionName, channelType),
-                        (MessageTemplateConfigKeys.LinkPurposeDimensionName, linkPurpose)),
-                    ownership,
-                    cancellationToken);
+            // The transaction narrows the address as it does for every message of the mechanism, so a wording
+            // stated at ByType or ByAction is read; a transaction the store does not have names only the channel.
+            var address = TransactionMessageAddress.Of(
+                kind,
+                MessageSurfaces.InChannel,
+                transaction?.Type,
+                transaction?.ConfirmationSnapshot?.ActionType,
+                channelType,
+                linkPurpose);
+
+            var message = await _messageTemplates.RequireAsync(address, ownership, cancellationToken);
 
             return Result<ResolvedChannelMessage>.Success(new ResolvedChannelMessage(
                 message,

@@ -264,6 +264,8 @@ internal sealed class EmailClaimCompletion : IClaimCompletionEmail
                 LocaleOf(language))
             {
                 Ownership = transaction.ToResolutionContext(tenantId),
+                TransactionType = transaction.Type,
+                ActionType = transaction.ConfirmationSnapshot?.ActionType,
                 TimeZone = transaction.GetUiTimeZone(),
                 BrandName = transaction.GetBrandName()
             };

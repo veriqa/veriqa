@@ -1,6 +1,6 @@
 # Veriqa.Core.ChannelAdapter.Http
 
-**Login and authentication through any messaging app or bot, with an adapter in any language.**
+**Login and authentication by QR code through any messaging app or bot, with an adapter in any language.**
 Write the adapter for your corporate messaging app, a regional platform or the bot you already run
 as a separate service — in Node, Python, Go or anything else that speaks HTTP — and plug it into
 Veriqa by configuration, without a line of .NET and without rebuilding the host. Your users sign in
@@ -9,6 +9,8 @@ through it exactly as through a built-in channel.
 Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
 authentication through popular messaging apps and email, over standard OpenID Connect.
 Documentation: [HTTP channel](https://veriqa.app/docs/guides/http-channel-adapter).
+
+Use cases: [passwordless sign-in](https://veriqa.app/docs/scenarios/passwordless-login), [second factor and step-up](https://veriqa.app/docs/scenarios/step-up), [all use cases](https://veriqa.app/docs/scenarios/overview).
 
 ## About this package
 

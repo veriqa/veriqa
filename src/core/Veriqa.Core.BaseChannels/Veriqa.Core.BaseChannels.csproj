@@ -13,7 +13,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.BaseChannels</PackageId>
     <Authors>Veriqa</Authors>
-    <Title>Telegram, WhatsApp and email login for ASP.NET Core</Title>
+    <Title>Telegram, WhatsApp and email login by QR code for ASP.NET Core</Title>
     <Description>Telegram, WhatsApp and Email login and authentication in one package: a Veriqa metapackage pulling the channel contour together with the Telegram, WhatsApp and Email channels. Other channels ship as separate packages.</Description>
     <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;channels;metapackage;telegram;whatsapp;email;telegram-login;telegram-authentication;whatsapp-login;whatsapp-authentication;email-login;magic-link</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.

@@ -11,7 +11,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter.Email</PackageId>
     <Authors>Veriqa</Authors>
-    <Title>Email login, magic link and one-tap email authentication for ASP.NET Core</Title>
+    <Title>Email login by QR code, magic link and one-tap email authentication for ASP.NET Core</Title>
     <Description>Email login and authentication for ASP.NET Core and OpenIddict. Add passwordless login by email to your website or app over standard OpenID Connect (OIDC): a magic link with a QR code, or the one-tap email — the user sends a pre-filled email with one tap, nothing to type. Over SMTP, with inbound email from a provider webhook or IMAP; for users without a messaging app. Veriqa channel adapter (satellite package).</Description>
     <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;email;email-login;email-auth;email-authentication;passwordless-email;magic-link;magic-link-login;one-tap-email;smtp;imap</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.

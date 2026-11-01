@@ -16,8 +16,8 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.AuthServer</PackageId>
     <Authors>Veriqa</Authors>
-    <Title>Passwordless login and OpenID Connect (OIDC) server for ASP.NET Core</Title>
-    <Description>Passwordless login and authentication for ASP.NET Core: an OpenID Connect (OIDC) provider built on OpenIddict, with login through Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX or email, and approval of sensitive actions. On a computer, TV or kiosk, your users scan a QR code shown by your website or app; on a phone, they tap a button. Either way, they confirm with one tap in a messaging app they already have.</Description>
+    <Title>Passwordless login by QR code and OpenID Connect (OIDC) server for ASP.NET Core</Title>
+    <Description>Passwordless login and authentication for ASP.NET Core: an OpenID Connect (OIDC) provider built on OpenIddict, with login through Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX or email, and approval of sensitive actions. Your users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm with one tap in their messaging app — no password, no SMS code. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a QR code.</Description>
     <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;oauth2;authorization-server;telegram-login;telegram-authentication;whatsapp-login;whatsapp-authentication;email-login;magic-link</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license

@@ -1,9 +1,18 @@
 # Veriqa.Core.AuthServer
 
-**Passwordless login and authentication through messaging apps and email for your ASP.NET Core
-application.** Your users scan a QR code on a computer, TV or kiosk, or tap a button on their phone,
-and confirm the sign-in in Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX or Email: no
-password, no SMS code and no sign-up form. Even a first sign-in takes 4–6 seconds.
+**Passwordless login and authentication by QR code through messaging apps and email for your ASP.NET Core
+application.** Your users scan a QR code on the sign-in page (on a phone, they tap a button) and
+confirm the sign-in in Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX or Email: no
+password, no SMS code and no sign-up form. Even a first sign-in takes 4–6 seconds. Your users can
+also sign in with a QR code or a button through a Google or Apple account and 80+ other services,
+with the
+[`Veriqa.Core.ChannelAdapter.WebProviders`](https://www.nuget.org/packages/Veriqa.Core.ChannelAdapter.WebProviders)
+package. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can
+show a QR code.
+
+![Signing in on a computer with Telegram: the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in the Telegram chat, and the chat replies "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-telegram-cross-device.webp)
+
+[Gallery](https://gitlab.com/veriqa/veriqa/-/blob/main/gallery-and-docs/README.md) · [Live demo](https://veriqa.app/demo?lang=en) · [Source code](https://gitlab.com/veriqa/veriqa) · Open source under [MPL-2.0](https://gitlab.com/veriqa/veriqa/-/blob/main/LICENSE)
 
 Veriqa **extends** the OpenIddict setup of your application rather than replacing it: it runs the
 sign-in transaction between `/connect/authorize` and `/connect/token` and leaves token issuance to
@@ -14,6 +23,28 @@ This package is the OpenID Connect server of [Veriqa](https://veriqa.app), an op
 project for passwordless authentication through popular messaging apps and email, over standard
 OpenID Connect.
 Documentation: [.NET quickstart](https://veriqa.app/docs/quickstart/dotnet).
+
+## Use cases
+
+- **Passwordless sign-in and sign-up.** Your users scan a QR code or tap a button instead of typing a
+  password, and a new user signs up with the same action.
+  [Passwordless sign-in](https://veriqa.app/docs/scenarios/passwordless-login)
+- **Second factor and action confirmation.** Your product asks the user to confirm a sensitive action
+  with one tap in their messaging app, with no code to type.
+  [Second factor and step-up](https://veriqa.app/docs/scenarios/step-up)
+- **AI agents.** A risky agent step runs only after a person approves it in their own messaging app.
+  [Approving AI agent actions](https://veriqa.app/docs/scenarios/agent-approvals)
+- **Replacing SMS codes.** Your users confirm the sign-in with a button in their messaging app, and
+  you pay no SMS charges. [Replacing SMS codes](https://veriqa.app/docs/scenarios/sms-replacement)
+- **A direct channel to the user.** The same sign-in gives your product a channel for notifications.
+  [Sign-in and channel linking](https://veriqa.app/docs/scenarios/channel-linking)
+- **Leads and feedback without CAPTCHA.** Your site gets a confirmed contact instead of an address
+  typed into a field. This use case has been tested with Telegram.
+  [Leads and feedback without CAPTCHA](https://veriqa.app/docs/scenarios/lead-capture)
+- **Surfaces with no keyboard.** A smart TV, a set-top box or a kiosk shows a QR code, and the user
+  types nothing. [Sign-in surfaces](https://veriqa.app/docs/scenarios/surfaces)
+
+[All use cases](https://veriqa.app/docs/scenarios/overview)
 
 ---
 
@@ -631,7 +662,7 @@ deployments actually report, and not pre-emptively here.
 
 ## Full example
 
-See `samples/dotnet/inproc/login/` in the repository.
+See [`samples/dotnet/inproc/login/`](https://gitlab.com/veriqa/veriqa/-/tree/main/samples/dotnet/inproc/login) in the repository.
 
 ---
 

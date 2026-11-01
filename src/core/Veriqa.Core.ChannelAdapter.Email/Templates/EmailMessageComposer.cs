@@ -8,7 +8,6 @@ using Veriqa.Core.ChannelAdapter.Email.Constants;
 using Veriqa.Core.ChannelAdapter.Email.Domain;
 using Veriqa.Core.ChannelAdapter.Email.Services;
 using Veriqa.Core.ChannelAdapter.Pipeline;
-using Veriqa.Core.Configuration;
 using Veriqa.Core.TransactionEngine.MessageTemplates;
 
 namespace Veriqa.Core.ChannelAdapter.Email.Templates;
@@ -74,15 +73,11 @@ internal sealed class EmailMessageComposer : IEmailMessageComposer
         // wording does not narrow by where it is shown. The ownership comes from the send, so a wording
         // declared by an application or a ui_config record answers instead of the shipped one
         // (SPEC-036 TPL-116).
-        // The type of the transaction narrows the address, as it does for every message of the mechanism:
-        // the product words the mail of a confirmation at ByType:confirmation, and a sign-in falls back to
-        // the kind itself — the same mail, with the words of its action.
-        var kind = KindOf(message);
-        var point = string.IsNullOrEmpty(message.TransactionType)
-            ? ConfigDimensionValues.Of((MessageTemplateConfigKeys.KindDimensionName, kind))
-            : ConfigDimensionValues.Of(
-                (MessageTemplateConfigKeys.KindDimensionName, kind),
-                (MessageTemplateConfigKeys.TransactionTypeDimensionName, message.TransactionType));
+        // The type and the action type of the transaction narrow the address, as they do for every message
+        // of the mechanism: the product words the mail of a confirmation at ByType:confirmation, and a
+        // sign-in falls back to the kind itself — the same mail, with the words of its action.
+        var point = TransactionMessageAddress.Of(
+            KindOf(message), surface: null, message.TransactionType, message.ActionType, channelType: null, linkPurpose: null);
         var mail = await _messageTemplates.RequireAsync(point, message.Ownership, cancellationToken);
 
         var locale = message.Locale;

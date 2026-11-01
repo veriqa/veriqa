@@ -10,7 +10,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter</PackageId>
     <Authors>Veriqa</Authors>
-    <Title>Login through messaging apps for ASP.NET Core: channel adapters</Title>
+    <Title>Login through messaging apps by QR code for ASP.NET Core: channel adapters</Title>
     <Description>Veriqa Channel Adapter System — the channel contour every Veriqa channel plugs into: the registration SPI, the webhook pipeline and the settings resolution seam. The channels themselves ship as satellite packages.</Description>
     <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;channels;channel-adapter;webhooks;messaging-apps</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.

@@ -151,7 +151,8 @@ of the transaction. The adapter puts that text into the link. In a working confi
 there: the template has a root wording for any channel type without one of its own. To change the text of the
 link, set the template for this channel type under
 `Veriqa:MessageTemplates:deeplink-prefill:BySurface:in-channel:ByChannel:whatsapp-twilio`; `prefill_text` does not
-change it.
+change it. A confirmation has its own wording: set it under
+`Veriqa:MessageTemplates:deeplink-prefill:ByType:confirmation:BySurface:in-channel:ByChannel:whatsapp-twilio`.
 
 [`prefill_text`](#adapter_settings) applies only when `rendered` is `null` or absent: Veriqa sends `null` when it
 cannot render a plain-text wording for the link, and an earlier Veriqa does not send the field at all.

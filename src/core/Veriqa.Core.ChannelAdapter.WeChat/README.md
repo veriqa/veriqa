@@ -1,6 +1,6 @@
 # Veriqa.Core.ChannelAdapter.WeChat
 
-**WeChat login and authentication for your website or app.** Your users scan a QR code with WeChat
+**WeChat login and authentication by QR code for your website or app.** Your users scan a QR code with WeChat
 and confirm the sign-in in the chat with your Official Account: no password, no SMS code and no
 sign-up form. Your application receives standard OpenID Connect tokens.
 
@@ -8,6 +8,8 @@ This package is the WeChat channel of [Veriqa](https://veriqa.app), an open-sour
 project for passwordless authentication through popular messaging apps and email, over standard
 OpenID Connect.
 Setup guide: [WeChat channel](https://veriqa.app/docs/guides/channels#wechat).
+
+Use cases: [passwordless sign-in](https://veriqa.app/docs/scenarios/passwordless-login), [second factor and step-up](https://veriqa.app/docs/scenarios/step-up), [all use cases](https://veriqa.app/docs/scenarios/overview).
 
 ## About this package
 

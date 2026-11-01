@@ -11,7 +11,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter.WeChat</PackageId>
     <Authors>Veriqa</Authors>
-    <Title>WeChat login and authentication for ASP.NET Core</Title>
+    <Title>WeChat login and authentication by QR code for ASP.NET Core</Title>
     <Description>WeChat login and authentication for ASP.NET Core and OpenIddict. Add passwordless login with WeChat to your website or app over standard OpenID Connect (OIDC): users scan a QR code with WeChat and confirm in the chat with your Official Account — no password, no SMS code. Veriqa channel adapter (satellite package).</Description>
     <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;wechat;weixin;wechat-login;wechat-auth;wechat-authentication;sign-in-with-wechat;login-with-wechat;wechat-official-account</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.

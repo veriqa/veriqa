@@ -1,14 +1,12 @@
-Passwordless login via Telegram, WhatsApp and email: self-hosted OpenID Connect (OIDC) provider.
+# Veriqa — passwordless login and authorization by QR code via Telegram, WhatsApp, email, Google, Apple and other accounts: no passwords or SMS, self-hosted OpenID Connect
 
-# Veriqa — passwordless login via Telegram, WhatsApp and email: self-hosted OpenID Connect (OIDC) provider
-
-**A single QR code or a single button instead of forms, passwords and SMS codes.**
+**One QR code or one button instead of forms, passwords and SMS codes.**
 
 The user scans the QR code on your page or taps a button. The messaging app they already have opens
 with a message and buttons, and they confirm the sign-in with a single tap. Users can also sign in
 through a Google or Apple account and 80+ other services.
 
-![Sign-in on a website: the user scans the QR code with their phone, confirms in the messaging app and is signed in](https://raw.githubusercontent.com/veriqa/veriqa/main/docs/media/hero.webp)
+![Sign-in on a website: the user scans the QR code with their phone, confirms in the messaging app and is signed in](https://raw.githubusercontent.com/veriqa/veriqa/main/gallery-and-docs/media/hero.webp)
 
 - **4–6 seconds** to sign in, even the first time ([measured in Telegram](https://veriqa.app/docs/concepts/sign-in-comparison)).
 - **15–30 minutes** to add it to your website (with a Telegram bot).

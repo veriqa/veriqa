@@ -231,9 +231,7 @@ internal sealed class CompletionBehaviorDispatcher : ICompletionBehaviorDispatch
         CancellationToken cancellationToken)
     {
         var message = await _messageTemplates.RequireAsync(
-            MessageKinds.PostLoginWelcome,
-            MessageSurfaces.InChannel,
-            adapter.ChannelType,
+            InChannelMessageAddress.Of(MessageKinds.PostLoginWelcome, completed, adapter.ChannelType),
             TransactionResolutionContext.For(completed),
             cancellationToken);
 
@@ -480,9 +478,7 @@ internal sealed class CompletionBehaviorDispatcher : ICompletionBehaviorDispatch
         CancellationToken cancellationToken)
     {
         var message = await _messageTemplates.RequireAsync(
-            messageKind,
-            MessageSurfaces.InChannel,
-            adapter.ChannelType,
+            InChannelMessageAddress.Of(messageKind, completed, adapter.ChannelType),
             TransactionResolutionContext.For(completed),
             cancellationToken);
 

@@ -1,6 +1,6 @@
 # Veriqa.Core.ChannelAdapter.Email
 
-**Passwordless email login and authentication for your website or app.** Your users confirm the
+**Passwordless email login and authentication by QR code for your website or app.** Your users confirm the
 sign-in with a magic link, or with the one-tap email — a pre-filled email they send with one tap: no
 password and no code to type. It is the channel for users who have none of the supported messaging
 apps installed, and your application receives the same standard OpenID Connect tokens.
@@ -9,6 +9,8 @@ This package is the Email channel of [Veriqa](https://veriqa.app), an open-sourc
 project for passwordless authentication through popular messaging apps and email, over standard
 OpenID Connect.
 Setup guide: [Email channel](https://veriqa.app/docs/guides/channels#email).
+
+Use cases: [passwordless sign-in](https://veriqa.app/docs/scenarios/passwordless-login), [second factor and step-up](https://veriqa.app/docs/scenarios/step-up), [all use cases](https://veriqa.app/docs/scenarios/overview).
 
 ## About this package
 

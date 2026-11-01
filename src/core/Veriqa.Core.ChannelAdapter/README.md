@@ -2,11 +2,42 @@
 
 **One way to plug in every messaging app.** Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber,
 MAX and Email are switched on by configuration, and a channel of your own plugs in the same way,
-without changes to the core.
+without changes to the core. Your users scan a QR code on the sign-in page (on a phone, they tap a
+button) and confirm the sign-in with no password and no SMS code. Your users can also sign in with a
+QR code or a button through a Google or Apple account and 80+ other services, with the
+[`Veriqa.Core.ChannelAdapter.WebProviders`](https://www.nuget.org/packages/Veriqa.Core.ChannelAdapter.WebProviders)
+package. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can
+show a QR code.
+
+![Signing in on a computer with Telegram: the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in the Telegram chat, and the chat replies "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-telegram-cross-device.webp)
+
+[Gallery](https://gitlab.com/veriqa/veriqa/-/blob/main/gallery-and-docs/README.md) · [Live demo](https://veriqa.app/demo?lang=en) · [Source code](https://gitlab.com/veriqa/veriqa) · Open source under [MPL-2.0](https://gitlab.com/veriqa/veriqa/-/blob/main/LICENSE)
 
 Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
 authentication through popular messaging apps and email, over standard OpenID Connect.
 Documentation: [Channels](https://veriqa.app/docs/guides/channels).
+
+## Use cases
+
+- **Passwordless sign-in and sign-up.** Your users scan a QR code or tap a button instead of typing a
+  password, and a new user signs up with the same action.
+  [Passwordless sign-in](https://veriqa.app/docs/scenarios/passwordless-login)
+- **Second factor and action confirmation.** Your product asks the user to confirm a sensitive action
+  with one tap in their messaging app, with no code to type.
+  [Second factor and step-up](https://veriqa.app/docs/scenarios/step-up)
+- **AI agents.** A risky agent step runs only after a person approves it in their own messaging app.
+  [Approving AI agent actions](https://veriqa.app/docs/scenarios/agent-approvals)
+- **Replacing SMS codes.** Your users confirm the sign-in with a button in their messaging app, and
+  you pay no SMS charges. [Replacing SMS codes](https://veriqa.app/docs/scenarios/sms-replacement)
+- **A direct channel to the user.** The same sign-in gives your product a channel for notifications.
+  [Sign-in and channel linking](https://veriqa.app/docs/scenarios/channel-linking)
+- **Leads and feedback without CAPTCHA.** Your site gets a confirmed contact instead of an address
+  typed into a field. This use case has been tested with Telegram.
+  [Leads and feedback without CAPTCHA](https://veriqa.app/docs/scenarios/lead-capture)
+- **Surfaces with no keyboard.** A smart TV, a set-top box or a kiosk shows a QR code, and the user
+  types nothing. [Sign-in surfaces](https://veriqa.app/docs/scenarios/surfaces)
+
+[All use cases](https://veriqa.app/docs/scenarios/overview)
 
 ## About this package
 

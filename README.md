@@ -1,47 +1,33 @@
-<p align="center"><em>OpenID Connect · Any stack · Any device · Open source</em></p>
+*OpenID Connect · Any stack · Any device · Open source*
 
-<h1 align="center">Veriqa — passwordless login via Telegram, WhatsApp and email: self-hosted OpenID Connect (OIDC) provider</h1>
+# Veriqa — passwordless login via Telegram, WhatsApp and email: self-hosted OpenID Connect (OIDC) provider
 
-<p align="center">
-  <strong>A single QR code or a single button instead of forms, passwords and SMS codes.</strong>
-</p>
+**One QR code or one button instead of forms, passwords and SMS codes.**
 
-<p align="center">
-  The user scans the QR code on your page or taps a button. The messaging app they already have opens
-  with a message and buttons, and they confirm the sign-in with a single tap.<br />
-  Users can also sign in with a QR code or a button through a Google or Apple account and 80+ other services.
-</p>
+The user scans the QR code on your page or taps a button. The messaging app they already have opens
+with a message and buttons, and they confirm the sign-in with a single tap.
+Users can also sign in with a QR code or a button through a Google or Apple account and 80+ other services.
 
-<p align="center">
-  <strong>4–6 seconds</strong> to sign in, even the first time (<a href="https://veriqa.app/docs/concepts/sign-in-comparison">measured in Telegram</a>) ·
-  <strong>15–30 minutes</strong> to add it to your website (with a Telegram bot) ·
-  <a href="#channels"><strong>7</strong> popular messaging apps and one-tap email built in</a>
-</p>
+* 4–6 seconds to sign in, even the first time ([measured in Telegram](https://veriqa.app/docs/concepts/sign-in-comparison)).
+* 15–30 minutes to add it to your website (with a Telegram bot).
+* 7 popular messaging apps and one-tap email **built in** ([all channels](https://veriqa.app/docs/guides/supported-channels)).
 
-<p align="center">
-  A standard OpenID Connect provider on your own servers: Docker or an OS service for any stack, no
-  frontend SDK · on .NET, a NuGet connector for OpenIddict · open source under MPL-2.0.
-</p>
+A standard OpenID Connect provider on your own servers: Docker or an OS service for any stack, no
+frontend SDK · on .NET, a NuGet connector for OpenIddict · open source under MPL-2.0.
 
-<p align="center">
-  QR code use cases: passwordless sign-in, second factor, confirming sensitive actions (step-up) and
-  approving AI agent actions — <a href="https://veriqa.app/docs/scenarios/overview">all use cases</a>.
-</p>
+**QR code use cases:** passwordless sign-in, second factor, confirming sensitive actions (step-up) and
+approving AI agent actions — [all use cases](https://veriqa.app/docs/scenarios/overview).
+
+[Try the live examples](https://veriqa.app/demo?lang=en) ·
+[Documentation](https://veriqa.app/docs) ·
+[Install](./gallery-and-docs/INSTALL.md) ·
+[Contact](https://veriqa.app/contacts)
+
+[**Gallery:** sign-in with Telegram, WhatsApp, Instagram, Messenger and a Google account, step-up and other use cases](./gallery-and-docs/)
 
 <p align="center">
-  <a href="https://veriqa.app/demo?lang=en">Try the live examples</a> ·
-  <a href="https://veriqa.app/docs">Documentation</a> ·
-  <a href="./docs/INSTALL.md">Install</a> ·
-  <a href="https://veriqa.app/contacts">Contact</a>
-</p>
-
-<p align="center">
-  <a href="./docs/examples/">Screenshots and animations of sign-in and confirmation in Telegram, WhatsApp, Instagram, Messenger and with a Google account</a>
-</p>
-
-<p align="center">
-  <img src="./docs/media/hero.webp" width="800" alt="Sign-in on a website through Telegram, WhatsApp and Email: the user scans the QR code with their phone, confirms in the messaging app and is signed in" /><br />
-  <sub><a href="./docs/media/hero.mp4">Original video (mp4)</a></sub>
+  <img src="./gallery-and-docs/media/hero.webp" width="800" alt="Sign-in on a website through Telegram, WhatsApp and Email: the user scans the QR code with their phone, confirms in the messaging app and is signed in" /><br />
+  <sub><a href="./gallery-and-docs/media/hero.mp4">Original video (mp4)</a></sub>
 </p>
 
 <!-- LEGAL-TEXT:BEGIN — legally reviewed wording: change only together with LICENSING.md and a new legal review. -->
@@ -56,53 +42,30 @@ takes to sign in to your app or website.
 **For your website or app** — setup on any stack, plus the user's details straight from their messaging app: the name and, depending on the channel, language, photo and
 [phone number](https://veriqa.app/docs/guides/phone-number).
 
-<p align="center">
-  <img src="./docs/media/readme/en-telegram-progressive.webp" width="270" alt="Sign-in with extra details: after confirming in Telegram, the user shares a phone number, fills in the missing fields of a short form, confirms their email address by sending one ready-made message, and the app receives the verified claims." /><br />
-  <sub>The same sign-in collects what the messaging app doesn't provide: a phone number, answers to a short form, a confirmed email address.</sub>
-</p>
-
 With the `channel` scope your website also gets a live channel to the user through their
 messaging app, and you don't pay for SMS.
 
+See it working in the [gallery](./gallery-and-docs/).
+
 ## How it works
 
-On a computer, a TV or a kiosk the user signs in with a QR code; on a phone, with a button.
-
-<table align="center">
-  <tr>
-    <td align="center" valign="top" width="25%">
-      <a href="./docs/media/readme/en-telegram-cross-device.webp"><img src="./docs/media/readme/en-telegram-step-1.webp" width="200" alt="A sign-in window with a QR code" /></a><br />
-      <strong>1. Your app starts the sign-in</strong><br />
-      <sub>Your website or app sends the user to the sign-in page with a QR code.</sub>
-    </td>
-    <td align="center" valign="top" width="25%">
-      <a href="./docs/media/readme/en-telegram-cross-device.webp"><img src="./docs/media/readme/en-telegram-step-2.webp" width="200" alt="A phone camera pointed at the QR code on a computer screen" /></a><br />
-      <strong>2. The user picks up their phone</strong><br />
-      <sub>They open the camera, scan the QR code and tap the link. The messaging app they already use opens — Telegram, WhatsApp or <a href="https://veriqa.app/docs/guides/supported-channels">another one</a>.</sub>
-    </td>
-    <td align="center" valign="top" width="25%">
-      <a href="./docs/media/readme/en-telegram-cross-device.webp"><img src="./docs/media/readme/en-telegram-step-3.webp" width="200" alt="A request in the Telegram chat with Confirm and Decline buttons" /></a><br />
-      <strong>3. They confirm with one tap</strong><br />
-      <sub>In the messaging app the user confirms the sign-in with a button — no password and no SMS code. In WhatsApp they first send a ready-made message.</sub>
-    </td>
-    <td align="center" valign="top" width="25%">
-      <a href="./docs/media/readme/en-telegram-cross-device.webp"><img src="./docs/media/readme/en-telegram-step-4.webp" width="200" alt="The chat reply in Telegram: &quot;Sign-in confirmed&quot;" /></a><br />
-      <strong>4. The user is signed in</strong><br />
-      <sub>Your app receives ordinary OpenID Connect tokens, whichever channel the user picked.</sub>
-    </td>
-  </tr>
-</table>
+Your users scan the QR code on the sign-in page (on a phone, they tap a button), then confirm the sign-in in their messaging app. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a QR code.
 
 <p align="center">
-  More: <a href="./docs/media/readme/en-telegram-phone.webp">sign-in on a phone</a> ·
-  <a href="./docs/media/readme/en-telegram-confirm.webp">confirming an action</a> ·
-  <a href="./docs/media/readme/en-telegram-progressive.webp">collecting extra details</a>
+  <img src="./gallery-and-docs/media/readme/en-telegram-overview.webp" width="800" alt="Signing in through Veriqa: the app sends the browser to the sign-in page by an OpenID Connect redirect, the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in Telegram, Veriqa redirects back, and the app gets ordinary OpenID Connect tokens with claims such as sub, name, phone_number and email." /><br />
+  <sub>Your app starts the sign-in and gets ordinary OpenID Connect tokens back, whichever channel the user picked. In WhatsApp, the user first sends a ready-made message.</sub>
+</p>
+
+<p align="center">
+  More: <a href="./gallery-and-docs/media/readme/en-telegram-phone.webp">sign-in on a phone</a> ·
+  <a href="./gallery-and-docs/media/readme/en-telegram-confirm.webp">confirming an action</a> ·
+  <a href="./gallery-and-docs/media/readme/en-telegram-progressive.webp">collecting extra details</a>
 </p>
 
 You can also use Veriqa to approve AI agent actions and confirm sensitive operations: deleting
 important data, changing payment details, granting access to another person.
 
-All the screenshots and animations by channel are on a [separate page](./docs/examples/).
+The [gallery](./gallery-and-docs/) shows every channel.
 
 - **Easy to embed in your project:** Veriqa is tested with popular CMSs —
   [WordPress](https://veriqa.app/docs/integrations/wordpress),
@@ -141,8 +104,8 @@ to intercept. Users can sign in this way on a TV or a shared or work computer, a
 ## Get started
 
 **Try a channel.** Each quickstart repository is a ready-to-run
-passwordless auth setup: Veriqa running from the published Docker image with just that channel enabled, plus a minimal ASP.NET Core OpenID Connect
-client that shows the claims after sign-in. The client is plain OIDC, so the same server works for
+passwordless auth setup: Veriqa with just that channel enabled (in Docker, for simplicity), plus minimal OpenID Connect
+clients on Python, Node.js, Go, PHP and ASP.NET Core that show the claims after sign-in. The clients are plain OIDC, so the same server works for
 any stack.
 
 - [Login with Telegram — Telegram authentication over OpenID Connect](https://github.com/veriqa/telegram-passwordless-login)
@@ -151,7 +114,7 @@ any stack.
 
 The same samples live in this repository under [`samples/quickstart/`](./samples/quickstart/).
 For a deployment, start with the [self-hosted quickstart](https://veriqa.app/docs/quickstart/self-hosted),
-or see [INSTALL.md](./docs/INSTALL.md) for all three ways to deploy.
+or see [INSTALL.md](./gallery-and-docs/INSTALL.md) for all three ways to deploy.
 
 ## What you get
 
@@ -160,9 +123,10 @@ or see [INSTALL.md](./docs/INSTALL.md) for all three ways to deploy.
 - **Nothing to type to sign in.** No password, no SMS code, no sign-up form. A short form appears
   only if your app needs details the messaging app doesn't provide.
 - **Nothing to install or remember.** The messaging app is already on their phone.
-- **The same on any device.** A QR code on a computer, a TV or a kiosk, a button on a phone — and
-  the same confirmation everywhere: a button in the messaging app. In WhatsApp it is one tap to send a
-  ready-made message, and one more if confirmation is on.
+- **The same on any device.** Your users scan the QR code on the sign-in page (on a phone, they tap
+  a button), and the confirmation is the same everywhere: a button in the messaging app. In WhatsApp
+  it is one tap to send a ready-made message, and one more if confirmation is on. Your users can sign
+  in this way on a computer, a TV, a kiosk or any other device that can show a QR code.
 
 **For your product**
 
@@ -228,14 +192,14 @@ approves them in a messaging app — and, with the audit trail switched on, ever
 
 <table align="center">
   <tr>
-    <td><a href="./docs/media/claude-code-1.webp"><img src="./docs/media/claude-code-1-thumb.webp" width="260" alt="Claude Code: git push waits until the user approves it in the messaging app" /></a></td>
-    <td><a href="./docs/media/claude-code-2.webp"><img src="./docs/media/claude-code-2-thumb.webp" width="260" alt="Claude Code: a long command cycle starts only after approval in the messaging app" /></a></td>
-    <td><a href="./docs/media/claude-code-3.webp"><img src="./docs/media/claude-code-3-thumb.webp" width="260" alt="Claude Code: a costly run with a cost estimate is approved by two people in turn" /></a></td>
+    <td><a href="./gallery-and-docs/media/claude-code-1.webp"><img src="./gallery-and-docs/media/claude-code-1-thumb.webp" width="260" alt="Claude Code: git push waits until the user approves it in the messaging app" /></a></td>
+    <td><a href="./gallery-and-docs/media/claude-code-2.webp"><img src="./gallery-and-docs/media/claude-code-2-thumb.webp" width="260" alt="Claude Code: a long command cycle starts only after approval in the messaging app" /></a></td>
+    <td><a href="./gallery-and-docs/media/claude-code-3.webp"><img src="./gallery-and-docs/media/claude-code-3-thumb.webp" width="260" alt="Claude Code: a costly run with a cost estimate is approved by two people in turn" /></a></td>
   </tr>
   <tr>
-    <td align="center"><sub>A tool call — <code>git push</code>, <code>rm -r</code> · <a href="./docs/media/claude-code-1.mp4">mp4</a></sub></td>
-    <td align="center"><sub>The start of a long command cycle · <a href="./docs/media/claude-code-2.mp4">mp4</a></sub></td>
-    <td align="center"><sub>A costly run — two approvers in turn · <a href="./docs/media/claude-code-3.mp4">mp4</a></sub></td>
+    <td align="center"><sub>A tool call — <code>git push</code>, <code>rm -r</code> · <a href="./gallery-and-docs/media/claude-code-1.mp4">mp4</a></sub></td>
+    <td align="center"><sub>The start of a long command cycle · <a href="./gallery-and-docs/media/claude-code-2.mp4">mp4</a></sub></td>
+    <td align="center"><sub>A costly run — two approvers in turn · <a href="./gallery-and-docs/media/claude-code-3.mp4">mp4</a></sub></td>
   </tr>
 </table>
 
@@ -252,18 +216,18 @@ approves them in a messaging app — and, with the audit trail switched on, ever
   </tr>
   <tr>
     <th>TV<br /><sub>recorded on a real TV</sub></th>
-    <td align="center"><a href="./docs/media/tv-sign-in.webp"><img src="./docs/media/tv-sign-in-thumb.webp" width="260" alt="Sign-in and sign-up on a TV" /></a><br /><sub><a href="./docs/media/tv-sign-in.mp4">mp4</a></sub></td>
-    <td align="center"><a href="./docs/media/tv-step-up.webp"><img src="./docs/media/tv-step-up-thumb.webp" width="260" alt="Step-up on a TV" /></a><br /><sub><a href="./docs/media/tv-step-up.mp4">mp4</a></sub></td>
+    <td align="center"><a href="./gallery-and-docs/media/tv-sign-in.webp"><img src="./gallery-and-docs/media/tv-sign-in-thumb.webp" width="260" alt="Sign-in and sign-up on a TV" /></a><br /><sub><a href="./gallery-and-docs/media/tv-sign-in.mp4">mp4</a></sub></td>
+    <td align="center"><a href="./gallery-and-docs/media/tv-step-up.webp"><img src="./gallery-and-docs/media/tv-step-up-thumb.webp" width="260" alt="Step-up on a TV" /></a><br /><sub><a href="./gallery-and-docs/media/tv-step-up.mp4">mp4</a></sub></td>
   </tr>
   <tr>
     <th>Desktop</th>
-    <td align="center"><a href="./docs/media/desktop-sign-in.webp"><img src="./docs/media/desktop-sign-in-thumb.webp" width="260" alt="Sign-in and sign-up on a desktop" /></a><br /><sub><a href="./docs/media/desktop-sign-in.mp4">mp4</a></sub></td>
-    <td align="center"><a href="./docs/media/desktop-step-up.webp"><img src="./docs/media/desktop-step-up-thumb.webp" width="260" alt="Step-up on a desktop" /></a><br /><sub><a href="./docs/media/desktop-step-up.mp4">mp4</a></sub></td>
+    <td align="center"><a href="./gallery-and-docs/media/desktop-sign-in.webp"><img src="./gallery-and-docs/media/desktop-sign-in-thumb.webp" width="260" alt="Sign-in and sign-up on a desktop" /></a><br /><sub><a href="./gallery-and-docs/media/desktop-sign-in.mp4">mp4</a></sub></td>
+    <td align="center"><a href="./gallery-and-docs/media/desktop-step-up.webp"><img src="./gallery-and-docs/media/desktop-step-up-thumb.webp" width="260" alt="Step-up on a desktop" /></a><br /><sub><a href="./gallery-and-docs/media/desktop-step-up.mp4">mp4</a></sub></td>
   </tr>
   <tr>
     <th>Mobile</th>
-    <td align="center"><a href="./docs/media/mobile-sign-in.webp"><img src="./docs/media/mobile-sign-in-thumb.webp" width="260" alt="Sign-in and sign-up on a phone" /></a><br /><sub><a href="./docs/media/mobile-sign-in.mp4">mp4</a></sub></td>
-    <td align="center"><a href="./docs/media/mobile-step-up.webp"><img src="./docs/media/mobile-step-up-thumb.webp" width="260" alt="Step-up on a phone" /></a><br /><sub><a href="./docs/media/mobile-step-up.mp4">mp4</a></sub></td>
+    <td align="center"><a href="./gallery-and-docs/media/mobile-sign-in.webp"><img src="./gallery-and-docs/media/mobile-sign-in-thumb.webp" width="260" alt="Sign-in and sign-up on a phone" /></a><br /><sub><a href="./gallery-and-docs/media/mobile-sign-in.mp4">mp4</a></sub></td>
+    <td align="center"><a href="./gallery-and-docs/media/mobile-step-up.webp"><img src="./gallery-and-docs/media/mobile-step-up-thumb.webp" width="260" alt="Step-up on a phone" /></a><br /><sub><a href="./gallery-and-docs/media/mobile-step-up.mp4">mp4</a></sub></td>
   </tr>
 </table>
 
@@ -329,7 +293,7 @@ Details are in [Architecture](https://veriqa.app/docs/concepts/architecture).
 | **Standalone (Docker)** | Its own OIDC server in a container; your application, on any stack, doesn't reference any Veriqa package, so nothing enters your build or your SBOM | [Self-hosted quickstart](https://veriqa.app/docs/quickstart/self-hosted) |
 | **OS service (archive)** | The same standalone server without a container — a systemd unit or a Windows service; no Docker and no .NET runtime needed | [Install as an OS service](https://veriqa.app/docs/quickstart/os-service) |
 
-All three are covered in [INSTALL.md](./docs/INSTALL.md). In embedded mode Veriqa **extends** the
+All three are covered in [INSTALL.md](./gallery-and-docs/INSTALL.md). In embedded mode Veriqa **extends** the
 OpenIddict setup of your ASP.NET Core application rather than replacing it: it runs the sign-in
 transaction between `/connect/authorize` and `/connect/token` and leaves token issuance to
 OpenIddict. In the other modes your application never touches OpenIddict, which runs inside the Veriqa server: the application talks to that server over plain OpenID Connect.

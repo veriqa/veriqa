@@ -357,9 +357,15 @@ static Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent.operator !=(V
 static Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent.operator ==(Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent? left, Veriqa.Core.ChannelAdapter.Email.Templates.EmailBodyContent? right) -> bool
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.TransactionType.get -> string?
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.TransactionType.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.ActionType.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.ActionType.init -> void
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.CarriesLink.get -> bool
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.CarriesLink.init -> void
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.Code.get -> string?
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailLoginMessage.Code.init -> void
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.BrandName.get -> string?
 Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.BrandName.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.TransactionType.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.TransactionType.init -> void
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ActionType.get -> string?
+Veriqa.Core.ChannelAdapter.Email.Domain.EmailClaimCompletionMessage.ActionType.init -> void

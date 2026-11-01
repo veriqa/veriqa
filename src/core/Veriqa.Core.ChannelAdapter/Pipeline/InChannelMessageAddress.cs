@@ -9,10 +9,10 @@ namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
 /// <summary>
 /// The address of a message a transaction sends into a channel: the address of the transaction
-/// (<see cref="TransactionMessageAddress"/>) on the in-channel surface (SPEC-036 TPL-130). In today's
-/// delivery it addresses the request of the phone number, the notice of the web confirmation and the link
-/// of the claims completion form. The confirmation prompt of the adapters and the welcome after a sign-in
-/// are addressed today by the kind, the surface and the channel, on their own.
+/// (<see cref="TransactionMessageAddress"/>) on the in-channel surface (SPEC-036 TPL-130): the request of
+/// the phone number, the notice of the web confirmation, the link of the claims completion form and the
+/// messages after a completed sign-in. The templates an adapter asks for through
+/// <c>IChannelMessageTemplates</c> reach the same address directly, since they may name a link purpose too.
 /// </summary>
 internal static class InChannelMessageAddress
 {

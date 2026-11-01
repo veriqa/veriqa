@@ -100,9 +100,8 @@ internal sealed class ClaimCompletionMailComposer
         // Resolved once per send over the ownership of the transaction (SPEC-036 TPL-116); neither the
         // surface nor the channel narrows the wording of a mail.
         var mail = await _messageTemplates.RequireAsync(
-            kind,
-            surface: null,
-            channel: null,
+            TransactionMessageAddress.Of(
+                kind, surface: null, message.TransactionType, message.ActionType, channelType: null, linkPurpose: null),
             message.Ownership,
             cancellationToken);
 

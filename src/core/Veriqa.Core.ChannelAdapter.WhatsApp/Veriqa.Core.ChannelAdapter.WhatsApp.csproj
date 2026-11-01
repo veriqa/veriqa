@@ -11,8 +11,8 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter.WhatsApp</PackageId>
     <Authors>Veriqa</Authors>
-    <Title>WhatsApp login and authentication for ASP.NET Core</Title>
-    <Description>WhatsApp login and authentication for ASP.NET Core and OpenIddict. Add passwordless login with WhatsApp to your website or app over standard OpenID Connect (OIDC): users scan a QR code on a computer, TV or kiosk, or tap a button on the phone, and confirm in WhatsApp — no password, no SMS code. The same channel approves sensitive actions and AI agent steps. Delivery over the Meta Cloud API or Twilio. Veriqa channel adapter (satellite package).</Description>
+    <Title>WhatsApp login and authentication by QR code for ASP.NET Core</Title>
+    <Description>WhatsApp login and authentication for ASP.NET Core and OpenIddict. Add passwordless login with WhatsApp to your website or app over standard OpenID Connect (OIDC): users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm in WhatsApp — no password, no SMS code. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a QR code. The same channel approves sensitive actions and AI agent steps. Delivery over the Meta Cloud API or Twilio. Veriqa channel adapter (satellite package).</Description>
     <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;whatsapp;whatsapp-login;whatsapp-auth;whatsapp-authentication;sign-in-with-whatsapp;login-with-whatsapp;whatsapp-otp-alternative;whatsapp-cloud-api;whatsapp-business-api;twilio;twilio-whatsapp</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.
          MPL-2.0 is OSI-approved, so nuget.org takes it as a license expression and no license

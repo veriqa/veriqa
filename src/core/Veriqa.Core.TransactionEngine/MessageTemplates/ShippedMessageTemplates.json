@@ -333,7 +333,7 @@
             { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext" },
             { "Name": "code", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
             { "Name": "token", "Type": "string", "Source": "ServerSystem", "Guaranteed": true },
-            { "Name": "prefill_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "This mail confirms sign-in to Veriqa. Do not change the subject or the body of the mail." }
+            { "Name": "prefill_intro", "Type": "string", "Source": "LocalizedText", "NaturalKey": "This mail confirms sign-in. Do not change the subject or the body of the mail." }
           ]
         },
         "Templates": [
@@ -367,9 +367,53 @@
               },
               "email": {
                 "Templates": [
-                  { "Subject": "Veriqa login {token}", "Plain": "{prefill_intro}\n\nToken: {token}" },
+                  { "Subject": "Sign in to {app}: {token}", "Plain": "{prefill_intro}\n\nToken: {token}" },
+                  { "Subject": "Sign in: {token}", "Plain": "{prefill_intro}\n\nToken: {token}" },
                   { "Subject": "Sign in", "Plain": "Send this message to sign in." }
                 ]
+              }
+            }
+          }
+        },
+        "ByType": {
+          "confirmation": {
+            "Templates": [
+              "Send this message to continue."
+            ],
+            "BySurface": {
+              "in-channel": {
+                "ByChannel": {
+                  "whatsapp": {
+                    "Templates": [
+                      "Confirm in {app}\nSend this message to continue.\n\nAccess code\n{code}",
+                      "Send this message to continue.\n\nAccess code\n{code}",
+                      "Send this message to continue."
+                    ],
+                    "ByLinkPurpose": {
+                      "button": {
+                        "Templates": [
+                          "------------------------\n   CONFIRM IN {app}\n------------------------\nJust send this message.\n\nAccess code:\n{code}",
+                          "------------------------\nJust send this message to continue.\n------------------------\n\nAccess code:\n{code}",
+                          "Send this message to continue."
+                        ]
+                      },
+                      "hop-qr": {
+                        "Templates": [
+                          "------------------------\n   CONFIRM IN {app}\n------------------------\nJust send this message.\n\nAccess code:\n{code}",
+                          "------------------------\nJust send this message to continue.\n------------------------\n\nAccess code:\n{code}",
+                          "Send this message to continue."
+                        ]
+                      }
+                    }
+                  },
+                  "email": {
+                    "Templates": [
+                      { "Subject": "Confirm in {app}: {token}", "Plain": "This mail continues the confirmation. Do not change the subject or the body of the mail.\n\nToken: {token}" },
+                      { "Subject": "Confirm: {token}", "Plain": "This mail continues the confirmation. Do not change the subject or the body of the mail.\n\nToken: {token}" },
+                      { "Subject": "Confirm", "Plain": "Send this message to continue." }
+                    ]
+                  }
+                }
               }
             }
           }

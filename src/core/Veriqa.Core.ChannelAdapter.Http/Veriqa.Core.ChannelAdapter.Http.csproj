@@ -13,7 +13,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>Veriqa.Core.ChannelAdapter.Http</PackageId>
     <Authors>Veriqa</Authors>
-    <Title>Custom messenger login over HTTP: channel adapter in any language</Title>
+    <Title>Custom messenger login by QR code over HTTP: channel adapter in any language</Title>
     <Description>Login and authentication through any messaging app or bot for Veriqa: a channel whose adapter runs as a separate service in any language, registered from configuration and reached over a signed HTTP wire contract (satellite package).</Description>
     <PackageTags>veriqa;authentication;openid-connect;oidc;openiddict;passwordless;passwordless-login;passwordless-authentication;login;auth;sign-in;qr-code;qr-code-login;cross-device-authentication;two-factor-authentication;2fa;mfa;step-up-authentication;sms-alternative;openid-connect-provider;oidc-server;identity-provider;sso;human-in-the-loop;ai-agent-security;device-flow;aspnetcore;channels;channel-adapter;custom-channel;http-channel;webhooks;standard-webhooks;chatbot</PackageTags>
     <!-- Licensing: the server core and its satellites ship under the Mozilla Public License 2.0.

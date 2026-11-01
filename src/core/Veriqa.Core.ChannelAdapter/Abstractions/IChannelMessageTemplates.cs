@@ -12,8 +12,10 @@ namespace Veriqa.Core.ChannelAdapter.Abstractions;
 /// prompt or the deep-link prefill — resolved the way the core resolves it for the built-in channels.
 /// The adapter states only what it is, which message it needs and for which transaction; the rest of
 /// the address is the core's: the surface is the in-channel one, the channel is the
-/// <see cref="IChannelAdapter.ChannelType"/> of the adapter passed in, and the ownership levels are
-/// those the transaction states.
+/// <see cref="IChannelAdapter.ChannelType"/> of the adapter passed in, and the type and the action type
+/// of the address and the ownership levels are those the transaction states, so the prefill of a
+/// confirmation is answered by the wording of a confirmation. The question of a confirmation is its
+/// subject: the prompt template resolved for that transaction does not reach the text.
 /// <para>
 /// A message placed in a link — the deep-link prefill — may also be resolved for the
 /// <see cref="DeepLinkRequest"/> the adapter received: the template is then the one of the purpose of
