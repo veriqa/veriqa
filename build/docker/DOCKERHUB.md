@@ -29,7 +29,7 @@ docker pull veriqa/veriqa
 The image is the standalone Veriqa server. Your application talks to it over standard OpenID Connect
 and needs no Veriqa package, so nothing from Veriqa enters your build or SBOM.
 
-- Platform: `linux/amd64`. On another architecture, [build the image from source](https://veriqa.app/docs/quickstart/self-hosted#1-get-the-image).
+- Platforms: `linux/amd64` and `linux/arm64`.
 - Runs as a non-root user (UID `1654`).
 - Exposes port `8080` over HTTP and ships a health check on `/health/live`. Terminate TLS in front of
   the container.

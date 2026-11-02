@@ -117,8 +117,8 @@ docker pull registry.gitlab.com/veriqa/veriqa
 ```
 
 Without a tag Docker takes `latest` — the newest release. To pin a release in production, add its
-version as the tag (`registry.gitlab.com/veriqa/veriqa:<version>`). The published image is `linux/amd64`; on
-another architecture, build it from the repository root instead — `build/docker/Dockerfile`
+version as the tag (`registry.gitlab.com/veriqa/veriqa:<version>`). The published image runs on `linux/amd64`
+and `linux/arm64`. To build it yourself, run this from the repository root — `build/docker/Dockerfile`
 publishes the same host — and use your local tag in place of the image name below:
 
 ```bash
