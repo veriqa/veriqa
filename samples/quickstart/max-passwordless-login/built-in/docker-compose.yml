@@ -11,7 +11,7 @@ name: max-passwordless-login
 
 services:
   veriqa:
-    image: registry.gitlab.com/veriqa/veriqa:0.7.0
+    image: registry.gitlab.com/veriqa/veriqa:0.7.1
     restart: unless-stopped
     ports:
       - "8443:8443"

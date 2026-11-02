@@ -1,5 +1,3 @@
-*OpenID Connect · Any stack · Any device · Open source*
-
 # Veriqa — passwordless login via Telegram, WhatsApp and email: self-hosted OpenID Connect (OIDC) provider
 
 **One QR code or one button instead of forms, passwords and SMS codes.**
@@ -8,12 +6,13 @@ The user scans the QR code on your page or taps a button. The messaging app they
 with a message and buttons, and they confirm the sign-in with a single tap.
 Users can also sign in with a QR code or a button through a Google or Apple account and 80+ other services.
 
-* 4–6 seconds to sign in, even the first time ([measured in Telegram](https://veriqa.app/docs/concepts/sign-in-comparison)).
-* 15–30 minutes to add it to your website (with a Telegram bot).
-* 7 popular messaging apps and one-tap email **built in** ([all channels](https://veriqa.app/docs/guides/supported-channels)).
-
-A standard OpenID Connect provider on your own servers: Docker or an OS service for any stack, no
-frontend SDK · on .NET, a NuGet connector for OpenIddict · open source under MPL-2.0.
+* **4–6 seconds** to sign in, even the first time ([measurements](https://veriqa.app/docs/concepts/sign-in-comparison)).
+* **7 popular messaging apps** and **one-tap email** built in, plus a Google or Apple account and **80+ other services** ([all channels](https://veriqa.app/docs/messengers-and-accounts)).
+* **Open source under MPL-2.0**. Keep the sign-in methods you have and add Veriqa next to them.
+* 15–30 minutes to add it to your website.
+* **Any stack** with an OpenID Connect library. No frontend SDK needed.
+* **A standard OpenID Connect provider on your own servers:** Docker or an OS service.
+* **On .NET:** a NuGet connector for OpenIddict.
 
 **QR code use cases:** passwordless sign-in, second factor, confirming sensitive actions (step-up) and
 approving AI agent actions — [all use cases](https://veriqa.app/docs/scenarios/overview).
@@ -65,7 +64,7 @@ Your users scan the QR code on the sign-in page (on a phone, they tap a button),
 You can also use Veriqa to approve AI agent actions and confirm sensitive operations: deleting
 important data, changing payment details, granting access to another person.
 
-The [gallery](./gallery-and-docs/) shows every channel.
+[**Gallery:** sign-in with Telegram, WhatsApp, Instagram, Messenger and a Google account, step-up and other use cases](./gallery-and-docs/)
 
 - **Easy to embed in your project:** Veriqa is tested with popular CMSs —
   [WordPress](https://veriqa.app/docs/integrations/wordpress),
@@ -240,7 +239,7 @@ approves them in a messaging app — and, with the audit trail switched on, ever
 | Password | hours | email, the password twice, a confirmation link in the mailbox | ~30 s, ~69 s with a second factor[^microsoft] | Email, if confirmed |
 | SMS code | hours of work and days of waiting | phone number, wait for the SMS, type the code | ~17 s | SMS to a phone number — every message is billed |
 | Social sign-in | hours for each provider, plus waiting for app review | 30 s | 3.4 s | Usually email |
-| Passkey | minutes, hours with the fallback sign-in | create an account another way first, then create the key; 24 s with the key on the phone | 3–15 s,[^microsoft][^passkey-index] 18 s with the key on the phone | None |
+| Passkey | minutes, hours with the fallback sign-in | create an account another way first, then create the key; 24 s with the key on the phone | 3–15 s,[^microsoft][^passkey-index][^google] 18 s with the key on the phone | None |
 | **Veriqa** | **15–30 minutes** | **4–6 s** | **4–6 s** | **The messaging app, already connected** |
 
 The Veriqa times are our own measurements in Telegram, for a sign-in with confirmation; automatic sign-in takes 2.4–3.5 s. In other messaging apps the time may differ, and the 15–30 minutes assume a Telegram bot.
@@ -387,4 +386,5 @@ More answers in the [documentation](https://veriqa.app/docs).
 [^baymard]: Baymard Institute, [Cart Abandonment Rate Statistics](https://baymard.com/lists/cart-abandonment-rate): 70.22% average documented cart abandonment across 50 studies; reasons among shoppers who abandoned a checkout, excluding those who were just browsing.
 [^microsoft]: Microsoft Learn, [Passkeys (FIDO2) authentication method in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passkeys-fido2): signing in with a synced passkey takes 3 seconds, versus 69 seconds for a password with a traditional second factor; data on Microsoft consumer accounts.
 [^passkey-index]: FIDO Alliance, [Passkey Index](https://fidoalliance.org/fido-alliance-launches-passkey-index-revealing-significant-passkey-uptake-and-business-benefits/), October 2025: a passkey sign-in takes 8.5 seconds on average; data reported by nine member companies of the alliance.
+[^google]: Google Security Blog, [Making authentication faster than ever: passkeys vs. passwords](https://security.googleblog.com/2023/05/making-authentication-faster-than-ever.html): a passkey sign-in takes 14.9 seconds on average, versus 30.4 seconds with a password; about 100 million sign-ins to Google accounts, March–April 2023.
 [^fido-barometer]: FIDO Alliance, [Online Authentication Barometer 2024](https://fidoalliance.org/wp-content/uploads/2024/10/Barometer-Report-Oct-31-2024-2.pdf): 10,000 consumers across ten countries; 42% abandoned a purchase and 56% gave up accessing an online service in the past month because of a forgotten password.

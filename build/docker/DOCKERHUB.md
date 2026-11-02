@@ -6,16 +6,19 @@ The user scans the QR code on your page or taps a button. The messaging app they
 with a message and buttons, and they confirm the sign-in with a single tap. Users can also sign in
 through a Google or Apple account and 80+ other services.
 
-![Sign-in on a website: the user scans the QR code with their phone, confirms in the messaging app and is signed in](https://raw.githubusercontent.com/veriqa/veriqa/main/gallery-and-docs/media/hero.webp)
-
-- **4–6 seconds** to sign in, even the first time ([measured in Telegram](https://veriqa.app/docs/concepts/sign-in-comparison)).
-- **15–30 minutes** to add it to your website (with a Telegram bot).
-- **7** popular messaging apps and one-tap email built in ([all channels](https://veriqa.app/docs/guides/supported-channels)).
-- A standard OpenID Connect identity provider in one container, for any stack with an OIDC library.
-  No frontend SDK. Open source under MPL-2.0.
+* **4–6 seconds** to sign in, even the first time ([measurements](https://veriqa.app/docs/concepts/sign-in-comparison)).
+* **7 popular messaging apps** and **one-tap email** built in, plus a Google or Apple account and **80+ other services** ([all channels](https://veriqa.app/docs/messengers-and-accounts)).
+* **Open source under MPL-2.0**. Keep the sign-in methods you have and add Veriqa next to them.
+* 15–30 minutes to add it to your website.
+* **Any stack** with an OpenID Connect library. No frontend SDK needed.
+* A standard OpenID Connect identity provider in one container.
 
 Use it for passwordless sign-in, a second factor, confirming sensitive actions and approving AI agent
 actions: [all use cases](https://veriqa.app/docs/scenarios/overview).
+
+[**Gallery:** sign-in with Telegram, WhatsApp, Instagram, Messenger and a Google account, step-up and other use cases](https://github.com/veriqa/veriqa/tree/main/gallery-and-docs)
+
+![Sign-in on a website: the user scans the QR code with their phone, confirms in the messaging app and is signed in](https://raw.githubusercontent.com/veriqa/veriqa/main/gallery-and-docs/media/hero.webp)
 
 ```bash
 docker pull veriqa/veriqa
