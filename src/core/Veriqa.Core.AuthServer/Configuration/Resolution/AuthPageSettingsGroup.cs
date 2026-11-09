@@ -36,6 +36,10 @@ namespace Veriqa.Core.AuthServer.Configuration.Resolution;
 /// <param name="ChannelLayout">Layout of the channels where the page shows the QR code of each of
 /// them: behind tabs or all at once. Whether a given page has anything to arrange — several channels,
 /// QR codes of their own — is the renderer's to tell, not the aggregate's.</param>
+/// <param name="RememberChannelHint">Whether the page hints at the channel the user went through last
+/// time. Which page has a choice to put that channel forward in is the renderer's to tell.</param>
+/// <param name="RememberChannelCheckbox">Whether a page with the unified QR code offers the checkbox that
+/// remembers the channel. Whether a given page shows the unified QR code is the renderer's to tell.</param>
 internal sealed record AuthPageSettings(
     AuthPageDesignOptions Design,
     string? Title,
@@ -49,7 +53,9 @@ internal sealed record AuthPageSettings(
     QrCodeVisibility QrVisibility,
     bool CancelEnabled,
     ChannelButtonVisibility StatedChannelButtonVisibility,
-    ChannelLayout ChannelLayout)
+    ChannelLayout ChannelLayout,
+    bool RememberChannelHint,
+    bool RememberChannelCheckbox)
 {
     /// <summary>
     /// Whether the stated pair of visibilities leaves a class of devices with NO way into a channel —
@@ -181,7 +187,9 @@ internal static class AuthPageSettingsGroup
             // visibility included: replacing it at this point would hide the conflict from the rule
             // that reports it.
             await resolution.ValueOfAsync(AuthServerConfigKeys.ChannelButtonShowChannelButton),
-            await resolution.ValueOfAsync(AuthServerConfigKeys.PageChannelLayout));
+            await resolution.ValueOfAsync(AuthServerConfigKeys.PageChannelLayout),
+            await resolution.ValueOfAsync(AuthServerConfigKeys.RememberChannelHint),
+            await resolution.ValueOfAsync(AuthServerConfigKeys.RememberChannelCheckbox));
     }
 
     /// <summary>

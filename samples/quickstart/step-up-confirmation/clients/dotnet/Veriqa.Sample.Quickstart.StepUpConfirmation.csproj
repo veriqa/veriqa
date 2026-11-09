@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Self-contained on purpose: the same project builds inside veriqa/core, under its root
+       Directory.Build.props, and alone in a sample repository, where no such file exists.
+       Everything the build needs is stated here. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Veriqa.Sample.Quickstart.StepUpConfirmation</RootNamespace>
+    <AssemblyName>Veriqa.Sample.Quickstart.StepUpConfirmation</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- No Veriqa package: the backend talks to Veriqa over its public HTTP API only. -->
+
+</Project>

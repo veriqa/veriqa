@@ -1,10 +1,12 @@
 # Veriqa.Core.ChannelAdapter.Max
 
-**MAX login and authentication by QR code for your website or app.** Your users scan a QR code on the sign-in
-page (on a phone, they tap a button) and confirm the sign-in with one tap in the MAX messaging app:
-no password, no SMS code and no sign-up form. Your application receives standard OpenID Connect
-tokens. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can
-show a QR code.
+**MAX login and authentication by QR code for your website or app.**
+
+- Your users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm the
+  sign-in with one tap in the MAX messaging app: no password, no SMS code and no sign-up form.
+- Your application receives standard OpenID Connect tokens.
+- Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a
+  QR code.
 
 This package is the MAX channel of [Veriqa](https://veriqa.app), an open-source
 project for passwordless authentication through popular messaging apps and email, over standard

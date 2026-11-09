@@ -39,6 +39,12 @@ internal sealed class PhoneStepStarter : IClaimCompletionStepStarter
     private readonly IPhoneRequestCorrelationStore _correlationStore;
 
     /// <summary>
+    /// Store of the chat each transaction was started from — whose tenant tells the route the answer to
+    /// the request arrives on.
+    /// </summary>
+    private readonly IChannelPromptMessageStore _chatStore;
+
+    /// <summary>
     /// Builder of the phone number request.
     /// </summary>
     private readonly PhoneNumberRequestBuilder _requestBuilder;
@@ -73,6 +79,7 @@ internal sealed class PhoneStepStarter : IClaimCompletionStepStarter
     /// </summary>
     /// <param name="adapters">Registered channel adapters.</param>
     /// <param name="correlationStore">Record of the last phone number request sent into each chat.</param>
+    /// <param name="chatStore">Store of the chat each transaction was started from.</param>
     /// <param name="requestBuilder">Builder of the phone number request.</param>
     /// <param name="delivery">The seam the request is delivered into the chat through.</param>
     /// <param name="configurationResolver">Resolver of the window of an <c>Optional</c> number.</param>
@@ -82,6 +89,7 @@ internal sealed class PhoneStepStarter : IClaimCompletionStepStarter
     public PhoneStepStarter(
         IEnumerable<IChannelAdapter> adapters,
         IPhoneRequestCorrelationStore correlationStore,
+        IChannelPromptMessageStore chatStore,
         PhoneNumberRequestBuilder requestBuilder,
         IClaimCompletionChannelDelivery delivery,
         IConfigurationResolver configurationResolver,
@@ -91,6 +99,7 @@ internal sealed class PhoneStepStarter : IClaimCompletionStepStarter
     {
         _adapters = adapters ?? throw new ArgumentNullException(nameof(adapters));
         _correlationStore = correlationStore ?? throw new ArgumentNullException(nameof(correlationStore));
+        _chatStore = chatStore ?? throw new ArgumentNullException(nameof(chatStore));
         _requestBuilder = requestBuilder ?? throw new ArgumentNullException(nameof(requestBuilder));
         _delivery = delivery ?? throw new ArgumentNullException(nameof(delivery));
         _configurationResolver = configurationResolver ?? throw new ArgumentNullException(nameof(configurationResolver));
@@ -134,7 +143,8 @@ internal sealed class PhoneStepStarter : IClaimCompletionStepStarter
             return;
         }
 
-        await _correlationStore.SaveAsync(request.Correlation, cancellationToken);
+        await PhoneRequestCorrelationChats.SaveAsync(
+            _correlationStore, _chatStore, request.Correlation, _logger, cancellationToken);
 
         // SPEC-041 L73: only an Optional number is ever waited out; a Required one waits for the user or
         // for the deadline of the transaction (E59). An undelivered request waits the same way (L44).

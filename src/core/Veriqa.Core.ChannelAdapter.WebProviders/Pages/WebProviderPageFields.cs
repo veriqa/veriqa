@@ -49,4 +49,18 @@ internal static class WebProviderPageFields
     /// same id — rename both together.
     /// </summary>
     public const string PageElementId = "veriqa-web-provider-page";
+
+    /// <summary>
+    /// Attribute of the answers of the question naming where the script draws the slider in place of
+    /// "Yes": the name of the mode (<c>Mobile</c>, <c>Everywhere</c>); absent — nowhere. The script spells
+    /// the same attribute and names — rename them together.
+    /// </summary>
+    public const string ConfirmSliderAttribute = "data-confirm-slider";
+
+    /// <summary>
+    /// Attribute of the card of a page on which the request is over and no action after the sign-in
+    /// follows: the script asks the browser to close the tab as soon as the page loads. The script spells
+    /// the same attribute — rename both together.
+    /// </summary>
+    public const string ClosesTabAttribute = "data-closes-tab";
 }

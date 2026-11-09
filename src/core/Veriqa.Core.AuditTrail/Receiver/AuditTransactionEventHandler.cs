@@ -83,10 +83,13 @@ internal sealed class AuditTransactionEventHandler : ITransactionEventHandler
             // the tenant is the one the attribution carries — the receiver runs in a background loop
             // and has no ambient tenant of its own. An event that carries no attribution yields the
             // shared core context and costs nothing extra: today that is the self-hosted deployment,
-            // where no level above the core answers at all, AND the channel security events, which
-            // are published without a context of their own — such an event is judged by the core
-            // (SPEC-011 R44), whichever levels the deployment serves. With the audit off (the core
-            // default) this is the whole cost of an event.
+            // where no level above the core answers at all, AND a channel security event whose
+            // tenant is not known — such an event is judged by the core (SPEC-011 R44), whichever
+            // levels the deployment serves. A refusal of the interaction surface (the channel side,
+            // the confirmation page, the sign-in callback, hop, the Email sender check) of a known
+            // tenant carries that tenant alone; an admissibility refusal of the transaction service
+            // and a completion-behaviour clamp carry the whole attribution. Either way the mode is the
+            // tenant's. With the audit off (the core default) this is the whole cost of an event.
             //
             // "Not Audit" carries two readings, and only one of them is a deployment asking for no
             // audit. WHERE THE AXIS IS DECLARED — its catalog travels with the configuration

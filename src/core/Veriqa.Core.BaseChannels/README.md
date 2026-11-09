@@ -1,12 +1,16 @@
 # Veriqa.Core.BaseChannels
 
-**Telegram, WhatsApp and Email login and authentication by QR code in one package.** One `dotnet add package`
-instead of four. Your users scan a QR code on the sign-in page (on a phone, they tap a button) and
-confirm the sign-in with no password and no SMS code. Your users can also sign in with a QR code or
-a button through a Google or Apple account and 80+ other services, with the
-[`Veriqa.Core.ChannelAdapter.WebProviders`](https://www.nuget.org/packages/Veriqa.Core.ChannelAdapter.WebProviders)
-package. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can
-show a QR code.
+**Telegram, WhatsApp and Email login and authentication by QR code in one package.**
+
+- One `dotnet add package` instead of four.
+- Your users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm the
+  sign-in with no password and no SMS code.
+- Your users can also sign in with a QR code or a button through a Google or Apple account and 80+
+  other services, with the
+  [`Veriqa.Core.ChannelAdapter.WebProviders`](https://www.nuget.org/packages/Veriqa.Core.ChannelAdapter.WebProviders)
+  package.
+- Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a
+  QR code.
 
 ![Signing in on a computer with Telegram: the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in the Telegram chat, and the chat replies "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-telegram-cross-device.webp)
 
@@ -31,7 +35,7 @@ Documentation: [Supported messaging apps](https://veriqa.app/docs/guides/support
 - **A direct channel to the user.** The same sign-in gives your product a channel for notifications.
   [Sign-in and channel linking](https://veriqa.app/docs/scenarios/channel-linking)
 - **Leads and feedback without CAPTCHA.** Your site gets a confirmed contact instead of an address
-  typed into a field. This use case has been tested with Telegram.
+  typed into a field.
   [Leads and feedback without CAPTCHA](https://veriqa.app/docs/scenarios/lead-capture)
 - **Surfaces with no keyboard.** A smart TV, a set-top box or a kiosk shows a QR code, and the user
   types nothing. [Sign-in surfaces](https://veriqa.app/docs/scenarios/surfaces)

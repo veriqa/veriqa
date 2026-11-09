@@ -39,10 +39,10 @@
          for its options alone — the signing and encryption keys of the server of the same host, which
          the client takes as its own. The version is the one the auth server references: every OpenIddict
          package of the core is of one version. -->
-    <PackageReference Include="OpenIddict.Client.AspNetCore" Version="7.4.0" />
-    <PackageReference Include="OpenIddict.Client.SystemNetHttp" Version="7.4.0" />
-    <PackageReference Include="OpenIddict.Client.WebIntegration" Version="7.4.0" />
-    <PackageReference Include="OpenIddict.Server" Version="7.4.0" />
+    <PackageReference Include="OpenIddict.Client.AspNetCore" />
+    <PackageReference Include="OpenIddict.Client.SystemNetHttp" />
+    <PackageReference Include="OpenIddict.Client.WebIntegration" />
+    <PackageReference Include="OpenIddict.Server" />
   </ItemGroup>
 
   <ItemGroup>

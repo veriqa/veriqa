@@ -1,6 +1,7 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
@@ -17,9 +18,14 @@ namespace Veriqa.Core.TransactionEngine.Store.Redis;
 /// Redis implementation of the transaction store.
 /// Key removal is native (Redis TTL), so TransactionCleanupService skips its own deletion pass —
 /// that is what ISupportsNativeExpiry signals. The expiry of a transaction is not native: the key of
-/// a non-terminal transaction outlives <c>ExpiresAt</c> by <c>CompletedRetentionSeconds</c>, which is the
-/// window the cleanup pass has to read it back, move it to Expired and publish TransactionExpiredEvent.
-/// A key deleted exactly at <c>ExpiresAt</c> would make that expiry pass silently.
+/// a non-terminal transaction outlives <c>ExpiresAt</c> by the pass margin,
+/// <c>max(CleanupIntervalSeconds, CleanupErrorRetryDelaySeconds) + CompletedRetentionSeconds</c>, which is
+/// the window the cleanup pass has to read it back, move it to Expired and publish TransactionExpiredEvent.
+/// A key deleted exactly at <c>ExpiresAt</c> would make that expiry pass silently. The key of a confirmed
+/// transaction outlives, by the same margin, the later of <c>ExpiresAt</c> and the latest end its
+/// finalization window can have (<c>UpdatedAt</c> plus the upper bound of
+/// <c>ConfirmationFinalizationTimeoutSeconds</c>): past the end of the window the cleanup pass reads it back
+/// through the confirmed index and moves it to Failed with <c>finalization_timeout</c>.
 /// </summary>
 internal sealed class RedisTransactionStore : ITransactionStore, ISupportsNativeExpiry
 {
@@ -40,6 +46,22 @@ internal sealed class RedisTransactionStore : ITransactionStore, ISupportsNative
     private const string ExpiryIndexSegment = "expiry:index";
 
     /// <summary>
+    /// Key segment for the confirmed sorted set index: the ids of confirmed transactions scored by the
+    /// UpdatedAt of the stored document in Unix milliseconds (to support GetStalledConfirmedAsync).
+    /// </summary>
+    private const string ConfirmedIndexSegment = "confirmed:index";
+
+    /// <summary>
+    /// What the expiry pass reads from its index: the records a deadline still ends.
+    /// </summary>
+    private static readonly IndexedSweep ExpirySweep = new("expiry index", TransactionStateMachine.ExpirableStates);
+
+    /// <summary>
+    /// What the finalization pass reads from its index: the records still waiting for finalization.
+    /// </summary>
+    private static readonly IndexedSweep FinalizationSweep = new("confirmed index", FrozenSet.Create(TransactionState.Confirmed));
+
+    /// <summary>
     /// Segment separator in the idempotency key.
     /// </summary>
     private const string KeySegmentSeparator = ":";
@@ -47,8 +69,8 @@ internal sealed class RedisTransactionStore : ITransactionStore, ISupportsNative
     /// <summary>
     /// Lua script for atomically saving a transaction along with the idempotency index.
     /// Uses SET NX for both keys, rolls back the main key on an idmpKey conflict.
-    /// The two keys get their own TTLs: the main key outlives <c>ExpiresAt</c> by the retention window
-    /// (see <see cref="ComputeEffectiveExpiryTimestamp"/>), while the idempotency key ends exactly at
+    /// The two keys get their own TTLs: the main key outlives <c>ExpiresAt</c> by the pass margin
+    /// (see <see cref="GetPassMarginSeconds"/>), while the idempotency key ends exactly at
     /// <c>ExpiresAt</c> — a repeat of the same idempotency key after the transaction expired must start a
     /// new transaction, not hit a conflict on a dead one.
     /// KEYS[1] — main transaction key.
@@ -239,13 +261,28 @@ return 1";
     private const string PendingStateName = nameof(TransactionState.Pending);
 
     /// <summary>
+    /// Stored name of the Confirmed state — the one state the confirmed index holds.
+    /// </summary>
+    private const string ConfirmedStateName = nameof(TransactionState.Confirmed);
+
+    /// <summary>
+    /// Upper bound of ConfirmationFinalizationTimeoutSeconds. The value repeats the upper bound enforced by
+    /// <c>TransactionEngineOptionsValidator</c>, and the two change together. The key of a confirmed
+    /// transaction is sized by the bound, not by the current value, so a window raised at runtime does not
+    /// end a key written under the shorter one before the cleanup pass reaches it.
+    /// </summary>
+    private const int MaxConfirmationFinalizationTimeoutSeconds = 120;
+
+    /// <summary>
     /// Store options.
     /// </summary>
     private readonly RedisTransactionStoreOptions _options;
 
     /// <summary>
     /// Transaction Engine configuration (for CompletedRetentionSeconds — the retention window of a
-    /// dead transaction, expired or terminal).
+    /// dead transaction, expired or terminal — and, with CleanupIntervalSeconds and
+    /// CleanupErrorRetryDelaySeconds, for the pass margin by which the key of a non-terminal transaction
+    /// outlives the moment the cleanup pass owes it a transition).
     /// </summary>
     private readonly IOptionsMonitor<TransactionEngineOptions> _engineOptions;
 
@@ -263,12 +300,6 @@ return 1";
     /// Clock the relative Redis TTLs are computed from.
     /// </summary>
     private readonly TimeProvider _timeProvider;
-
-    /// <summary>
-    /// One-time warning flag for the GetStalledConfirmedAsync limitation.
-    /// 0 = not logged yet, 1 = already logged.
-    /// </summary>
-    private int _stalledConfirmedWarnedOnce;
 
     /// <summary>
     /// Creates an instance of the Redis transaction store.
@@ -305,7 +336,7 @@ return 1";
         var expirySecs = GetExpirySecs(entity.ExpiresAt);
 
         // A transaction whose TTL has already expired is not written to the store.
-        // The guard is on ExpiresAt itself, not on the retained key: the retention below keeps a dead
+        // The guard is on ExpiresAt itself, not on the retained key: the pass margin below keeps a dead
         // transaction readable, it does not make an already-dead one worth creating.
         if (expirySecs <= 0)
         {
@@ -313,9 +344,9 @@ return 1";
                 $"Transaction with ID '{transaction.Id}' has already expired (ExpiresAt={entity.ExpiresAt:O}) and cannot be saved");
         }
 
-        // The main key outlives ExpiresAt by the retention window (same rule as ComputeEffectiveExpiryTimestamp),
+        // The main key outlives ExpiresAt by the pass margin (same rule as ComputeEffectiveExpiryTimestamp),
         // the idempotency key does not — see the script's summary for why they differ.
-        var mainKeyTtlSecs = expirySecs + GetRetentionSeconds();
+        var mainKeyTtlSecs = expirySecs + GetPassMarginSeconds();
 
         var hasIdmp = entity.IdempotencyScope is not null && entity.IdempotencyKey is not null;
 
@@ -432,27 +463,10 @@ return 1";
 
         var updated = (long)result == 1L;
 
-        // On a successful transition to a terminal state, remove from the expiry index:
-        // TransactionExpiredEvent is no longer needed, and TTL will delete the key by the new deadline.
-        if (updated && IsTerminalState(entity.State))
-        {
-            try
-            {
-                await _db.SortedSetRemoveAsync(GetExpiryIndexKey(), transaction.Id.ToString());
-            }
-            catch (Exception failure) when (failure is not OperationCanceledException)
-            {
-                // The transition is already stored: a throw here would report it to the caller as
-                // failed. The expiry pass drops the id of a terminal record from the index itself.
-                _logger.LogWarning(
-                    failure,
-                    "Removing a terminal transaction from the expiry index failed; the expiry pass drops it later. TransactionId: {TransactionId}",
-                    transaction.Id.ToString());
-            }
-        }
-
         if (updated)
         {
+            await IndexStoredStateAsync(transaction.Id.ToString(), entity);
+
             await IndexSignInSubjectAsync(
                 transaction,
                 expiryTimestamp - _timeProvider.GetUtcNow().ToUnixTimeSeconds());
@@ -479,8 +493,9 @@ return 1";
             await _db.KeyDeleteAsync(idmpKey);
         }
 
-        // Remove from the expiry sorted set index
+        // Remove from the expiry and confirmed sorted set indexes
         await _db.SortedSetRemoveAsync(GetExpiryIndexKey(), id.ToString());
+        await _db.SortedSetRemoveAsync(GetConfirmedIndexKey(), id.ToString());
 
         _logger.LogDebug(
             "Transaction deleted from Redis. TransactionId: {TransactionId}, KeyExisted: {KeyExisted}",
@@ -551,7 +566,7 @@ return 1";
     /// <remarks>
     /// Uses the expiry sorted set index to efficiently find expired transactions.
     /// Loads entities via MGET (batch), then decides on every record on its own — the three outcomes
-    /// are <see cref="ExpirySweepOutcome"/>. Removing an id from the index is the right of exactly two
+    /// are <see cref="IndexedRecordOutcome"/>. Removing an id from the index is the right of exactly two
     /// of them: the record is gone, or the record is understood and the pass can do nothing with it.
     /// "This build could not read the record" is not one of them: that is a property of the build, not
     /// of the record, and the removal is irreversible (only AddAsync ever puts an id back), so the id
@@ -586,13 +601,13 @@ return 1";
 
         for (var i = 0; i < expiredIds.Length; i++)
         {
-            switch (DecideOnIndexedRecord(expiredIds[i], rawValues[i]))
+            switch (DecideOnIndexedRecord(expiredIds[i], rawValues[i], ExpirySweep))
             {
-                case (ExpirySweepOutcome.Expire, { } transaction):
+                case (IndexedRecordOutcome.Take, { } transaction):
                     result.Add(transaction);
                     break;
 
-                case (ExpirySweepOutcome.DropFromIndex, _):
+                case (IndexedRecordOutcome.DropFromIndex, _):
                     toRemoveFromIndex.Add(expiredIds[i]);
                     break;
 
@@ -625,29 +640,68 @@ return 1";
 
     /// <inheritdoc />
     /// <remarks>
-    /// Redis does not support an efficient query by state without additional indexes.
-    /// This method always returns an empty list — a limitation of the Redis store.
+    /// Uses the confirmed sorted set index: every write that leaves a transaction Confirmed puts its id
+    /// there, scored by the UpdatedAt of the written document in Unix milliseconds, and the write of a
+    /// terminal state takes it out. Reads the ids scored strictly below <paramref name="confirmedBefore"/>,
+    /// loads the entities via MGET (batch) and decides on every record by the rules of the expiry pass
+    /// (<see cref="IndexedRecordOutcome"/>): the id leaves the index when the record is gone or is read in
+    /// a known state other than Confirmed, and stays when this build cannot read the record. The stored
+    /// document decides, not the score: a confirmed record whose UpdatedAt is not before
+    /// <paramref name="confirmedBefore"/> (its score lagged behind a failed re-add) is not returned and
+    /// keeps its place. The ids to remove leave in a single ZREM. A transaction confirmed by a build
+    /// that did not write this index is not in it and lives to the deadline of its key.
     /// </remarks>
-    public Task<IReadOnlyList<Transaction>> GetStalledConfirmedAsync(
+    public async Task<IReadOnlyList<Transaction>> GetStalledConfirmedAsync(
         DateTimeOffset confirmedBefore,
         int batchSize,
         CancellationToken cancellationToken = default)
     {
-        // Log the warning once: TransactionCleanupService calls this method
-        // every cycle (once per minute by default). Subsequent calls — at Debug level.
-        if (Interlocked.CompareExchange(ref _stalledConfirmedWarnedOnce, 1, 0) == 0)
+        // ZRANGEBYSCORE: elements with score (UpdatedAt, ms) < confirmedBefore. A score floors the moment
+        // to the millisecond, so a score below the floor of confirmedBefore never names a later moment.
+        var confirmedIndexKey = GetConfirmedIndexKey();
+        var stalledIds = await _db.SortedSetRangeByScoreAsync(
+            confirmedIndexKey,
+            start: double.NegativeInfinity,
+            stop: confirmedBefore.ToUnixTimeMilliseconds(),
+            exclude: Exclude.Stop,
+            take: batchSize);
+
+        if (stalledIds.Length == 0)
         {
-            _logger.LogWarning(
-                "The Redis store does not support GetStalledConfirmedAsync. " +
-                "Stalled Confirmed transactions will not be moved to Failed. " +
-                "If this feature is required, use the EfCore store.");
-        }
-        else
-        {
-            _logger.LogDebug("GetStalledConfirmedAsync: Redis store, returning an empty list");
+            return Array.Empty<Transaction>();
         }
 
-        return Task.FromResult<IReadOnlyList<Transaction>>(Array.Empty<Transaction>());
+        // MGET: load all entities with a single batch request
+        var mainKeys = stalledIds
+            .Select(id => (RedisKey)GetTransactionKey(id.ToString()))
+            .ToArray();
+        var rawValues = await _db.StringGetAsync(mainKeys);
+
+        var result = new List<Transaction>(stalledIds.Length);
+        var toRemoveFromIndex = new List<RedisValue>();
+
+        for (var i = 0; i < stalledIds.Length; i++)
+        {
+            switch (DecideOnIndexedRecord(stalledIds[i], rawValues[i], FinalizationSweep))
+            {
+                case (IndexedRecordOutcome.Take, { } transaction) when transaction.UpdatedAt < confirmedBefore:
+                    result.Add(transaction);
+                    break;
+
+                case (IndexedRecordOutcome.DropFromIndex, _):
+                    toRemoveFromIndex.Add(stalledIds[i]);
+                    break;
+
+                    // Confirmed but not yet past the threshold, or LeaveForAnotherBuild: the id stays in the index.
+            }
+        }
+
+        if (toRemoveFromIndex.Count > 0)
+        {
+            await _db.SortedSetRemoveAsync(confirmedIndexKey, toRemoveFromIndex.ToArray());
+        }
+
+        return result.AsReadOnly();
     }
 
     /// <inheritdoc />
@@ -837,6 +891,66 @@ return 1";
     }
 
     /// <summary>
+    /// Brings the expiry and confirmed indexes in line with the state just written. A confirmed
+    /// transaction is (re)added to the confirmed index with the UpdatedAt of the written document, so the
+    /// score follows the document the way the EF Core selection does; a terminal one leaves both indexes:
+    /// no event of the cleanup pass is owed to it any more, and TTL deletes the key by its new deadline.
+    /// Runs after the transaction itself is written and is not atomic with that write — the index keys
+    /// and the transaction key sit in different Redis Cluster slots, so one script cannot hold them.
+    /// </summary>
+    /// <param name="transactionId">String transaction identifier.</param>
+    /// <param name="entity">Entity that has just been written.</param>
+    private async Task IndexStoredStateAsync(string transactionId, TransactionEntity entity)
+    {
+        if (entity.State == ConfirmedStateName)
+        {
+            // Not added: the finalization pass does not see the transaction, and it lives to the
+            // deadline of its key.
+            await WriteIndexAfterStoredTransitionAsync(
+                () => _db.SortedSetAddAsync(GetConfirmedIndexKey(), transactionId, entity.UpdatedAt.ToUnixTimeMilliseconds()),
+                FinalizationSweep,
+                transactionId);
+        }
+        else if (IsTerminalState(entity.State))
+        {
+            // Not removed: each pass drops the id of a record it reads in a state it does not act on.
+            // The two removals are independent and are sent together, so they cost one round trip.
+            await Task.WhenAll(
+                WriteIndexAfterStoredTransitionAsync(
+                    () => _db.SortedSetRemoveAsync(GetExpiryIndexKey(), transactionId),
+                    ExpirySweep,
+                    transactionId),
+                WriteIndexAfterStoredTransitionAsync(
+                    () => _db.SortedSetRemoveAsync(GetConfirmedIndexKey(), transactionId),
+                    FinalizationSweep,
+                    transactionId));
+        }
+    }
+
+    /// <summary>
+    /// Runs one index write that follows a stored transition. A failure is logged and swallowed: the
+    /// transition is already stored, and a throw here would report it to the caller as failed.
+    /// </summary>
+    /// <param name="write">The index write.</param>
+    /// <param name="sweep">Pass whose index the write goes to.</param>
+    /// <param name="transactionId">String transaction identifier.</param>
+    private async Task WriteIndexAfterStoredTransitionAsync(Func<Task> write, IndexedSweep sweep, string transactionId)
+    {
+        try
+        {
+            await write();
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                failure,
+                "Writing the {Index} after a stored transition failed; the transition stands. TransactionId: {TransactionId}",
+                sweep.IndexName,
+                transactionId);
+        }
+    }
+
+    /// <summary>
     /// Puts the transaction into the set of its sign-in subject, if it is a pending sign-in with a
     /// scope. Runs after the transaction itself is written and is not atomic with that write: if it
     /// does not run, the sign-in is simply not found by <see cref="GetPendingSignInsAsync"/> and lives
@@ -915,8 +1029,9 @@ return 1";
     }
 
     /// <summary>
-    /// Decides what the expiry pass may do with one record of the expiry index, and rehydrates the
-    /// transaction when the outcome is to expire it. Every way this build can fail to read a stored
+    /// Decides what a cleanup pass may do with one record of its index, and rehydrates the transaction
+    /// when the outcome is to take it. Both indexes go through here, so a record leaves either of them by
+    /// the same rules. Every way this build can fail to read a stored
     /// record — an empty value, unreadable JSON, the JSON literal null, a state name it does not know,
     /// a field its mapper rejects — ends in the same outcome: reported and left where it is. Only the
     /// absence of the key itself says the record is gone. Nothing here throws:
@@ -925,22 +1040,24 @@ return 1";
     /// </summary>
     /// <param name="transactionId">Identifier as it stands in the index.</param>
     /// <param name="rawValue">Raw value of the transaction key from the batch read.</param>
-    /// <returns>The outcome, with the rehydrated transaction when the outcome is Expire.</returns>
-    private (ExpirySweepOutcome Outcome, Transaction? Transaction) DecideOnIndexedRecord(
+    /// <param name="sweep">Pass the index belongs to.</param>
+    /// <returns>The outcome, with the rehydrated transaction when the outcome is Take.</returns>
+    private (IndexedRecordOutcome Outcome, Transaction? Transaction) DecideOnIndexedRecord(
         RedisValue transactionId,
-        RedisValue rawValue)
+        RedisValue rawValue,
+        IndexedSweep sweep)
     {
-        // The key died by TTL before the pass got to it: there is no record left to expire, and the
+        // The key died by TTL before the pass got to it: there is no record left to act on, and the
         // index entry is all that remains of it. Only a missing key means that — a live key holding
         // an empty value is a record this build cannot read, not a record that is gone.
         if (rawValue.IsNull)
         {
-            return (ExpirySweepOutcome.DropFromIndex, null);
+            return (IndexedRecordOutcome.DropFromIndex, null);
         }
 
         if (rawValue.Length() == 0)
         {
-            return LeaveForABuildThatReadsIt(transactionId, "the stored value is empty", state: null);
+            return LeaveForABuildThatReadsIt(transactionId, sweep, "the stored value is empty", state: null);
         }
 
         TransactionEntity? entity;
@@ -953,14 +1070,14 @@ return 1";
         }
         catch (JsonException failure)
         {
-            return LeaveForABuildThatReadsIt(transactionId, "the stored value is not readable JSON", state: null, failure);
+            return LeaveForABuildThatReadsIt(transactionId, sweep, "the stored value is not readable JSON", state: null, failure);
         }
 
         if (entity is null)
         {
             // The key is alive and holds the JSON literal null: the record is there, this build just
             // cannot make a transaction of it.
-            return LeaveForABuildThatReadsIt(transactionId, "the stored value is the JSON literal null", state: null);
+            return LeaveForABuildThatReadsIt(transactionId, sweep, "the stored value is the JSON literal null", state: null);
         }
 
         // The state is read off the stored record before any rehydration, and it splits three ways.
@@ -969,27 +1086,28 @@ return 1";
         // its to drop.
         if (!Enum.TryParse<TransactionState>(entity.State, out var state) || !Enum.IsDefined(state))
         {
-            return LeaveForABuildThatReadsIt(transactionId, "the stored state is not a state this build knows", entity.State);
+            return LeaveForABuildThatReadsIt(transactionId, sweep, "the stored state is not a state this build knows", entity.State);
         }
 
-        // Known, and past the point of expiry in the lifecycle — terminal, or confirmed. Which states
-        // a deadline still ends is the transition table's to say, and every store asks it the same
-        // way. Its key now outlives ExpiresAt by the retention window, and left in the index it
-        // would come back to every pass of that window, first in score order, taking the batch slots
-        // of the transactions the pass has to expire.
-        if (!TransactionStateMachine.ExpirableStates.Contains(state))
+        // Known, and past the part of the lifecycle the pass acts on — for the expiry pass terminal or
+        // confirmed (which states a deadline still ends is the transition table's to say, and every
+        // store asks it the same way), for the finalization pass anything but Confirmed. Its key
+        // outlives that moment by at least the retention window, and left in the index it would come back to
+        // every pass of that window, first in score order, taking the batch slots of the transactions
+        // the pass has to act on.
+        if (!sweep.TakenStates.Contains(state))
         {
-            return (ExpirySweepOutcome.DropFromIndex, null);
+            return (IndexedRecordOutcome.DropFromIndex, null);
         }
 
         try
         {
-            return (ExpirySweepOutcome.Expire, TransactionEntityMapper.ToDomain(entity));
+            return (IndexedRecordOutcome.Take, TransactionEntityMapper.ToDomain(entity));
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
             // The state was known, some other field of the record is not: same class, same outcome.
-            return LeaveForABuildThatReadsIt(transactionId, "the stored record does not rehydrate on this build", entity.State, failure);
+            return LeaveForABuildThatReadsIt(transactionId, sweep, "the stored record does not rehydrate on this build", entity.State, failure);
         }
     }
 
@@ -1000,24 +1118,27 @@ return 1";
     /// record holds identity snapshots and client context.
     /// </summary>
     /// <param name="transactionId">Identifier as it stands in the index.</param>
+    /// <param name="sweep">Pass whose index the record was read from.</param>
     /// <param name="reason">What about the record this build could not read.</param>
     /// <param name="state">Stored state string, when the record got far enough to have one.</param>
     /// <param name="failure">Failure that ended the reading, when there was one.</param>
     /// <returns>The LeaveForAnotherBuild outcome, without a transaction.</returns>
-    private (ExpirySweepOutcome Outcome, Transaction? Transaction) LeaveForABuildThatReadsIt(
+    private (IndexedRecordOutcome Outcome, Transaction? Transaction) LeaveForABuildThatReadsIt(
         RedisValue transactionId,
+        IndexedSweep sweep,
         string reason,
         string? state,
         Exception? failure = null)
     {
         _logger.LogWarning(
             failure,
-            "The expiry pass cannot read a record of the expiry index and leaves it there for a build that can. TransactionId: {TransactionId}, Reason: {Reason}, State: {State}",
+            "A cleanup pass cannot read a record of the {Index} and leaves it there for a build that can. TransactionId: {TransactionId}, Reason: {Reason}, State: {State}",
+            sweep.IndexName,
             transactionId.ToString(),
             reason,
             state);
 
-        return (ExpirySweepOutcome.LeaveForAnotherBuild, null);
+        return (IndexedRecordOutcome.LeaveForAnotherBuild, null);
     }
 
     /// <summary>
@@ -1068,15 +1189,33 @@ return 1";
     }
 
     /// <summary>
+    /// Builds the key for the confirmed sorted set index.
+    /// </summary>
+    /// <returns>Redis sorted set key.</returns>
+    private string GetConfirmedIndexKey()
+    {
+        return string.Concat(_options.KeyPrefix, ConfirmedIndexSegment);
+    }
+
+    /// <summary>
     /// Computes the effective Unix timestamp for EXPIREAT: the moment the key is deleted, which is
     /// never the moment the transaction expires. A dead transaction — expired or terminal — stays
-    /// readable for <c>CompletedRetentionSeconds</c> after the moment it died.
+    /// readable for <c>CompletedRetentionSeconds</c> after its death is recorded; the key of a
+    /// non-terminal one outlives the moment the cleanup pass owes it a transition by the pass margin
+    /// <c>M = max(CleanupIntervalSeconds, CleanupErrorRetryDelaySeconds) + CompletedRetentionSeconds</c>
+    /// (<see cref="GetPassMarginSeconds"/>).
     /// <list type="bullet">
-    /// <item>Non-terminal: <c>ExpiresAt + CompletedRetentionSeconds</c>. The transaction is dead at
-    /// <c>ExpiresAt</c>, but it is the cleanup pass that records that — reads it back through the expiry
-    /// index, moves it to Expired and publishes TransactionExpiredEvent — and the pass runs on its own
-    /// interval, so the key has to wait for it. Readers in that window get a non-terminal transaction
-    /// whose <c>ExpiresAt</c> is in the past, exactly what the in-memory and EF Core stores return.</item>
+    /// <item>Confirmed: <c>max(ExpiresAt + M, UpdatedAt + Fmax + M)</c>, where <c>Fmax</c> is the upper
+    /// bound of ConfirmationFinalizationTimeoutSeconds (<see cref="MaxConfirmationFinalizationTimeoutSeconds"/>).
+    /// The deadline no longer ends a confirmed transaction, the end of its finalization window does
+    /// (SPEC-001 §8.3 item 3): the cleanup pass reads it back through the confirmed index and moves it to
+    /// Failed, so the key outlives that end by the same margin. A confirmation late in the transaction's
+    /// life would otherwise lose its key before the pass gets to it.</item>
+    /// <item>Other non-terminal: <c>ExpiresAt + M</c>. The transaction is dead at <c>ExpiresAt</c>, but it
+    /// is the cleanup pass that records that — reads it back through the expiry index, moves it to Expired
+    /// and publishes TransactionExpiredEvent — and the pass runs on its own interval, so the key has to wait
+    /// for it. Readers in that window get a non-terminal transaction whose <c>ExpiresAt</c> is in the past,
+    /// exactly what the in-memory and EF Core stores return.</item>
     /// <item>Terminal: <c>max(ExpiresAt, UpdatedAt + CompletedRetentionSeconds)</c>, so consumers have
     /// time to read the final status.</item>
     /// </list>
@@ -1086,28 +1225,59 @@ return 1";
     private long ComputeEffectiveExpiryTimestamp(TransactionEntity entity)
     {
         var baseExpiry = entity.ExpiresAt.ToUnixTimeSeconds();
-        var retentionSecs = GetRetentionSeconds();
+
+        if (entity.State == ConfirmedStateName)
+        {
+            var passMarginSecs = GetPassMarginSeconds();
+            var finalizationExpiry = entity.UpdatedAt
+                .AddSeconds(MaxConfirmationFinalizationTimeoutSeconds + passMarginSecs)
+                .ToUnixTimeSeconds();
+
+            return Math.Max(baseExpiry + passMarginSecs, finalizationExpiry);
+        }
 
         if (!IsTerminalState(entity.State))
         {
-            return baseExpiry + retentionSecs;
+            return baseExpiry + GetPassMarginSeconds();
         }
 
-        var retentionExpiry = entity.UpdatedAt.AddSeconds(retentionSecs).ToUnixTimeSeconds();
+        var retentionExpiry = entity.UpdatedAt.AddSeconds(GetRetentionSeconds()).ToUnixTimeSeconds();
 
         return Math.Max(baseExpiry, retentionExpiry);
     }
 
     /// <summary>
     /// Reads the retention window of a dead transaction — completed, failed or expired alike — from
-    /// the engine configuration. One setting for both kinds of death: it is the same "keep it readable
-    /// long enough for the outcome to be seen" window, and nothing in this store gives the two a
+    /// the engine configuration: how long the record stays readable after its death is recorded. A
+    /// terminal record counts it from the write of the terminal state; a record the cleanup pass still
+    /// has to move counts it from the start of that pass, as the last part of the pass margin
+    /// (<see cref="GetPassMarginSeconds"/>). One setting for both kinds of death: it is the same "keep it
+    /// readable long enough for the outcome to be seen" window, and nothing in this store gives the two a
     /// different length.
     /// </summary>
     /// <returns>Retention in seconds.</returns>
     private int GetRetentionSeconds()
     {
         return _engineOptions.CurrentValue.CompletedRetentionSeconds;
+    }
+
+    /// <summary>
+    /// Computes the pass margin: how long the key of a non-terminal transaction outlives the moment the
+    /// cleanup pass owes it a transition — <c>max(CleanupIntervalSeconds, CleanupErrorRetryDelaySeconds) +
+    /// CompletedRetentionSeconds</c>. The next pass starts at most <c>CleanupIntervalSeconds</c> after the
+    /// previous one ends, and at most <c>CleanupErrorRetryDelaySeconds</c> after one cut short by an
+    /// exception; the record outlives that start by the retention window, which also covers the length of
+    /// the pass and the tail of its batch (SPEC-001 §8.3). The values are read at the time of the write, so
+    /// an interval raised later by more than the retention window can end a key written before the change
+    /// ahead of the pass.
+    /// </summary>
+    /// <returns>Pass margin in seconds.</returns>
+    private int GetPassMarginSeconds()
+    {
+        var engineOptions = _engineOptions.CurrentValue;
+
+        return Math.Max(engineOptions.CleanupIntervalSeconds, engineOptions.CleanupErrorRetryDelaySeconds)
+            + engineOptions.CompletedRetentionSeconds;
     }
 
     /// <summary>
@@ -1165,20 +1335,21 @@ return 1";
     }
 
     /// <summary>
-    /// What the expiry pass may do with one record it found in the expiry index. The index is shared by
-    /// every instance working against the same Redis, so an id removed from it is expired by no
-    /// instance ever again — which is why "read it" and "drop it" are not the same decision.
+    /// What a cleanup pass may do with one record it found in its index. Each index is shared by every
+    /// instance working against the same Redis, so an id removed from it is acted on by no instance
+    /// ever again — which is why "read it" and "drop it" are not the same decision.
     /// </summary>
-    private enum ExpirySweepOutcome
+    private enum IndexedRecordOutcome
     {
         /// <summary>
-        /// The record is read and can still become Expired: it goes to the result of the pass.
+        /// The record is read and in a state the pass acts on (expiry: can still become Expired;
+        /// finalization: still Confirmed): it goes to the result of the pass.
         /// </summary>
-        Expire,
+        Take,
 
         /// <summary>
         /// The pass has nothing left to do with the record — it is gone, or it is read and past the
-        /// point of expiry in the lifecycle. Its id leaves the index.
+        /// part of the lifecycle the pass acts on. Its id leaves the index.
         /// </summary>
         DropFromIndex,
 
@@ -1188,4 +1359,12 @@ return 1";
         /// </summary>
         LeaveForAnotherBuild
     }
+
+    /// <summary>
+    /// A cleanup pass that reads its records through a sorted set index of this store.
+    /// </summary>
+    /// <param name="IndexName">Name of the index in log messages.</param>
+    /// <param name="TakenStates">States of a record the pass acts on; a record read in any other known
+    /// state leaves the index.</param>
+    private sealed record IndexedSweep(string IndexName, IReadOnlySet<TransactionState> TakenStates);
 }

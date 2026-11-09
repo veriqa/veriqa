@@ -115,6 +115,7 @@ internal sealed class InMemoryChannelStartCodeStore : IChannelStartCodeStore
     /// <inheritdoc />
     public Task<ChannelStartCode?> TakeAsync(
         string code,
+        string? ownerTenantId,
         CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested)
@@ -126,13 +127,19 @@ internal sealed class InMemoryChannelStartCodeStore : IChannelStartCodeStore
 
         lock (_gate)
         {
+            // The tenant is compared under the same lock the record is removed under, so a record of
+            // another tenant is never removed, and two callers never both get one record.
             var record = FindLive(_byCode, code, _timeProvider.GetUtcNow());
-            if (record is not null)
+            if (record is null
+                || (ownerTenantId is not null
+                    && !string.Equals(record.TenantId, ownerTenantId, StringComparison.Ordinal)))
             {
-                Remove(record);
+                return Task.FromResult<ChannelStartCode?>(null);
             }
 
-            return Task.FromResult(record);
+            Remove(record);
+
+            return Task.FromResult<ChannelStartCode?>(record);
         }
     }
 

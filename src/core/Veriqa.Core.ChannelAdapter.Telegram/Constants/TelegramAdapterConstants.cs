@@ -87,6 +87,30 @@ internal static class TelegramAdapterConstants
     public const int LongPollTimeoutSeconds = 30;
 
     /// <summary>
+    /// Named <see cref="System.Net.Http.IHttpClientFactory"/> client the Telegram Bot client sends its
+    /// requests through.
+    /// </summary>
+    public const string HttpClientName = "telegram-bot-api";
+
+    /// <summary>
+    /// Timeout of one Bot API request, in seconds — an explicit bound instead of the default 100 s of
+    /// <see cref="System.Net.Http.HttpClient"/>, so a stuck request fails instead of holding the bot.
+    /// </summary>
+    /// <remarks>
+    /// Invariant: the value is greater than <see cref="LongPollTimeoutSeconds"/>. The getUpdates request of
+    /// <c>TelegramPollingService</c> goes through the same client and is held open by Telegram for up to
+    /// the long-poll timeout when there is nothing to deliver; a smaller value would cut every empty
+    /// long-poll short.
+    /// </remarks>
+    public const int BotApiTimeoutSeconds = 45;
+
+    /// <summary>
+    /// Time budget of reading the avatar of a user, in seconds: the profile photos, the file and its
+    /// download together. When it runs out the avatar is left out.
+    /// </summary>
+    public const int AvatarBudgetSeconds = 4;
+
+    /// <summary>
     /// Webhook path relative to the base URL.
     /// </summary>
     public const string WebhookPath = "/api/channels/telegram/webhook";

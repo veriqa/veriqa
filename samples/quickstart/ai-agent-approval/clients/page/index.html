@@ -1,0 +1,123 @@
+<!doctype html>
+<!-- Copyright (c) Dmitrii Erusov. SPDX-License-Identifier: MIT -->
+<!-- The page every client of this repository serves: the same page in every language, so only the
+     backend differs. It talks to the backend of the client it came from, never to Veriqa. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Support agent · approval in Telegram</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1b1f24; }
+    fieldset { border: 1px solid #d0d7de; border-radius: 8px; padding: 1rem; }
+    label { display: block; margin: .5rem 0 .2rem; }
+    input, select { width: 100%; padding: .4rem; box-sizing: border-box; }
+    button { margin-top: 1rem; padding: .5rem 1rem; }
+    #log { font-family: ui-monospace, monospace; font-size: .9rem; list-style: none; padding: 0; }
+    #log li { padding: .2rem 0; border-bottom: 1px solid #eaeef2; }
+    #log .kind { display: inline-block; min-width: 5.5rem; color: #57606a; }
+    #approval { margin: 1rem 0; padding: 1rem; border: 2px solid #bf8700; border-radius: 8px; }
+    #approval img { width: 220px; height: 220px; image-rendering: pixelated; }
+    #completion { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Support agent</h1>
+  <p>The agent handles a refund ticket with three tools. <code>lookup_order</code> and
+    <code>send_customer_email</code> run on their own; <code>refund_payment</code> moves money, so
+    every call of it waits until a person approves it in Telegram.</p>
+
+  <form id="ticket">
+    <fieldset>
+      <legend>Refund ticket</legend>
+      <label for="order">Order</label>
+      <select id="order">
+        <option value="A-1042" data-amount="89.00 EUR">A-1042 · Wireless headphones · 89.00 EUR</option>
+        <option value="A-1043" data-amount="420.00 EUR">A-1043 · Standing desk · 420.00 EUR</option>
+      </select>
+      <label for="reason">What the customer wrote</label>
+      <input id="reason" maxlength="120" value="The headphones arrived broken" />
+      <button type="submit" id="start">Hand the ticket to the agent</button>
+    </fieldset>
+  </form>
+
+  <div id="approval" hidden>
+    <p>The agent stopped at <code id="approval-tool"></code>. Scan the code with the phone that has
+      Telegram, press <b>Start</b> in the bot and answer.</p>
+    <img id="qr" alt="QR code of the approval" />
+    <p><a id="link" target="_blank" rel="noopener">Open in Telegram</a></p>
+  </div>
+
+  <h2>Agent log</h2>
+  <ul id="log"></ul>
+  <p id="completion"></p>
+
+  <script>
+    const form = document.getElementById('ticket');
+    const startButton = document.getElementById('start');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      startButton.disabled = true;
+      const order = document.getElementById('order');
+      const response = await fetch('/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order: order.value,
+          amount: order.selectedOptions[0].dataset.amount,
+          reason: document.getElementById('reason').value
+        })
+      });
+      if (!response.ok) {
+        document.getElementById('completion').textContent = 'The backend answered ' + response.status + ': ' + await response.text();
+        startButton.disabled = false;
+        return;
+      }
+      const run = await response.json();
+      poll(run.id);
+    });
+
+    // Every read of the run moves it on: the backend checks the approval that holds the agent, and
+    // once a person has answered, the agent goes on with its next tool.
+    async function poll(runId) {
+      const response = await fetch('/runs/' + encodeURIComponent(runId));
+      if (!response.ok) {
+        document.getElementById('completion').textContent = 'The backend answered ' + response.status + ': ' + await response.text();
+        startButton.disabled = false;
+        return;
+      }
+      const run = await response.json();
+      render(run);
+      if (run.completion === null) {
+        setTimeout(() => poll(runId), 2000);
+      } else {
+        startButton.disabled = false;
+      }
+    }
+
+    function render(run) {
+      const log = document.getElementById('log');
+      log.replaceChildren(...run.log.map((entry) => {
+        const item = document.createElement('li');
+        const kind = document.createElement('span');
+        kind.className = 'kind';
+        kind.textContent = entry.at + ' ' + entry.kind;
+        item.append(kind, ' ', entry.text);
+        return item;
+      }));
+      const approval = document.getElementById('approval');
+      approval.hidden = run.pending === null;
+      if (run.pending !== null) {
+        document.getElementById('approval-tool').textContent = run.pending.tool;
+        document.getElementById('link').href = run.pending.url;
+        // channel_entry.qr is a PNG data URI; without one the link alone is shown.
+        const qr = document.getElementById('qr');
+        qr.hidden = !run.pending.qr;
+        if (run.pending.qr) { qr.src = run.pending.qr; }
+      }
+      document.getElementById('completion').textContent = run.completion ?? '';
+    }
+  </script>
+</body>
+</html>

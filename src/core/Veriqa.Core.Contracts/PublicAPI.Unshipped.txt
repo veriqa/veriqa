@@ -257,6 +257,8 @@ Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter.ReportOutcomeAsync(Veriq
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter.SendConfirmationPromptAsync(Veriqa.Core.TransactionEngine.Domain.TransactionId transactionId, string! channelUserId, Veriqa.Core.ChannelAdapter.Domain.ConfirmationPromptContext! promptContext, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.ChannelAdapter.Domain.ChannelMessageRef?>!>!
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter.SendMessageAsync(Veriqa.Core.ChannelAdapter.Domain.ChannelMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<Veriqa.Core.ChannelAdapter.Domain.ChannelMessageRef?>!>!
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelAdapter.ValidateWebhookAsync(Veriqa.Core.ChannelAdapter.Domain.ChannelInboundRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Veriqa.Core.TransactionEngine.Common.Result<bool>!>!
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelAvatarSource
+Veriqa.Core.ChannelAdapter.Abstractions.IChannelAvatarSource.GetAvatarAsync(string! channelUserId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string?>
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelBotName
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelBotName.GetBotNameAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string?>
 Veriqa.Core.ChannelAdapter.Abstractions.IChannelDisplayMetadata
@@ -822,6 +824,9 @@ const Veriqa.Core.Contracts.Audit.AuditDeletionBases.Retention = "retention" -> 
 Veriqa.Core.Contracts.Audit.AuditDeletionBases
 Veriqa.Core.Contracts.Audit.AuditMetadata.DeletionBasis.get -> string?
 Veriqa.Core.Contracts.Audit.AuditMetadata.DeletionBasis.init -> void
+Veriqa.Core.Contracts.EmailDomain
+static Veriqa.Core.Contracts.EmailDomain.ToCanonical(string! domain) -> string!
+static Veriqa.Core.Contracts.EmailDomain.ToDisplay(string! domain) -> string!
 Veriqa.Core.Contracts.E164PhoneNumber
 static Veriqa.Core.Contracts.E164PhoneNumber.IsCanonical(string? value) -> bool
 static Veriqa.Core.Contracts.E164PhoneNumber.TryNormalize(string? value, out string? normalized) -> bool
@@ -947,3 +952,10 @@ static Veriqa.Core.ChannelAdapter.Domain.DeepLinkRequest.operator !=(Veriqa.Core
 static Veriqa.Core.ChannelAdapter.Domain.DeepLinkRequest.operator ==(Veriqa.Core.ChannelAdapter.Domain.DeepLinkRequest? left, Veriqa.Core.ChannelAdapter.Domain.DeepLinkRequest? right) -> bool
 [VERIQAEXP0001]Veriqa.Core.ChannelAdapter.Domain.ConfirmationPromptContext.BrandName.get -> string?
 [VERIQAEXP0001]Veriqa.Core.ChannelAdapter.Domain.ConfirmationPromptContext.BrandName.init -> void
+const Veriqa.Core.Contracts.VeriqaClaimTypes.Birthdate = "birthdate" -> string!
+const Veriqa.Core.Contracts.VeriqaClaimTypes.Gender = "gender" -> string!
+const Veriqa.Core.Contracts.VeriqaClaimTypes.MiddleName = "middle_name" -> string!
+const Veriqa.Core.Contracts.VeriqaClaimTypes.Nickname = "nickname" -> string!
+const Veriqa.Core.Contracts.VeriqaClaimTypes.Profile = "profile" -> string!
+const Veriqa.Core.Contracts.VeriqaClaimTypes.Website = "website" -> string!
+static readonly Veriqa.Core.Contracts.VeriqaClaimTypes.StandardProfileClaims -> System.Collections.Generic.IReadOnlySet<string!>!

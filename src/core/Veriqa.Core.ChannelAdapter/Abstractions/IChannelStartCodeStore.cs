@@ -10,10 +10,12 @@ namespace Veriqa.Core.ChannelAdapter.Abstractions;
 /// sent to the bot) and by the transaction (the page that shows the code again).
 /// </summary>
 /// <remarks>
-/// The scope of a code is the whole deployment: a code names its transaction on its own, the way the
-/// identifier in a link does, so it is found whichever webhook route the message arrives on — a bot
-/// the tenants of a deployment share included. Which tenant the transaction belongs to is read off
-/// the transaction once the code has named it, never off the code.
+/// The codes of all the tenants of a deployment share one space: a code is unique among the live codes
+/// of the deployment, and a start that arrives with no tenant of the event — the route without a tenant
+/// segment, the bot of the installation — finds the code of a transaction of any tenant. A start that
+/// arrives with a tenant takes only the code of a transaction of that tenant
+/// (<see cref="ChannelStartCode.TenantId"/>), and the code of another tenant stays in the store as if
+/// it had not been asked for.
 /// <para>
 /// The default implementation is in-process. A code is shown by one instance and sent to whichever
 /// instance receives the webhook, so a multi-instance deployment registers a shared implementation.
@@ -43,12 +45,19 @@ public interface IChannelStartCodeStore
 
     /// <summary>
     /// Finds a code and removes it, as one operation of the store: of two callers presenting the same
-    /// code only one gets the record.
+    /// code only one gets the record. With a tenant stated, the comparison of the tenant of the record is
+    /// part of that same operation: a record of another tenant is neither returned nor removed.
     /// </summary>
     /// <param name="code">The code in its normalized form: decimal digits only.</param>
+    /// <param name="ownerTenantId">Tenant of the event that presents the code; null — none, and the
+    /// record is taken whatever its tenant. Otherwise the record is taken only when its
+    /// <see cref="ChannelStartCode.TenantId"/> is this tenant, compared ordinally — a record of the
+    /// implicit tenant included, it is not.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The record; null — there is none, or it is past its <see cref="ChannelStartCode.ExpiresAt"/>.</returns>
+    /// <returns>The record; null — there is none, it is past its <see cref="ChannelStartCode.ExpiresAt"/>,
+    /// or it is of another tenant (and stays in the store).</returns>
     Task<ChannelStartCode?> TakeAsync(
         string code,
+        string? ownerTenantId,
         CancellationToken cancellationToken = default);
 }

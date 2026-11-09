@@ -78,7 +78,7 @@ internal sealed record WebProviderPageView(
         }
 
         // The menu sent after a sign-in already tells the user it went through, so the page adds no
-        // outcome line under it; the page still offers to close the tab under the menu (OffersClose).
+        // outcome line under it.
         if (outcome is not null && OffersActions(feed))
         {
             return new WebProviderPageView(WebProviderPageBlock.Closed, Text: null, feed);
@@ -167,11 +167,11 @@ internal sealed record WebProviderPageView(
         && !(transaction.IsTerminal() && message.SentAt >= transaction.UpdatedAt);
 
     /// <summary>
-    /// Whether the page offers to close its tab: on every page where the request is over — an outcome,
-    /// a message the core sent at the end (a receipt, the menu or the button after a sign-in) or the line
-    /// of an ended request. The question and the waiting state do not offer it.
+    /// Whether the page shows the request over: an outcome, a message the core sent at the end (a receipt,
+    /// the menu or the button after a sign-in) or the line of an ended request. The question and the
+    /// waiting state do not.
     /// </summary>
-    public bool OffersClose =>
+    public bool IsOver =>
         Block is WebProviderPageBlock.Outcome or WebProviderPageBlock.Closed or WebProviderPageBlock.Ended;
 
     /// <summary>

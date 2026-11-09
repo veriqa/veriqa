@@ -135,6 +135,17 @@ public sealed class ChannelDisplayInfo
     public bool StartMessageIsFallback { get; init; }
 
     /// <summary>
+    /// Whether the chat of the channel is a page of the core itself — the page of a web provider channel
+    /// (its adapter implements <see cref="IChannelOwnPage"/>): the outcome of the transaction is shown on
+    /// that page, not in a messenger. A page that follows the transaction without taking part in it — the
+    /// scanner page of the unified hop QR code — opens such a channel in its own tab (SPEC-025 HOP-186),
+    /// so the phone is left with one tab when the transaction ends. false — the chat is a messenger or a
+    /// mail client. Internal: the scanner page is rendered by the built-in renderer alone (SPEC-025
+    /// HOP-197), so a renderer an integrator substitutes never gets a page this value acts on.
+    /// </summary>
+    internal bool ChatIsCorePage { get; init; }
+
+    /// <summary>
     /// Whether the message is the only start of the channel: its link carries no transaction, so a
     /// surface that cannot show the message has no way into the channel to offer.
     /// </summary>
@@ -364,7 +375,7 @@ internal sealed class ChannelDisplayService : IChannelDisplayService
                 {
                     startMessageIsFallback = codeStart.LinkCarriesTransaction;
                     startCode ??= await IssueStartCodeAsync(
-                        transactionId, transactionExpiresAt, cancellationToken);
+                        transactionId, resolution.TenantId, transactionExpiresAt, cancellationToken);
                     startMessage = ComposeStartMessage(adapter.ChannelType, codeStart, startCode);
 
                     if (startMessage is null && !startMessageIsFallback)
@@ -457,7 +468,8 @@ internal sealed class ChannelDisplayService : IChannelDisplayService
                 EmailPullMethods = emailPullMethods ?? ChannelDisplayInfo.MagicLinkOnly,
                 StartMessage = startMessage?.Text,
                 StartMessageDisplay = startMessage?.DisplayText,
-                StartMessageIsFallback = startMessageIsFallback
+                StartMessageIsFallback = startMessageIsFallback,
+                ChatIsCorePage = adapter is IChannelOwnPage
             });
         }
 
@@ -568,17 +580,21 @@ internal sealed class ChannelDisplayService : IChannelDisplayService
     /// a record it failed to read or write may quote the code, and the code addresses the transaction.
     /// </remarks>
     /// <param name="transactionId">Transaction identifier.</param>
+    /// <param name="tenantId">Tenant of the transaction — the tenant the resolution context of the page
+    /// states, which every caller builds from the transaction or from the client it is created for.</param>
     /// <param name="transactionExpiresAt">Expiry of the transaction — the expiry of its code.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The code, or the refusal to issue one.</returns>
     private async Task<Result<ChannelStartCode>> IssueStartCodeAsync(
         TransactionId transactionId,
+        string? tenantId,
         DateTimeOffset transactionExpiresAt,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await _startCodeIssuer.GetOrIssueAsync(transactionId, transactionExpiresAt, cancellationToken);
+            return await _startCodeIssuer.GetOrIssueAsync(
+                transactionId, tenantId, transactionExpiresAt, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

@@ -23,6 +23,11 @@ namespace Veriqa.Core.AuthServer.Endpoints;
 /// carry the AntiForgery token and session_id. Until the user answers, nothing is decided (GET decides
 /// nothing).
 /// <para>
+/// "No" is the default answer and the more visible one: the main button of the contour, filled with the
+/// primary color and focused when the page opens, so Enter without moving the focus answers "No"; "Yes" is
+/// the outlined button. The order of the two stays "Yes", then "No", and is the same for both types.
+/// </para>
+/// <para>
 /// A single "Continue" button was not a confirmation: it offered no way to refuse, so the user could
 /// only acknowledge a decision that was already made. The decline branch is what makes this page a
 /// confirmation surface rather than an interstitial.
@@ -334,18 +339,19 @@ internal static class WebConfirmPage
                   <form method="post" action="{{encodedAction}}">
                     <input type="hidden" name="{{encodedSessionParam}}" value="{{encodedSessionId}}" />
                     <input type="hidden" name="{{encodedFieldName}}" value="{{encodedToken}}" />
-                    <button type="submit" class="veriqa-btn">{{WebUtility.HtmlEncode(confirmButtonText)}}</button>
+                    <button type="submit" class="veriqa-btn veriqa-btn-decline">{{WebUtility.HtmlEncode(confirmButtonText)}}</button>
                   </form>
                   <form method="post" action="{{encodedDeclineAction}}">
                     <input type="hidden" name="{{encodedSessionParam}}" value="{{encodedSessionId}}" />
                     <input type="hidden" name="{{encodedFieldName}}" value="{{encodedToken}}" />
-                    <button type="submit" class="veriqa-btn veriqa-btn-decline">{{WebUtility.HtmlEncode(declineButtonText)}}</button>
+                    <button type="submit" class="veriqa-btn" autofocus>{{WebUtility.HtmlEncode(declineButtonText)}}</button>
                   </form>
                 </div>
                 {{countdownMarkup}}
               </main>
               {{CorePageAttribution.BuildLine(contentLanguage)}}
               {{watcher}}
+              {{CorePageDefaultAnswerFocus.Script(cspNonce)}}
             </body>
             </html>
             """;

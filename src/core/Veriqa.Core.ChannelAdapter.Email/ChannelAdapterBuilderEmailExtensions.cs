@@ -167,8 +167,12 @@ public static class ChannelAdapterBuilderEmailExtensions
             ServiceDescriptor.Singleton<IChannelEndpointRegistrar, EmailChannelEndpointRegistrar>());
 
         // The texts of those pages an application may reword for itself (AuthPage.Texts) — the channel's
-        // part of the set, contributed beside the pages it maps: a disabled Email has no page to reword.
-        adapters.Services.AddCorePageOverridableTexts(EmailAdapterMailStrings.OverridablePageTexts);
+        // part of the set, contributed beside the pages it maps: a disabled Email has no page to reword. The
+        // texts naming the application are contributed once more with the two slots of its name, which their
+        // pages fill alike: a replacement may name it by either slot, or not at all.
+        adapters.Services
+            .AddCorePageOverridableTexts(EmailAdapterMailStrings.OverridablePageTexts)
+            .AddCorePageOverridableTexts(EmailLinkPageNameSlots.Texts, EmailLinkPageNameSlots.Slots);
 
         adapters.Services.TryAddSingleton<EmailChannelAdapter>();
 

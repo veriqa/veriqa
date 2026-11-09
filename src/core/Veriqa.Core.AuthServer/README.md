@@ -1,14 +1,18 @@
 # Veriqa.Core.AuthServer
 
-**Passwordless login and authentication by QR code through messaging apps and email for your ASP.NET Core
-application.** Your users scan a QR code on the sign-in page (on a phone, they tap a button) and
-confirm the sign-in in Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX or Email: no
-password, no SMS code and no sign-up form. Even a first sign-in takes 4–6 seconds. Your users can
-also sign in with a QR code or a button through a Google or Apple account and 80+ other services,
-with the
-[`Veriqa.Core.ChannelAdapter.WebProviders`](https://www.nuget.org/packages/Veriqa.Core.ChannelAdapter.WebProviders)
-package. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can
-show a QR code.
+**Passwordless login and authentication by QR code through messaging apps and email for your ASP.NET
+Core application.**
+
+- Your users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm the
+  sign-in in Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX or Email: no password, no
+  SMS code and no sign-up form.
+- Even a first sign-in takes 4–6 seconds.
+- Your users can also sign in with a QR code or a button through a Google or Apple account and 80+
+  other services, with the
+  [`Veriqa.Core.ChannelAdapter.WebProviders`](https://www.nuget.org/packages/Veriqa.Core.ChannelAdapter.WebProviders)
+  package.
+- Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a
+  QR code.
 
 ![Signing in on a computer with Telegram: the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in the Telegram chat, and the chat replies "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-telegram-cross-device.webp)
 
@@ -39,7 +43,7 @@ Documentation: [.NET quickstart](https://veriqa.app/docs/quickstart/dotnet).
 - **A direct channel to the user.** The same sign-in gives your product a channel for notifications.
   [Sign-in and channel linking](https://veriqa.app/docs/scenarios/channel-linking)
 - **Leads and feedback without CAPTCHA.** Your site gets a confirmed contact instead of an address
-  typed into a field. This use case has been tested with Telegram.
+  typed into a field.
   [Leads and feedback without CAPTCHA](https://veriqa.app/docs/scenarios/lead-capture)
 - **Surfaces with no keyboard.** A smart TV, a set-top box or a kiosk shows a QR code, and the user
   types nothing. [Sign-in surfaces](https://veriqa.app/docs/scenarios/surfaces)
@@ -102,6 +106,18 @@ builder.Services.AddVeriqaAuthServer(builder.Configuration, builder.Environment,
     });
 });
 ```
+
+**Configuration resolution without the OIDC server.** A host that needs only the settings — the same
+levels, readers and key catalogs `AddVeriqaAuthServer` resolves with — calls
+`builder.Services.AddVeriqaAuthServerConfigResolution(builder.Configuration)`: no OpenIddict, cookie
+authentication, SignalR, pages or endpoints. A contour that serves a level from a store of its own
+states its level readers (`AddVeriqaConfigLevelNodeReader`) and its `IUiConfigStore` **before** the
+call — the composition only takes the slots nobody has claimed. The catalogs of the transaction
+engine and of the channel contour are included; the catalogs of an individual channel (Telegram,
+Email, …) come with the registration of that channel — in a host without running channels, through
+`AddVeriqaChannelConfiguration` (see the `Veriqa.Core.ChannelAdapter` README), which registers the
+channels' settings and core-level values without their working services. The call is idempotent:
+`AddVeriqaAuthServer` after it registers nothing twice.
 
 ### 3. Middleware pipeline
 
@@ -379,6 +395,10 @@ public sealed class MyAuthPageRenderer : IAuthPageRenderer
 // Registration
 authServer.UseAuthPageRenderer<MyAuthPageRenderer>();
 ```
+
+Your renderer receives the sign-in window and the page that opens a confirmation. The scanner page of
+hop mode, which a phone opens by a hop QR code, is always rendered by the built-in renderer: the page
+design and the CSS variables apply there, your markup does not.
 
 ### Replacing the claims mapper
 

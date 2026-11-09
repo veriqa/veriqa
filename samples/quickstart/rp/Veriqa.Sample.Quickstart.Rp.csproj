@@ -14,7 +14,7 @@
 
   <ItemGroup>
     <!-- A plain OpenID Connect relying party: no Veriqa package, Veriqa lives on the issuer side. -->
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.13" />
   </ItemGroup>
 
 </Project>

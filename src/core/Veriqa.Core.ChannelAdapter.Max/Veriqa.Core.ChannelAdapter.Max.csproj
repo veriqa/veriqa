@@ -35,7 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Max.BotClient" Version="1.1.3" />
+    <PackageReference Include="Max.BotClient" />
   </ItemGroup>
 
   <ItemGroup>

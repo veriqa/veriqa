@@ -21,8 +21,12 @@ referencing the OIDC server.
 
 ## Wiring
 
-`AddVeriqaAuthServer` registers the resolver itself. A host that uses the mechanism without the
-auth server registers it directly:
+`AddVeriqaAuthServer` registers the resolver itself. A host that needs the levels and catalogs of
+the auth server without the OIDC server — an admin API reading the same settings, say — calls
+`AddVeriqaAuthServerConfigResolution` from `Veriqa.Core.AuthServer` instead: the same resolver with
+the Application and UiConfig levels, their readers and the catalogs of the auth server, the
+transaction engine and the channel contour, without OpenIddict, the pages and the endpoints. A host
+that uses the mechanism without the auth server at all registers the core level only, directly:
 
 ```csharp
 builder.Services.AddVeriqaConfigurationResolver();
@@ -35,11 +39,13 @@ builder.Services.AddVeriqaConfigurationResolver(config => { /* replaceable parts
 A key declared by catalog is bound at each of its levels over the NODE reader stated for that
 level. A contour that keeps the record of a level in a store of its own states its reader before
 the composition that ships the default, and the first reader stated for a level wins; a level
-nobody else serves gets its only reader the same way:
+nobody else serves gets its only reader the same way. The store behind the ui_config level
+(`IUiConfigStore`) follows the same rule: a contour registers its own before the composition.
 
 ```csharp
-// Before AddVeriqaAuthServer: the application level is read from the contour's store, and the
-// tenant level — absent from a self-hosted deployment — is served at all.
+// Before AddVeriqaAuthServer or AddVeriqaAuthServerConfigResolution: the application level is read
+// from the contour's store, and the tenant level — absent from a self-hosted deployment — is served
+// at all.
 builder.Services.AddVeriqaConfigLevelNodeReader<CloudApplicationNodeReader>(ConfigLevel.Application);
 builder.Services.AddVeriqaConfigLevelNodeReader<CloudTenantNodeReader>(ConfigLevel.Tenant);
 ```

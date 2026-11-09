@@ -17,13 +17,15 @@ namespace Veriqa.Core.Contracts;
 public static class AvatarDataUri
 {
     /// <summary>
-    /// Maximum decoded image size in bytes, inclusive (64 KiB). The avatar travels inside the channel
-    /// identity snapshot and, as the <c>picture</c> claim, inside the resolved identity snapshot, and
-    /// each snapshot holds at most 128 KB of serialized JSON (SPEC-001 §3.3). At this size the base64
-    /// payload is 87,384 characters, two thirds of that limit; the rest is left to the 4 KB raw
-    /// metadata (SPEC-003 CA-005), the remaining identity fields and the JSON escaping of the payload,
-    /// which writes every <c>+</c> of it as a six-character escape. The limit also bounds the stored
-    /// payload of every token that carries the avatar.
+    /// Maximum decoded image size in bytes, inclusive (64 KiB). The limit bounds the stored payload of
+    /// every token that carries the avatar as the <c>picture</c> claim. The built-in Telegram adapter
+    /// hands its avatar over only when the tokens are issued (SPEC-003 CA-245), so that value is kept in
+    /// no transaction snapshot. An adapter that puts a data URI into the channel identity snapshot has
+    /// it stored there and, as the <c>picture</c> claim, in the resolved identity snapshot, and each
+    /// snapshot holds at most 128 KB of serialized JSON (SPEC-001 §3.3). At this size the base64 payload
+    /// is 87,384 characters, two thirds of that limit; the rest is left to the 4 KB raw metadata
+    /// (SPEC-003 CA-005), the remaining identity fields and the JSON escaping of the payload, which
+    /// writes every <c>+</c> of it as a six-character escape.
     /// </summary>
     public const int MaxImageBytes = 65_536;
 

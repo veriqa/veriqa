@@ -39,7 +39,8 @@ public static partial class ChannelWebhookPipeline
     /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator (null — the path
     /// asks no question in the chat).</param>
     /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
-    /// <param name="ownerTenantId">Tenant that owns the channel registration (SPEC-042 R60); null — any.</param>
+    /// <param name="ownerTenantId">Tenant of the event (SPEC-042 R60); null — any.</param>
+    /// <param name="snapshotTenant">The tenant of the identity snapshot of the event (SPEC-003 CA-164).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     private static async Task HandlePhoneSharedAsync(
         ChannelInboundProcessor processor,
@@ -48,12 +49,16 @@ public static partial class ChannelWebhookPipeline
         IConfirmationPromptOrchestrator? confirmationPromptOrchestrator,
         IChannelPromptMessageStore? promptMessageStore,
         string? ownerTenantId,
+        InboundSnapshotTenant snapshotTenant,
         CancellationToken cancellationToken)
     {
         var logger = processor.Logger;
         var identity = result.Identity;
 
         // CA-121, SPEC-041 N68: the number itself never reaches the log — the fact and the channel do.
+        // The chat is the one of the tenant of the event; without one, the chat without a tenant, where
+        // the request of a transaction started on a route without a tenant is kept as well
+        // (PhoneRequestCorrelationChats).
         var correlation = await processor.PhoneRequestCorrelationStore.FindAsync(
             identity.TenantId, identity.ChannelType, identity.ChannelUserId, cancellationToken);
         if (correlation is null)
@@ -64,13 +69,15 @@ public static partial class ChannelWebhookPipeline
             return;
         }
 
-        if (await ReadPhoneStepAsync(processor, correlation.TransactionId, identity, ownerTenantId, cancellationToken)
+        if (await ReadPhoneStepAsync(
+                processor, correlation.TransactionId, identity, ownerTenantId, snapshotTenant, cancellationToken)
             is not { } step)
         {
             return;
         }
 
         var transaction = step.Transaction;
+        snapshotTenant.Choose(transaction);
 
         if (result.OwnershipRejected)
         {
@@ -125,7 +132,8 @@ public static partial class ChannelWebhookPipeline
     /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator (null — the path
     /// asks no question in the chat).</param>
     /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
-    /// <param name="ownerTenantId">Tenant that owns the channel registration (SPEC-042 R60); null — any.</param>
+    /// <param name="ownerTenantId">Tenant of the event (SPEC-042 R60); null — any.</param>
+    /// <param name="snapshotTenant">The tenant of the identity snapshot of the event (SPEC-003 CA-164).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>true — the message was the button and has been acted on; false — it is an ordinary
     /// message naming no transaction, including a text that matches the label while the step no longer
@@ -137,6 +145,7 @@ public static partial class ChannelWebhookPipeline
         IConfirmationPromptOrchestrator? confirmationPromptOrchestrator,
         IChannelPromptMessageStore? promptMessageStore,
         string? ownerTenantId,
+        InboundSnapshotTenant snapshotTenant,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(result.Text))
@@ -144,6 +153,7 @@ public static partial class ChannelWebhookPipeline
             return false;
         }
 
+        // The chat of the tenant of the event, as for a shared contact.
         var identity = result.Identity;
         var correlation = await processor.PhoneRequestCorrelationStore.FindAsync(
             identity.TenantId, identity.ChannelType, identity.ChannelUserId, cancellationToken);
@@ -156,7 +166,7 @@ public static partial class ChannelWebhookPipeline
 
         return await ApplyPhoneStepActionAsync(
             processor, correlation.TransactionId, identity, correlation.SecondaryAction, adapter,
-            confirmationPromptOrchestrator, promptMessageStore, ownerTenantId, cancellationToken);
+            confirmationPromptOrchestrator, promptMessageStore, ownerTenantId, snapshotTenant, cancellationToken);
     }
 
     /// <summary>
@@ -173,7 +183,10 @@ public static partial class ChannelWebhookPipeline
     /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator (null — the path
     /// asks no question in the chat).</param>
     /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
-    /// <param name="ownerTenantId">Tenant that owns the channel registration (SPEC-042 R60); null — any.</param>
+    /// <param name="ownerTenantId">Tenant of the event (SPEC-042 R60); null — any.</param>
+    /// <param name="snapshotTenant">The tenant of the identity snapshot of the event (SPEC-003 CA-164);
+    /// null — the action is no event of a channel, and the sender is the snapshot of the transaction
+    /// itself.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>true — the step took the action; false — it was ignored: the transaction does not wait
     /// in the step for this sender, or the action does not match the level of the number. A write the
@@ -187,9 +200,10 @@ public static partial class ChannelWebhookPipeline
         IConfirmationPromptOrchestrator? confirmationPromptOrchestrator,
         IChannelPromptMessageStore? promptMessageStore,
         string? ownerTenantId,
+        InboundSnapshotTenant? snapshotTenant,
         CancellationToken cancellationToken)
     {
-        if (await ReadPhoneStepAsync(processor, transactionId, sender, ownerTenantId, cancellationToken)
+        if (await ReadPhoneStepAsync(processor, transactionId, sender, ownerTenantId, snapshotTenant, cancellationToken)
             is not { } step)
         {
             return false;
@@ -206,6 +220,8 @@ public static partial class ChannelWebhookPipeline
                 step.Level);
             return false;
         }
+
+        snapshotTenant?.Choose(transaction);
 
         if (action is PhoneStepAction.Skip)
         {
@@ -308,7 +324,12 @@ public static partial class ChannelWebhookPipeline
     /// <param name="processor">Processor holding the services of the scope.</param>
     /// <param name="transactionId">Transaction the answer names or its chat points to.</param>
     /// <param name="sender">Identity of the sender of the answer in the channel.</param>
-    /// <param name="ownerTenantId">Tenant that owns the channel registration (SPEC-042 R60); null — any.</param>
+    /// <param name="ownerTenantId">Tenant of the event (SPEC-042 R60); null — any.</param>
+    /// <param name="snapshotTenant">The tenant of the identity snapshot of the event (SPEC-003 CA-164):
+    /// without a tenant of the event the sender is compared with the chat of the transaction under the tenant
+    /// of the transaction read here; null — the sender is no event of a channel. The choice of the tenant is
+    /// not closed here: the caller closes it once the step takes the answer, so an answer the step ignores
+    /// leaves an event that goes on as one naming no transaction without a tenant.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The transaction and the level of its missing number; null — the answer is ignored.</returns>
     private static async Task<PhoneStepTransaction?> ReadPhoneStepAsync(
@@ -316,6 +337,7 @@ public static partial class ChannelWebhookPipeline
         TransactionId transactionId,
         ChannelIdentitySnapshot sender,
         string? ownerTenantId,
+        InboundSnapshotTenant? snapshotTenant,
         CancellationToken cancellationToken)
     {
         var transaction = await processor.TransactionStore.GetByIdAsync(transactionId, cancellationToken);
@@ -325,13 +347,15 @@ public static partial class ChannelWebhookPipeline
                 && !string.Equals(transaction.GetTenantId(), ownerTenantId, StringComparison.Ordinal)))
         {
             processor.Logger.LogDebug(
-                "Answer of the phone step names no transaction of this registration — ignored. ChannelType: {ChannelType}",
+                "Answer of the phone step names no transaction of the tenant of the event — ignored. ChannelType: {ChannelType}",
                 sender.ChannelType);
             return null;
         }
 
+        var senderTenantId = snapshotTenant is null ? sender.TenantId : snapshotTenant.TenantFor(transaction);
+
         if (transaction.ChannelIdentitySnapshot is not { } snapshot
-            || !string.Equals(TenantKey.Segment(snapshot.TenantId), TenantKey.Segment(sender.TenantId), StringComparison.Ordinal)
+            || !string.Equals(TenantKey.Segment(snapshot.TenantId), TenantKey.Segment(senderTenantId), StringComparison.Ordinal)
             || !string.Equals(snapshot.ChannelType, sender.ChannelType, StringComparison.Ordinal)
             || !string.Equals(snapshot.ChannelUserId, sender.ChannelUserId, StringComparison.Ordinal))
         {

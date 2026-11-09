@@ -24,7 +24,10 @@ public sealed record MenuItemPress
     public required string ChannelUserId { get; init; }
 
     /// <summary>
-    /// Tenant the adapter states for the user; null — the default implicit tenant.
+    /// Tenant of the user who pressed the button; null — the default implicit tenant. The core sets it, and the
+    /// tenant the adapter wrote into the identity snapshot of the event is not used. In today's delivery it is the
+    /// tenant of the event — the owner of the channel registration, otherwise the tenant of the webhook route
+    /// segment or of the polling loop; without one, null.
     /// </summary>
     public string? TenantId { get; init; }
 

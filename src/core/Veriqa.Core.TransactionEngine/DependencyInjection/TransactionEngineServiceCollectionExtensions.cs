@@ -103,21 +103,9 @@ public static class TransactionEngineServiceCollectionExtensions
         // The single precedence resolver in the core (anti-fork CFG-202).
         services.AddVeriqaConfigurationResolver();
 
-        // The catalogs the ENGINE owns, stated at the engine's own composition — the same way a
-        // channel satellite states the keys of its channel when the channel is composed. A host
-        // taking the engine WITHOUT the auth server HOLDS them all the same: the snapshot report of
-        // the resolver walks them right there, and a registrar of levels — which such a host brings
-        // itself, the auth server being the only composition that registers one — finds them instead
-        // of nothing. No other composition of such a host names them. Each call carries its own
-        // per-catalog guard, so composing the engine twice — or alongside a composition naming the
-        // same catalogs — still leaves one registration of each; a bare AddSingleton here would have
-        // the registrar walk a catalog twice and the start refused with "declared twice".
-        services.AddVeriqaConfigKeyCatalog(configuration, TransactionEngineConfigKeys.Catalog);
-        services.AddVeriqaConfigKeyCatalog(configuration, MessageTemplateConfigKeys.Catalog);
-        services.AddVeriqaConfigKeyCatalog(configuration, InitiatorContextConfigKeys.Catalog);
-        services.AddVeriqaConfigKeyCatalog(configuration, IdentityMatchConfigKeys.Catalog);
-        services.AddVeriqaConfigKeyCatalog(configuration, ClaimCompletionConfigKeys.Catalog);
-        services.AddVeriqaConfigKeyCatalog(configuration, RestrictionPolicyConfigKeys.Catalog);
+        // The catalogs the ENGINE owns, stated at the engine's own composition through the one method
+        // that lists them (see AddTransactionEngineConfigKeyCatalogs).
+        services.AddTransactionEngineConfigKeyCatalogs(configuration);
 
         // Register the configuration validator
         services.AddSingleton<IValidateOptions<TransactionEngineOptions>,
@@ -241,6 +229,38 @@ public static class TransactionEngineServiceCollectionExtensions
         // A store registered AFTER this method wins the resolution and is therefore not guarded.
         // That bypass is refused at startup instead of passing silently.
         services.AddHostedService<TransactionStoreGuardStartupCheck>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the catalogs of declared keys the ENGINE owns (SPEC-012 §10.6, CFG-244) — the ONE place
+    /// that lists them.
+    /// </summary>
+    /// <remarks>
+    /// Two compositions call it: the engine's own, and the composition of the auth server's
+    /// configuration resolution, which a host takes without the engine's runtime services. Keeping the
+    /// list here rather than repeating it there is what makes a catalog added to the engine reach both
+    /// hosts. A host taking the engine WITHOUT the auth server HOLDS them all the same: the snapshot
+    /// report of the resolver walks them right there, and a registrar of levels — which such a host
+    /// brings itself — finds them instead of nothing. Each call carries its own per-catalog guard, so
+    /// composing the engine twice — or alongside the composition of the auth server — still leaves one
+    /// registration of each; a bare AddSingleton here would have the registrar walk a catalog twice
+    /// and the start refused with "declared twice".
+    /// </remarks>
+    /// <param name="services">Service collection.</param>
+    /// <param name="configuration">Application configuration the core level is read from.</param>
+    /// <returns>Service collection for chaining.</returns>
+    internal static IServiceCollection AddTransactionEngineConfigKeyCatalogs(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddVeriqaConfigKeyCatalog(configuration, TransactionEngineConfigKeys.Catalog);
+        services.AddVeriqaConfigKeyCatalog(configuration, MessageTemplateConfigKeys.Catalog);
+        services.AddVeriqaConfigKeyCatalog(configuration, InitiatorContextConfigKeys.Catalog);
+        services.AddVeriqaConfigKeyCatalog(configuration, IdentityMatchConfigKeys.Catalog);
+        services.AddVeriqaConfigKeyCatalog(configuration, ClaimCompletionConfigKeys.Catalog);
+        services.AddVeriqaConfigKeyCatalog(configuration, RestrictionPolicyConfigKeys.Catalog);
 
         return services;
     }

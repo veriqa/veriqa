@@ -42,11 +42,13 @@ public sealed class ChannelIdentitySnapshot
     /// installation. It is the third dimension of the identity key: two tenants seeing the same
     /// <see cref="ChannelUserId"/> keep separate records and separate rate-limit budgets, because they
     /// are separate resources — not because the tenant is an access boundary.
-    /// The writer is the adapter, and where it takes the value from depends on how the inbound event
-    /// reached it: a channel routed per tenant (webhook route segment, per-tenant polling) takes it
-    /// from the ambient scope the host opened for that request, while a channel with no tenant routing
-    /// at all — Email — takes it from the transaction the event confirms, the only place that states
-    /// it there. Additive field: old serialized snapshots deserialize with null.
+    /// The core sets it on every path an inbound event reaches the core by, and the value the adapter
+    /// wrote is not used on any of them (SPEC-003 CA-164). In today's delivery the core takes the tenant
+    /// of the event — the owner of the channel registration, otherwise the tenant of the webhook route
+    /// segment or of the polling loop; without one, the tenant of the transaction the event addresses,
+    /// from the moment that transaction is read; without either, null. An adapter value that differs
+    /// from the one chosen is reported by a warning in the log. Additive field: old serialized snapshots
+    /// deserialize with null.
     /// </summary>
     [JsonPropertyName("tenant_id")]
     public string? TenantId { get; init; }
@@ -172,8 +174,9 @@ public sealed class ChannelIdentitySnapshot
 
     /// <summary>
     /// Additional channel-specific OIDC claims issued by the adapter: its own names under the
-    /// adapter's <c>{ChannelType}_</c> prefix, plus the closed vendor list — the Email channel
-    /// issues "veriqa_channel" and "veriqa_email_mode" this way (SPEC-016 §6.3).
+    /// adapter's <c>{ChannelType}_</c> prefix, plus the closed standard-profile list — a web provider
+    /// channel issues "birthdate" this way — and the closed vendor list — the Email channel issues
+    /// "veriqa_channel" and "veriqa_email_mode" this way (SPEC-016 §6.3).
     /// An additive field: merged with the standard claims during identity resolution.
     /// Null — no additional claims.
     /// </summary>
@@ -181,8 +184,9 @@ public sealed class ChannelIdentitySnapshot
     /// Only names the adapter owns survive the merge: names the core issues or reserves
     /// (<see cref="VeriqaClaimTypes.MandatoryClaims"/>, <see cref="VeriqaClaimTypes.CoreReservedClaims"/>
     /// — <c>email_verified</c> among them, stated by <see cref="EmailVerified"/> instead) are
-    /// dropped with a warning, as is any other name outside the adapter's prefix. The closed vendor
-    /// list <see cref="VeriqaClaimTypes.VendorClaims"/> is the one exception. Ownership is decided
+    /// dropped with a warning, as is any other name outside the adapter's prefix. The closed lists
+    /// <see cref="VeriqaClaimTypes.StandardProfileClaims"/> and <see cref="VeriqaClaimTypes.VendorClaims"/>
+    /// are the exceptions. Ownership is decided
     /// by <see cref="VeriqaClaimTypes.NameComparer"/>, so a reserved name is refused in any letter
     /// case; a name the adapter may issue is taken only in the spelling the contract declares, and
     /// two names differing only in letter case are one claim — one of them is merged, the rest are

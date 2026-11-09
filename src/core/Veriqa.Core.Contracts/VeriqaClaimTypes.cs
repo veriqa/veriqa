@@ -13,9 +13,9 @@ namespace Veriqa.Core.Contracts;
 ///
 /// The names are also split into declared groups that say who owns which name when an adapter
 /// supplies free-form claims: <see cref="MandatoryClaims"/> and <see cref="CoreReservedClaims"/>
-/// belong to the core and are never taken from an adapter, <see cref="VendorClaims"/> is the closed
-/// list of vendor names accepted as an exception, and everything else belongs to the adapter under
-/// its own <c>{ChannelType}_</c> prefix.
+/// belong to the core and are never taken from an adapter, <see cref="StandardProfileClaims"/> and
+/// <see cref="VendorClaims"/> are the closed lists of names accepted as exceptions, and everything
+/// else belongs to the adapter under its own <c>{ChannelType}_</c> prefix.
 ///
 /// Every comparison of a claim name — ownership checks, claim sets, token destinations — goes
 /// through <see cref="NameComparison"/> / <see cref="NameComparer"/>. See their documentation for
@@ -118,6 +118,37 @@ public static class VeriqaClaimTypes
     public const string UpdatedAt = "updated_at";
 
     /// <summary>
+    /// Standard OIDC birthday claim (OIDC Core 1.0 section 5.1): <c>YYYY-MM-DD</c>, or <c>0000-MM-DD</c> when
+    /// the year is omitted.
+    /// </summary>
+    public const string Birthdate = "birthdate";
+
+    /// <summary>
+    /// Standard OIDC gender claim (OIDC Core 1.0 section 5.1).
+    /// </summary>
+    public const string Gender = "gender";
+
+    /// <summary>
+    /// Standard OIDC middle-name claim (OIDC Core 1.0 section 5.1).
+    /// </summary>
+    public const string MiddleName = "middle_name";
+
+    /// <summary>
+    /// Standard OIDC casual-name claim (OIDC Core 1.0 section 5.1).
+    /// </summary>
+    public const string Nickname = "nickname";
+
+    /// <summary>
+    /// Standard OIDC claim of the URL of the user's profile page (OIDC Core 1.0 section 5.1).
+    /// </summary>
+    public const string Profile = "profile";
+
+    /// <summary>
+    /// Standard OIDC claim of the URL of the user's web page or blog (OIDC Core 1.0 section 5.1).
+    /// </summary>
+    public const string Website = "website";
+
+    /// <summary>
     /// Separator between an adapter's channel type and the rest of its own claim name:
     /// a free-form adapter claim must be named <c>{ChannelType}</c> + this + anything.
     /// The prefix makes collisions between adapters impossible by construction.
@@ -199,6 +230,24 @@ public static class VeriqaClaimTypes
     public static readonly IReadOnlySet<string> NumericDateClaims = new[]
     {
         UpdatedAt
+    }.ToFrozenSet(NameComparer);
+
+    /// <summary>
+    /// Standard-profile exception — the standard profile claims of OIDC Core 1.0 section 5.1 the core
+    /// does not derive from a typed snapshot field, accepted from an adapter's free-form claims under
+    /// their standard names rather than the adapter's <c>{ChannelType}_</c> prefix. A channel that
+    /// learns such a value — a provider account stating a birthday — hands it over under the name a
+    /// relying party already reads. A closed list, like <see cref="VendorClaims"/>, and taken in the
+    /// spelling declared here only.
+    /// </summary>
+    public static readonly IReadOnlySet<string> StandardProfileClaims = new[]
+    {
+        Birthdate,
+        Gender,
+        MiddleName,
+        Nickname,
+        Profile,
+        Website
     }.ToFrozenSet(NameComparer);
 
     /// <summary>

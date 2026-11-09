@@ -244,7 +244,9 @@ builder.Services.AddSingleton<TicketStore>();
 // The access token belongs to the client, not to a call: held here for the whole process, it
 // survives the short-lived client the typed HttpClient hands out per call.
 builder.Services.AddSingleton<VeriqaAccessTokenCache>();
-builder.Services.AddHttpClient<VeriqaConfirmationClient>(http => http.BaseAddress = new Uri(sampleOptions.Authority));
+// The trailing slash keeps the path of the issuer's address: the calls are relative to it.
+builder.Services.AddHttpClient<VeriqaConfirmationClient>(
+    http => http.BaseAddress = new Uri(sampleOptions.Authority.TrimEnd('/') + "/"));
 
 var app = builder.Build();
 

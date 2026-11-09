@@ -80,6 +80,7 @@ internal sealed class ChannelStartCodeIssuer : IChannelStartCodeIssuer
     /// <inheritdoc />
     public async Task<Result<ChannelStartCode>> GetOrIssueAsync(
         TransactionId transactionId,
+        string? tenantId,
         DateTimeOffset expiresAt,
         CancellationToken cancellationToken = default)
     {
@@ -107,7 +108,8 @@ internal sealed class ChannelStartCodeIssuer : IChannelStartCodeIssuer
             {
                 Code = RandomNumberGenerator.GetString(Alphabet, codeLength),
                 TransactionId = transactionId,
-                ExpiresAt = expiresAt
+                ExpiresAt = expiresAt,
+                TenantId = tenantId
             };
 
             if (await _store.TryAddAsync(record, cancellationToken))

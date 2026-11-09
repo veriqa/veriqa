@@ -259,8 +259,10 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
     /// Records the chat the transaction was started from, so a later end of the transaction outside the
     /// chat — TTL expiry, or the cancel button of the sign-in window or of the entry page of a confirmation
     /// while the question stood there —
-    /// can tell the user about it and address the messages it has to. Written only for a channel that
-    /// reports outcomes or can update its own message — for the rest the record would never be used.
+    /// can tell the user about it and address the messages it has to. Written for a channel that reports
+    /// outcomes or can update its own message, and for a channel that can ask its user for the phone number:
+    /// the tenant of the record is the route of the start, the one the answer to a phone number request
+    /// arrives on (<see cref="PhoneRequestCorrelationChats"/>). For the rest the record would never be used.
     /// </summary>
     /// <remarks>
     /// Best-effort with <see cref="CancellationToken.None"/>: the start in the channel is already
@@ -283,7 +285,9 @@ internal sealed class ConfirmationPromptOrchestrator : IConfirmationPromptOrches
         string? recipientLocale,
         string? recipientTimeZone)
     {
-        if (!adapter.Capabilities.DeliversOutcomeNotice && !adapter.Capabilities.SupportsMessageUpdate)
+        if (!adapter.Capabilities.DeliversOutcomeNotice
+            && !adapter.Capabilities.SupportsMessageUpdate
+            && !adapter.Capabilities.PhoneNumber.Acquisition.HasFlag(PhoneNumberAcquisition.OnRequest))
         {
             return;
         }

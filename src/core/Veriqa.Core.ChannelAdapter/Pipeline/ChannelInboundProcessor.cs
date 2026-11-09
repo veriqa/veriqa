@@ -62,8 +62,7 @@ public sealed class ChannelInboundProcessor
     /// (SPEC-039 E48); null — the composition has no transaction engine and therefore no journal, and
     /// the refusals reach the log alone.</param>
     /// <param name="channelDeclarations">Core-level declarations of the registered channels — the owner
-    /// of a registration and whether answers to its events take only its own prompt reference
-    /// (SPEC-042 R60, L62).</param>
+    /// of a registration (SPEC-042 R60).</param>
     /// <param name="phoneRequestCorrelationStore">Record of the last phone number request sent into each
     /// chat — how an answer to the request, which names no transaction, finds the one it belongs to
     /// (SPEC-041 L44).</param>
@@ -89,6 +88,10 @@ public sealed class ChannelInboundProcessor
     /// <param name="inboundEventDeduplicator">The dropping of a repeated delivery of an event within the
     /// short window of the installation. Null — the composition names none, and every delivery is
     /// processed.</param>
+    /// <param name="unmatchedStartCodeBudget">The budget of start codes that took no record, per pair
+    /// "tenant of the event + channel type" — how guessing codes is bounded where the sender of an event
+    /// is whatever its source names. Null — the composition names none, and nothing bounds it beyond the
+    /// limit per channel user.</param>
     internal ChannelInboundProcessor(
         ITransactionService transactionService,
         ITransactionStore transactionStore,
@@ -112,7 +115,8 @@ public sealed class ChannelInboundProcessor
         Func<IMenuItemPressHandler?>? menuItemPressHandlerSource = null,
         IChannelStartCodeStore? startCodeStore = null,
         ILetterBudgetChargeMark? letterBudgetChargeMark = null,
-        InboundEventDeduplicator? inboundEventDeduplicator = null)
+        InboundEventDeduplicator? inboundEventDeduplicator = null,
+        UnmatchedStartCodeBudget? unmatchedStartCodeBudget = null)
     {
         TransactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
         TransactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
@@ -150,6 +154,7 @@ public sealed class ChannelInboundProcessor
         StartCodeStore = startCodeStore;
         LetterBudgetChargeMark = letterBudgetChargeMark;
         InboundEventDeduplicator = inboundEventDeduplicator;
+        UnmatchedStartCodeBudget = unmatchedStartCodeBudget;
     }
 
     /// <summary>
@@ -266,6 +271,11 @@ public sealed class ChannelInboundProcessor
     internal InboundEventDeduplicator? InboundEventDeduplicator { get; }
 
     /// <summary>
+    /// The budget of start codes that took no record, per pair "tenant of the event + channel type"; null — none.
+    /// </summary>
+    internal UnmatchedStartCodeBudget? UnmatchedStartCodeBudget { get; }
+
+    /// <summary>
     /// Opens the action of a channel on the current flow (<see cref="ChannelAdmissionScope"/>), or joins the
     /// one already open: within it the admission of a sender to a transaction is decided once, and the gate
     /// of the channel and the write of the engine share that verdict. Opened by every boundary of an action
@@ -278,10 +288,11 @@ public sealed class ChannelInboundProcessor
     /// Acts on the result of an inbound event.
     /// </summary>
     /// <remarks>
-    /// The core-level declaration of the event's channel is applied on every path (SPEC-042 R60, L62):
-    /// with an owner stated, an event is acted on only for a transaction of that tenant, and a channel
-    /// that takes only its own prompt reference answers with no other. The channels shipped with the
-    /// product state neither, so their events are processed alike on every path. The processing of one
+    /// The tenant of the event (<see cref="EventTenantOf(string)"/>) is applied on every path (SPEC-042
+    /// R60): with one stated, an event is acted on only for a transaction of that tenant. The tenant of the
+    /// identity snapshot is set by the core, not taken from the adapter (SPEC-003 CA-164): the tenant of
+    /// the event, otherwise the tenant of the transaction the event addresses, otherwise none. An answer takes
+    /// only a prompt reference its own channel stored (SPEC-003 CA-244). The processing of one
     /// event is one action: the admission of its sender to the transaction is decided once for the whole
     /// of it, the gate of the channel and the write of the engine alike.
     /// </remarks>
@@ -368,6 +379,19 @@ public sealed class ChannelInboundProcessor
         string? letterKey,
         CancellationToken cancellationToken)
     {
+        // The tenant of the event is settled once, before anything else looks at the event, and every
+        // path below compares the transaction the event names with it.
+        var declaration = FindDeclaration(adapter.ChannelType);
+        var eventTenantId = EventTenantOf(declaration);
+
+        // The tenant of the identity snapshot is the core's, not the adapter's (SPEC-003 CA-164): the
+        // tenant of the event, or none until a handler reads the transaction the event addresses. It is
+        // set before the dropping of repeats, whose key carries it. The snapshot of a letter comes with the
+        // tenant of its transaction, stated by the core of the Email channel, so it is not the adapter's.
+        var snapshotTenant = new InboundSnapshotTenant(
+            eventTenantId, adapter.ChannelType, Logger, adapterStatesTenant: letterKey is null);
+        inboundResult = snapshotTenant.TakeOver(inboundResult);
+
         if (letterKey is null
             && InboundEventDeduplicator is { } deduplicator
             && !deduplicator.TryAccept(adapter.ChannelType, inboundResult))
@@ -377,23 +401,46 @@ public sealed class ChannelInboundProcessor
 
         using var action = OpenAction();
 
-        var declaration = FindDeclaration(adapter.ChannelType);
-        var ownerTenantId = declaration?.OwnerTenantId;
-
         if (!asksInChannelPrompt)
         {
             await ChannelWebhookPipeline.RouteInboundResultAsync(
                 this, inboundResult, adapter, replyTexts,
                 confirmationPromptOrchestrator: null, promptLocalizer: null, promptMessageStore: null,
-                ownerTenantId, letterKey, cancellationToken);
-            return;
+                eventTenantId, snapshotTenant, letterKey, cancellationToken);
+        }
+        else
+        {
+            await ChannelWebhookPipeline.RouteInboundResultAsync(
+                this, inboundResult, adapter, replyTexts,
+                ConfirmationPromptOrchestrator, PromptLocalizer, PromptMessageStoreOf(adapter),
+                eventTenantId, snapshotTenant, letterKey, cancellationToken);
         }
 
-        await ChannelWebhookPipeline.RouteInboundResultAsync(
-            this, inboundResult, adapter, replyTexts,
-            ConfirmationPromptOrchestrator, PromptLocalizer, PromptMessageStoreOf(declaration, adapter),
-            ownerTenantId, letterKey, cancellationToken);
+        // A no-op once the tenant is chosen; otherwise no handler read a transaction for the event, and its
+        // snapshot stays without a tenant.
+        snapshotTenant.Complete();
     }
+
+    /// <summary>
+    /// The tenant of an event of a channel (SPEC-042 R60): the owner of the registration when it states
+    /// one, otherwise the tenant of the scope the event is processed in — the tenant segment of the
+    /// webhook route, the tenant a polling loop serves, the tenant a web path of the channel opened for
+    /// the transaction it has loaded. An event with a tenant is acted on only for a transaction of that
+    /// tenant.
+    /// </summary>
+    /// <param name="channelType">Channel type the event arrived through.</param>
+    /// <returns>The tenant; null — the route without a tenant segment or the polling of the implicit
+    /// tenant, whose events are acted on for a transaction of any tenant.</returns>
+    internal string? EventTenantOf(string channelType) => EventTenantOf(FindDeclaration(channelType));
+
+    /// <summary>
+    /// The tenant of an event of a channel with the given core-level declaration
+    /// (<see cref="EventTenantOf(string)"/>).
+    /// </summary>
+    /// <param name="declaration">Core-level declaration of the channel; null — none.</param>
+    /// <returns>The tenant; null — none.</returns>
+    private static string? EventTenantOf(CoreChannelDeclaration? declaration) =>
+        declaration?.OwnerTenantId ?? ChannelTenantContext.CurrentTenantId;
 
     /// <summary>
     /// Skips the <c>Optional</c> phone number of a transaction whose window for an answer has run out
@@ -402,7 +449,9 @@ public sealed class ChannelInboundProcessor
     /// </summary>
     /// <remarks>
     /// Nothing is skipped when the transaction has left the phone step meanwhile — the user answered,
-    /// cancelled, or the deadline passed; the engine decides that on the transaction as stored.
+    /// cancelled, or the deadline passed; the engine decides that on the transaction as stored. The
+    /// caller opens the tenant scope of the channel snapshot, so the tenant of this event is that of the
+    /// snapshot unless the registration states an owner.
     /// </remarks>
     /// <param name="transaction">Transaction whose phone number was requested.</param>
     /// <param name="adapter">Adapter of the channel of the transaction's channel snapshot.</param>
@@ -423,24 +472,22 @@ public sealed class ChannelInboundProcessor
 
         var declaration = FindDeclaration(adapter.ChannelType);
 
+        // The sender is the snapshot of the transaction itself, whose tenant the core has already set.
         return ChannelWebhookPipeline.ApplyPhoneStepActionAsync(
             this, transaction.Id, snapshot, PhoneStepAction.Skip, adapter,
-            ConfirmationPromptOrchestrator, PromptMessageStoreOf(declaration, adapter),
-            declaration?.OwnerTenantId, cancellationToken);
+            ConfirmationPromptOrchestrator, PromptMessageStoreOf(adapter),
+            EventTenantOf(declaration), snapshotTenant: null, cancellationToken);
     }
 
     /// <summary>
     /// The store of sent-prompt coordinates an answer on a path that asks in the chat takes its prompt
-    /// reference from: a channel that takes only its own reference (SPEC-042 L62) reads through a view
-    /// narrowed to its own records.
+    /// reference from: every channel reads through a view narrowed to its own records (SPEC-003 CA-244),
+    /// so a reference another channel stored for the transaction stays in the store.
     /// </summary>
-    /// <param name="declaration">Core-level declaration of the channel; null — none.</param>
     /// <param name="adapter">Adapter of the channel.</param>
     /// <returns>The store.</returns>
-    private IChannelPromptMessageStore PromptMessageStoreOf(CoreChannelDeclaration? declaration, IChannelAdapter adapter) =>
-        declaration is { TakesOwnPromptReferenceOnly: true }
-            ? new OwnChannelPromptMessageStore(PromptMessageStore, adapter.ChannelType)
-            : PromptMessageStore;
+    private OwnChannelPromptMessageStore PromptMessageStoreOf(IChannelAdapter adapter) =>
+        new(PromptMessageStore, adapter.ChannelType);
 
     /// <summary>
     /// Finds the core-level declaration of a channel type, compared ordinally.

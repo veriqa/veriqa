@@ -18,6 +18,8 @@ public interface IChannelStartCodeIssuer
     /// the same transaction returns the same code while that code is live.
     /// </summary>
     /// <param name="transactionId">Transaction the code stands for.</param>
+    /// <param name="tenantId">Tenant of the transaction, written into the record of a new code
+    /// (<see cref="ChannelStartCode.TenantId"/>); null — the default implicit tenant.</param>
     /// <param name="expiresAt">Deadline of the transaction — the moment the code stops answering.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The code record. A failure
@@ -26,6 +28,7 @@ public interface IChannelStartCodeIssuer
     /// it the way it treats a channel that failed to build its link.</returns>
     Task<Result<ChannelStartCode>> GetOrIssueAsync(
         TransactionId transactionId,
+        string? tenantId,
         DateTimeOffset expiresAt,
         CancellationToken cancellationToken = default);
 }

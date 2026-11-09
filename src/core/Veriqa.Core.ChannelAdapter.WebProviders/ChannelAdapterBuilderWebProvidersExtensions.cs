@@ -42,10 +42,18 @@ public static class ChannelAdapterBuilderWebProvidersExtensions
     /// </summary>
     /// <param name="adapters">Channel adapter builder.</param>
     /// <returns>Builder for call chaining.</returns>
-    /// <exception cref="InvalidOperationException">A web provider channel section is misconfigured.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// A web provider channel section is misconfigured. Or the builder registers the configuration half of
+    /// the channels only (<c>AddVeriqaChannelConfiguration</c>).
+    /// </exception>
     public static ChannelAdapterBuilder AddWebProviders(this ChannelAdapterBuilder adapters)
     {
         ArgumentNullException.ThrowIfNull(adapters);
+
+        // Not a channel of the configuration-only composition: this method registers its clients and
+        // its start-up check before any adapter, and its early return below would take the mark of a
+        // later full call for its own.
+        adapters.ThrowIfConfigurationOnly(nameof(AddWebProviders));
 
         // The catalog of the keys is the mark of an earlier call: nothing but this method registers it,
         // so its presence means the channels of this configuration are registered already, and a second

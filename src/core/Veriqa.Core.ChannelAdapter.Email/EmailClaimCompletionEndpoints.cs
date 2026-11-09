@@ -40,12 +40,6 @@ public static partial class EmailAuthEndpoints
     private const string ClaimLinkAddressSlot = "{address}";
 
     /// <summary>
-    /// Placeholder of the application name in the question and the warning of the link page, and in the
-    /// request of a sign-in a link of a sign-in letter opens.
-    /// </summary>
-    private const string ClaimLinkAppSlot = "{app}";
-
-    /// <summary>
     /// Shows the page of a link of the claims-completion mail (GET) — reading only (SPEC-016 EM-010, EM-011):
     /// a mail gateway that follows links changes neither the transaction nor the link. While the link is the
     /// live one and the sign-in still waits for the address, the page asks to confirm it with a button that
@@ -362,13 +356,14 @@ public static partial class EmailAuthEndpoints
         var htmlLang = ResolveServedHtmlLang(localizer, locale);
 
         var appName = ApplicationNameOf(transaction);
+        var brandName = transaction?.GetBrandName();
 
         // The question and the confirmed address carry the button that closes the tab: "Cancel" beside the
         // button of the question, "Close" under the confirmed address. It changes nothing.
         var (content, statusCode) = kind switch
         {
             ClaimLinkPageKind.Question when question is { } shown => (
-                BuildClaimLinkQuestion(localizer, texts, htmlLang, appName, shown.MaskedAddress, shown.Token),
+                BuildClaimLinkQuestion(localizer, texts, htmlLang, appName, brandName, shown.MaskedAddress, shown.Token),
                 StatusCodes.Status200OK),
             ClaimLinkPageKind.Confirmed => (
                 $"""<div class="veriqa-status success">{HtmlEncode(texts.Localize(localizer, EmailAdapterMailStrings.ClaimLinkPageConfirmed, htmlLang))}</div>"""
@@ -426,6 +421,7 @@ public static partial class EmailAuthEndpoints
     /// <param name="texts">Overrides of the page's built-in texts, resolved for its transaction.</param>
     /// <param name="htmlLang">Language of the page's content — the one it states in <c>&lt;html lang&gt;</c>.</param>
     /// <param name="appName">Name of the application being signed in to.</param>
+    /// <param name="brandName">Brand name the levels of the transaction state; null — none is stated.</param>
     /// <param name="maskedAddress">The masked address.</param>
     /// <param name="token">The token of the link.</param>
     /// <returns>The HTML of the question.</returns>
@@ -434,14 +430,23 @@ public static partial class EmailAuthEndpoints
         CorePageTexts texts,
         string htmlLang,
         string appName,
+        string? brandName,
         string maskedAddress,
         string token)
     {
-        var question = texts.Localize(localizer, EmailAdapterMailStrings.ClaimLinkPageQuestion, htmlLang)
-            .Replace(ClaimLinkAddressSlot, maskedAddress, StringComparison.Ordinal)
-            .Replace(ClaimLinkAppSlot, appName, StringComparison.Ordinal);
-        var warning = texts.Localize(localizer, EmailAdapterMailStrings.ClaimLinkPageWarning, htmlLang)
-            .Replace(ClaimLinkAppSlot, appName, StringComparison.Ordinal);
+        var question = EmailLinkPageNameSlots.Fill(
+            texts.Localize(localizer, EmailAdapterMailStrings.ClaimLinkPageQuestion, htmlLang)
+                .Replace(ClaimLinkAddressSlot, maskedAddress, StringComparison.Ordinal),
+            localizer,
+            htmlLang,
+            appName,
+            brandName);
+        var warning = EmailLinkPageNameSlots.Fill(
+            texts.Localize(localizer, EmailAdapterMailStrings.ClaimLinkPageWarning, htmlLang),
+            localizer,
+            htmlLang,
+            appName,
+            brandName);
         var cancel = CorePageCloseAction.BesideForm(
             texts.Localize(localizer, EmailAdapterMailStrings.CancelButton, htmlLang),
             texts.Localize(localizer, CorePageCloseAction.CloseHint, htmlLang));

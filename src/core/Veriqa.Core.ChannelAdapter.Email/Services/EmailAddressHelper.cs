@@ -11,6 +11,7 @@ using MimeKit.Utils;
 using Veriqa.Core.ChannelAdapter.Email.Configuration;
 using Veriqa.Core.ChannelAdapter.Email.Constants;
 using Veriqa.Core.ChannelAdapter.Pipeline;
+using Veriqa.Core.Contracts;
 
 namespace Veriqa.Core.ChannelAdapter.Email.Services;
 
@@ -64,6 +65,13 @@ internal static class EmailAddressHelper
     /// (<c>ChannelUserId</c>/<c>email</c>/<c>Username</c>, the action token, the identity snapshot).
     /// A call site that only compares two addresses and returns a decision uses
     /// <see cref="ToComparisonForm"/> instead — it must not depend on the case settings.
+    /// <para>
+    /// The domain is brought to its canonical form (<see cref="EmailDomain.ToCanonical"/>: A-label, lower
+    /// case, no trailing dot) whenever <see cref="EmailNormalizationOptions.LowercaseDomain"/> is on, and
+    /// whenever the domain holds a non-ASCII character whatever the setting: an internationalized name has
+    /// one form only as its A-label, and that form is lower case by the IDNA mapping, so the case axis has
+    /// no spelling of its own to keep there. An all-ASCII domain with the setting off keeps its spelling.
+    /// </para>
     /// </remarks>
     /// <param name="email">The source email address.</param>
     /// <param name="normalization">Normalization settings (null — full lower-case).</param>
@@ -80,22 +88,22 @@ internal static class EmailAddressHelper
             return trimmed.ToLowerInvariant();
         }
 
-        if (normalization is null)
-        {
-            return trimmed.ToLowerInvariant();
-        }
-
         var localPart = trimmed[..atIndex];
         var domain = trimmed[(atIndex + 1)..];
+
+        if (normalization is null)
+        {
+            return $"{localPart.ToLowerInvariant()}@{EmailDomain.ToCanonical(domain)}";
+        }
 
         if (normalization.LowercaseLocalPart)
         {
             localPart = localPart.ToLowerInvariant();
         }
 
-        if (normalization.LowercaseDomain)
+        if (normalization.LowercaseDomain || !Ascii.IsValid(domain))
         {
-            domain = domain.ToLowerInvariant();
+            domain = EmailDomain.ToCanonical(domain);
         }
 
         // Canonicalization runs on top of the case normalization and never governs case: the owner of
@@ -110,7 +118,8 @@ internal static class EmailAddressHelper
 
     /// <summary>
     /// Brings a value to the form in which two addresses are compared: an unconditional lower-case of
-    /// both parts plus provider-specific canonicalization when it is enabled.
+    /// the local part, the canonical form of the domain (<see cref="EmailDomain.ToCanonical"/>) plus
+    /// provider-specific canonicalization when it is enabled.
     /// </summary>
     /// <remarks>
     /// Used by the call sites whose output is a decision rather than an address — the Push allowlist
@@ -122,9 +131,10 @@ internal static class EmailAddressHelper
     /// <para>
     /// The input is either an address or an allowlist entry, and an entry comes in two shapes: with an
     /// "@" it is an address and gets the full treatment; without one it is a bare domain, so only the
-    /// domain half of the canonicalization applies — running <see cref="Normalize"/> over it would hit
-    /// the invalid-format branch and leave "googlemail.com" unmapped while the sender's domain had
-    /// already become "gmail.com".
+    /// domain half applies — the canonical domain form and the alias mapping. Running
+    /// <see cref="Normalize"/> over it would hit the invalid-format branch and leave "googlemail.com"
+    /// unmapped while the sender's domain had already become "gmail.com", and an internationalized entry
+    /// in its Unicode spelling while the sender's domain had become its A-label.
     /// </para>
     /// </remarks>
     /// <param name="value">Email address, or an allowlist entry (address or bare domain).</param>
@@ -132,23 +142,28 @@ internal static class EmailAddressHelper
     /// <returns>The comparison form of the value.</returns>
     public static string ToComparisonForm(string value, EmailNormalizationOptions? normalization)
     {
-        // The method removes the case difference unconditionally and adds canonicalization behind the flag
-        var lowered = value.Trim().ToLowerInvariant();
+        // The method removes the case and spelling differences unconditionally and adds canonicalization
+        // behind the flag
+        var trimmed = value.Trim();
+        var canonicalize = normalization?.ProviderSpecificCanonicalization is true;
 
-        if (normalization?.ProviderSpecificCanonicalization is not true)
+        var atIndex = trimmed.LastIndexOf('@');
+        if (atIndex <= 0 || atIndex == trimmed.Length - 1)
         {
-            return lowered;
+            // Not an address: a bare-domain allowlist entry gets the canonical domain form, a malformed
+            // value only the lower case — and either way only the domain alias mapping can apply on top.
+            var domainForm = atIndex < 0 ? EmailDomain.ToCanonical(trimmed) : trimmed.ToLowerInvariant();
+            return canonicalize ? CanonicalizeDomain(domainForm) : domainForm;
         }
 
-        var atIndex = lowered.LastIndexOf('@');
-        if (atIndex <= 0 || atIndex == lowered.Length - 1)
+        var localPart = trimmed[..atIndex].ToLowerInvariant();
+        var domain = EmailDomain.ToCanonical(trimmed[(atIndex + 1)..]);
+
+        if (canonicalize)
         {
-            // Not an address: a bare-domain allowlist entry (or a malformed value) — only the domain
-            // alias mapping can apply.
-            return CanonicalizeDomain(lowered);
+            (localPart, domain) = Canonicalize(localPart, domain);
         }
 
-        var (localPart, domain) = Canonicalize(lowered[..atIndex], lowered[(atIndex + 1)..]);
         return $"{localPart}@{domain}";
     }
 

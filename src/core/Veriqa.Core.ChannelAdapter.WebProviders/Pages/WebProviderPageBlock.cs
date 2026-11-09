@@ -14,8 +14,7 @@ internal enum WebProviderPageBlock
     Outcome,
 
     /// <summary>
-    /// The transaction ended in the core without an outcome shown here: a neutral line and the button
-    /// that closes the tab.
+    /// The transaction ended in the core without an outcome shown here: a neutral line.
     /// </summary>
     Ended,
 

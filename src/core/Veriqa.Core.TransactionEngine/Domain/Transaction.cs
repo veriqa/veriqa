@@ -600,8 +600,7 @@ public sealed class Transaction
     /// not govern (SPEC-001 §4.4 item 4: expiry never happens out of Confirmed).
     /// So its deadline passing states nothing about it, and a reader must not read it as an ending.
     /// What does end that wait is the finalization timeout, and it is the STORE that enforces it —
-    /// see the remarks on <c>ITransactionStore.GetStalledConfirmedAsync</c> for the store that does
-    /// not, where a confirmed transaction is bounded by nothing.
+    /// through the selection the cleanup sweep reads, <c>ITransactionStore.GetStalledConfirmedAsync</c>.
     /// <para>
     /// This is NOT the complement of <see cref="IsTerminal"/>, and the difference is the whole point:
     /// Confirmed is neither terminal nor expirable. Pair the answer with <see cref="IsExpired"/> —

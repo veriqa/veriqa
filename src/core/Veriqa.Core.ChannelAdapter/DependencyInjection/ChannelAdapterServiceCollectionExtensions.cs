@@ -85,33 +85,9 @@ public static class ChannelAdapterServiceCollectionExtensions
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, ChannelInboundVerificationStartupValidator>());
 
-        // The catalogs this CONTOUR owns, stated at its own composition — the channel capability, the
-        // design of the pages of the core, the login-confirmation axis, the display of the outcome
-        // receipt, the window of the phone step of claim completion, the limit and interval of the
-        // channel health probe, and the spare start code and the name of the chat of a channel. They
-        // travel with the channels because that is where they are declared: a host that
-        // composes the channels without the auth server carries their declarations all the same, and
-        // nothing else in such a host would name them. The call guards each catalog on its own, so
-        // composing the contour twice, or alongside another owner naming a catalog it already holds,
-        // still leaves one registration of each. The keys of an INDIVIDUAL channel are not here: each
-        // channel registers its own catalog at its own registration, so a deployment declares the
-        // credentials of the channels it added and of no others.
-        services.AddVeriqaConfigKeyCatalogs(
-            configuration,
-            ChannelConfigKeys.Catalog,
-            CorePageBrandingConfigKeys.Catalog,
-            LoginConfirmationConfigKeys.Catalog,
-            CompletionBehaviorConfigKeys.Catalog,
-            OutcomeNoticeConfigKeys.Catalog,
-            ClaimCompletionConfigKeys.Catalog,
-            ChannelHealthConfigKeys.Catalog,
-            ChannelChatConfigKeys.Catalog);
-
-        // The text overrides of the pages of the core, declared next to their design and for the same
-        // reason. Their key brings its own snapshot catalogs — one per level, which the mechanism does not
-        // derive for a key without a domain — so it is registered by its own call, under one guard for the
-        // key and its catalogs.
-        services.AddCorePageTextKey(configuration);
+        // The configuration half of the contour — its catalogs, the Core getter of channels_enabled and
+        // the resolver — through the one method AddVeriqaChannelConfiguration calls as well.
+        services.AddChannelContourConfiguration(configuration);
 
         // Metrics of the contour. AddMetrics is the framework's own way of bringing IMeterFactory in
         // and is idempotent, so it is called here rather than assumed: an integrator may consume this
@@ -168,16 +144,19 @@ public static class ChannelAdapterServiceCollectionExtensions
         services.AddOptionsWithValidateOnStart<ChannelLocalizationOptions>();
 
         // Start of a sign-in by a short code, for a channel that declared ChannelCapabilities.CodeStart:
-        // the length of the code is the one setting, judged at start — a value outside the range
-        // would otherwise surface only when the first page of such a channel is rendered. The codes
-        // live in a store of their own (in-process by default, replaceable for several instances), and
-        // the issuer is the single point a code is given to a transaction at.
+        // the length of the code and the budget of unmatched codes are judged at start — a value out of
+        // range would otherwise surface only when the first page of such a channel is rendered, or when
+        // the first code arrives on the route of a tenant. The codes live in a store of their own
+        // (in-process by default, replaceable for several instances), the issuer is the single point a
+        // code is given to a transaction at, and the budget of unmatched codes is one singleton every
+        // event scope shares: its counters must outlive the event that spent them.
         services.Configure<ChannelCodeStartOptions>(
             configuration.GetSection(ChannelCodeStartOptions.SectionName));
         services.AddSingleton<IValidateOptions<ChannelCodeStartOptions>, ChannelCodeStartOptionsValidator>();
         services.AddOptionsWithValidateOnStart<ChannelCodeStartOptions>();
         services.TryAddSingleton<IChannelStartCodeStore, InMemoryChannelStartCodeStore>();
         services.TryAddSingleton<IChannelStartCodeIssuer, ChannelStartCodeIssuer>();
+        services.TryAddSingleton<UnmatchedStartCodeBudget>();
 
         // Dropping of a repeated delivery of an inbound event within a short window, before the processor
         // acts on it: a platform that delivers one event twice almost at once would otherwise get two
@@ -306,8 +285,9 @@ public static class ChannelAdapterServiceCollectionExtensions
         // whatever lifetime the host chose for it is honoured) and only when an item is pressed — a
         // handler that fails to be created must not take the sign-ins of the channel down with it. The mark
         // of the letters whose budget is charged comes with the channel that sends such letters, and a
-        // composition without one charges every pass. The dropping of repeated deliveries is the one
-        // singleton every scope shares: its marks must outlive the event that set them.
+        // composition without one charges every pass. The dropping of repeated deliveries and the budget of
+        // unmatched start codes are the singletons every scope shares: their marks and counters must
+        // outlive the event that set them.
         services.TryAddScoped(provider => new ChannelInboundProcessor(
             provider.GetRequiredService<ITransactionService>(),
             provider.GetRequiredService<ITransactionStore>(),
@@ -331,7 +311,8 @@ public static class ChannelAdapterServiceCollectionExtensions
             () => provider.GetService<IMenuItemPressHandler>(),
             provider.GetRequiredService<IChannelStartCodeStore>(),
             provider.GetService<ILetterBudgetChargeMark>(),
-            provider.GetRequiredService<InboundEventDeduplicator>()));
+            provider.GetRequiredService<InboundEventDeduplicator>(),
+            provider.GetRequiredService<UnmatchedStartCodeBudget>()));
 
         // Which channels still have no webhook registered: written by the background registration of a
         // channel that registers its own webhook, read by the health check below.
@@ -384,6 +365,147 @@ public static class ChannelAdapterServiceCollectionExtensions
             // Log a startup warning via deferred logging
             services.AddHostedService<ChannelAdapterStartupWarningService>();
         }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the configuration half of the channels added in <paramref name="configure"/> — the
+    /// values a host without the channels' runtime reads through the canonical resolver (SPEC-012 §10.6,
+    /// CFG-231, CFG-235) — without any of their working services.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Registered: for every channel added in <paramref name="configure"/>, the binding and the start-up
+    /// validation of its options section, the catalog of its keys, the registrar of the core level of
+    /// those keys and its core-level declaration; for the contour, the catalogs it owns, the Core getter
+    /// of <c>channels_enabled</c> and the canonical resolver. The values are the ones a host composing
+    /// <see cref="AddVeriqaChannelAdapters"/> resolves, because both compositions take them from the same
+    /// registrations. A channel enabled in its section is reported enabled at core level all the same:
+    /// the declaration reads the options, not the composition.
+    /// </para>
+    /// <para>
+    /// Not registered, whatever <c>Enabled</c> says: hosted services of the channels (polling, webhook
+    /// set-up), HTTP and channel clients, adapters, webhook routes and the channel registry, nor the rest
+    /// of the contour — diagnostics, metrics, health check, the processing pipeline and the multi-tenancy
+    /// seam.
+    /// </para>
+    /// <para>
+    /// The call is idempotent and combines with <see cref="AddVeriqaChannelAdapters"/> in either order and
+    /// with overlapping sets of channels: every registration is guarded on its own, so the sets of
+    /// channels add up and no descriptor is registered twice; a channel added to
+    /// <see cref="AddVeriqaChannelAdapters"/> still gets its working half. With two different
+    /// configuration instances, the binding of the first call stays in effect. In a host that also
+    /// composes <see cref="AddVeriqaChannelAdapters"/> (directly or through <c>AddVeriqaAuthServer</c>), a
+    /// channel enabled in its section and added only here is a declaration without an adapter: the
+    /// start-up diagnostics warn about it (SPEC-003 CA-198/CA-199), and the host refuses to start unless
+    /// its <c>InboundVerification</c> level is declared, as for any channel enabled at core level.
+    /// </para>
+    /// <para>
+    /// Supported in <paramref name="configure"/>: the <c>Add*</c> methods of the eight built-in channels.
+    /// <c>AddHttpChannels</c>, <c>AddWebProviders</c> and
+    /// <see cref="ChannelAdapterBuilder.AddChannel{TAdapter}(string, bool)"/> throw
+    /// <see cref="InvalidOperationException"/>: they register working channels. The <c>Use*</c>
+    /// replacements (<c>UseWhatsAppProvider</c>, <c>UseRedisChannelStores</c>) belong to the working half
+    /// and are not meant for this composition. A Generic or Web Host is expected: the validator of the
+    /// Email options reads <c>IHostEnvironment</c>.
+    /// </para>
+    /// <para>
+    /// Known limitation: the overridable texts of the Email pages and of the channels' buttons come with
+    /// the working half of their channel, so a host composed with this call alone does not recognize an
+    /// <c>AuthPage.Texts</c> override of them.
+    /// </para>
+    /// </remarks>
+    /// <param name="services">Service collection.</param>
+    /// <param name="configuration">Application configuration the options and the core level are read from.</param>
+    /// <param name="configure">Adds the channels whose configuration is registered.</param>
+    /// <returns>The same service collection, for chaining.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <c>null</c>.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="configure"/> registers a working channel (<c>AddHttpChannels</c>,
+    /// <c>AddWebProviders</c>, <c>AddChannel</c>).
+    /// </exception>
+    public static IServiceCollection AddVeriqaChannelConfiguration(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        Action<ChannelAdapterBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        // No marker over the whole composition: it would drop the channels of a second call. Every
+        // registration below guards itself instead.
+        services.AddChannelContourConfiguration(configuration);
+
+        var builder = new ChannelAdapterBuilder(services, configuration, isConfigurationOnly: true);
+        configure(builder);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the configuration half of the channel contour — the catalogs it owns
+    /// (<see cref="AddChannelContourConfigKeyCatalogs"/>), the Core getter of <c>channels_enabled</c> and
+    /// the canonical resolver. The ONE method both channel compositions take it from:
+    /// <see cref="AddVeriqaChannelAdapters"/> and <see cref="AddVeriqaChannelConfiguration"/>.
+    /// Idempotent.
+    /// </summary>
+    /// <param name="services">Service collection.</param>
+    /// <param name="configuration">Application configuration the core level is read from.</param>
+    /// <returns>Service collection for chaining.</returns>
+    internal static IServiceCollection AddChannelContourConfiguration(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddChannelContourConfigKeyCatalogs(configuration);
+        services.AddChannelCoreConfigKeys();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the catalogs of declared keys the channel CONTOUR owns (SPEC-012 §10.6, CFG-244) — the
+    /// ONE place that lists them: the channel capability, the design of the pages of the core, the
+    /// login-confirmation axis, the display of the outcome receipt, the window of the phone step of
+    /// claim completion, the limit and interval of the channel health probe, the spare start code and
+    /// the name of the chat of a channel, and the text overrides of the pages of the core.
+    /// </summary>
+    /// <remarks>
+    /// Two callers: the configuration half of the contour (<see cref="AddChannelContourConfiguration"/>),
+    /// which both channel compositions take, and the composition of the auth server's configuration
+    /// resolution, which a host takes without the channels' runtime services. Keeping the list here
+    /// rather than repeating it there is what makes a catalog added to the contour reach every host.
+    /// The catalogs travel with the channels because that is where they are declared: a host that
+    /// composes the channels without the auth server carries their declarations all the same. Every
+    /// catalog is guarded on its own, so composing the contour twice, or alongside the composition of
+    /// the auth server, still leaves one registration of each. The keys of an INDIVIDUAL channel are not
+    /// here: each channel registers its own catalog at its own registration, so a deployment declares
+    /// the credentials of the channels it added and of no others.
+    /// </remarks>
+    /// <param name="services">Service collection.</param>
+    /// <param name="configuration">Application configuration the core level is read from.</param>
+    /// <returns>Service collection for chaining.</returns>
+    internal static IServiceCollection AddChannelContourConfigKeyCatalogs(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddVeriqaConfigKeyCatalogs(
+            configuration,
+            ChannelConfigKeys.Catalog,
+            CorePageBrandingConfigKeys.Catalog,
+            LoginConfirmationConfigKeys.Catalog,
+            CompletionBehaviorConfigKeys.Catalog,
+            OutcomeNoticeConfigKeys.Catalog,
+            ClaimCompletionConfigKeys.Catalog,
+            ChannelHealthConfigKeys.Catalog,
+            ChannelChatConfigKeys.Catalog);
+
+        // The text overrides of the pages of the core, declared next to their design and for the same
+        // reason. Their key brings its own snapshot catalogs — one per level, which the mechanism does not
+        // derive for a key without a domain — so it is registered by its own call, under one guard for the
+        // key and its catalogs.
+        services.AddCorePageTextKey(configuration);
 
         return services;
     }

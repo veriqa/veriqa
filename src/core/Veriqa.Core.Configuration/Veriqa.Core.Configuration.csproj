@@ -51,26 +51,26 @@
          the type lives in Microsoft.Extensions.Hosting.Abstractions.
          Versions are pinned to the floor of the net10.0 band, so a host always runs on the shared
          framework's own (never older) assemblies and the package can never drag a newer one in. -->
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <!-- Configuration abstractions AND the binder: a node of a level served by the application
          configuration is a section (Abstractions), and the parsing of a value at a path inside it is
          the binder's rather than this module's — a module that parsed scalars itself would be a second
          dialect of the same configuration. Neither package brings a provider: which providers a
          deployment has stays the host's decision. -->
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <!-- Logging AND its abstractions: the module logs (Abstractions) and calls services.AddLogging(),
          and that extension lives in Microsoft.Extensions.Logging, not in the abstractions package. -->
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
     <!-- Change tokens: the walk of a configuration snapshot subscribes to the reload of the host
          configuration itself for the core level, whose record IS that configuration. The package
          already arrives with the configuration abstractions; it is named here because the module uses
          it directly, and a dependency that travels in unnamed is one nobody can see. -->
-    <PackageReference Include="Microsoft.Extensions.Primitives" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Primitives" />
   </ItemGroup>
 
 </Project>

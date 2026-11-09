@@ -110,6 +110,10 @@ public static partial class EmailAuthEndpoints
     {
         // The method renders the standalone pull form: enter email → magic link
         var services = httpContext.RequestServices;
+
+        // No answer of the form is cached, whatever it renders: it carries the session identifier of the
+        // transaction it signs in to.
+        CorePageCaching.Forbid(httpContext.Response);
         var logger = services.GetRequiredService<ILoggerFactory>()
             .CreateLogger(typeof(EmailAuthEndpoints));
 

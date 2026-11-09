@@ -12,7 +12,6 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Net.Http.Headers;
 
 using OpenIddict.Client.AspNetCore;
 
@@ -23,8 +22,10 @@ using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
 using Veriqa.Core.ChannelAdapter.Pipeline;
 using Veriqa.Core.ChannelAdapter.UI;
+using Veriqa.Core.ChannelAdapter.WebProviders.Configuration;
 using Veriqa.Core.ChannelAdapter.WebProviders.Constants;
 using Veriqa.Core.ChannelAdapter.WebProviders.Identity;
+using Veriqa.Core.ChannelAdapter.WebProviders.Providers;
 using Veriqa.Core.ChannelAdapter.WebProviders.State;
 using Veriqa.Core.TransactionEngine.Configuration;
 using Veriqa.Core.TransactionEngine.Domain;
@@ -118,8 +119,10 @@ internal static class WebProviderEndpoints
     /// <summary>
     /// The link of the channel. A live transaction — known, not terminal, within its deadline — is
     /// challenged to the provider of the channel: the registration of the channel is named by its
-    /// identifier, and the transaction travels in the state OpenIddict protects. Any other link is
-    /// answered with <c>404</c> and the page of a request not found, without leaving for the provider.
+    /// identifier, the transaction travels in the state OpenIddict protects, and the scopes its
+    /// requirements demand of the channel are left for the challenge (<see cref="WebProviderDemandedScopes"/>).
+    /// Any other link is answered with <c>404</c> and the page of a request not found, without leaving
+    /// for the provider.
     /// </summary>
     /// <param name="httpContext">The request.</param>
     /// <param name="channelType">The channel.</param>
@@ -136,6 +139,11 @@ internal static class WebProviderEndpoints
         {
             return await NoticeAsync(
                 httpContext, channelType, transaction, WebProviderPageStrings.RequestNotFound, StatusCodes.Status404NotFound);
+        }
+
+        if (RegistrationOf(services, channelType) is { } registration)
+        {
+            WebProviderDemandedScopes.Attach(httpContext, registration, live.ClaimRequirements);
         }
 
         var properties = new AuthenticationProperties(new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -193,9 +201,18 @@ internal static class WebProviderEndpoints
                 httpContext, channelType, transaction, WebProviderPageStrings.RequestNotFound, StatusCodes.Status404NotFound);
         }
 
+        if (RegistrationOf(services, channelType) is not { } registration
+            || AdapterOf(services, channelType) is not { } adapter)
+        {
+            logger.LogError("Web provider channel {ChannelType}: the channel is not registered", channelType);
+
+            return await NoticeAsync(
+                httpContext, channelType, live, WebProviderPageStrings.Failed, StatusCodes.Status500InternalServerError);
+        }
+
         var timeProvider = services.GetRequiredService<TimeProvider>();
         var now = timeProvider.GetUtcNow();
-        var snapshot = WebProviderIdentitySnapshotBuilder.Build(channelType, result.Principal, live.GetTenantId(), now);
+        var snapshot = WebProviderIdentitySnapshotBuilder.Build(registration, result.Principal, live.GetTenantId(), now, logger);
         if (snapshot is null)
         {
             logger.LogWarning(
@@ -205,14 +222,6 @@ internal static class WebProviderEndpoints
 
             return await NoticeAsync(
                 httpContext, channelType, live, WebProviderPageStrings.ProviderRefused, StatusCodes.Status400BadRequest);
-        }
-
-        if (AdapterOf(services, channelType) is not { } adapter)
-        {
-            logger.LogError("Web provider channel {ChannelType}: the adapter is not registered", channelType);
-
-            return await NoticeAsync(
-                httpContext, channelType, live, WebProviderPageStrings.Failed, StatusCodes.Status500InternalServerError);
         }
 
         // The session ends with the state of its transaction; the transaction is live, so it ends later
@@ -266,14 +275,53 @@ internal static class WebProviderEndpoints
         var frame = await FrameAsync(httpContext, channelType, page.Transaction);
         var remaining = page.Session.ExpiresAt - services.GetRequiredService<TimeProvider>().GetUtcNow();
 
+        // A transaction still waiting for the claims is not over: the link to the claim form or the
+        // action after the sign-in has yet to reach this page, so the tab stays open for it.
+        var closesTab = page.View.IsOver
+            && page.Transaction?.IsCompletingClaims() != true
+            && !await HasActionAfterSignInAsync(services, channelType, page.Transaction, httpContext.RequestAborted);
+
         var html = WebProviderPageRenderer.BuildSessionPage(
             frame,
             page.View,
             page.Session.TransactionId.ToString(),
             services.GetRequiredService<IAntiforgery>().GetAndStoreTokens(httpContext),
-            (long)Math.Max(0, remaining.TotalMilliseconds));
+            (long)Math.Max(0, remaining.TotalMilliseconds),
+            closesTab);
 
         return Html(html, StatusCodes.Status200OK);
+    }
+
+    /// <summary>
+    /// Tells whether the transaction of the page has an action after the sign-in in this channel — a
+    /// welcome, a menu or a redirect (SPEC-012 §4.9). Such an action arrives on the page after the outcome
+    /// and is what the user reads there, so the page stays open for it. The core performs it only for a
+    /// sign-in that went through: a confirmation, a declined, failed or expired sign-in and a transaction
+    /// that is gone have none. The action is the one the core performs, resolved by the same resolver.
+    /// </summary>
+    /// <param name="services">Request service provider.</param>
+    /// <param name="channelType">The channel.</param>
+    /// <param name="transaction">The transaction of the page; <c>null</c> — it is gone.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns><c>true</c> — an action follows the sign-in.</returns>
+    private static async Task<bool> HasActionAfterSignInAsync(
+        IServiceProvider services,
+        string channelType,
+        Transaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        if (transaction is null
+            || !string.Equals(transaction.Type, TransactionTypes.Login, StringComparison.Ordinal)
+            || transaction.State is not (TransactionState.Confirmed or TransactionState.Completed)
+            || AdapterOf(services, channelType) is not { } adapter)
+        {
+            return false;
+        }
+
+        var action = await services.GetRequiredService<ICompletionBehaviorResolver>()
+            .ResolveAsync(transaction, adapter, cancellationToken);
+
+        return action is not CompletionBehaviorAction.None;
     }
 
     /// <summary>
@@ -679,7 +727,8 @@ internal static class WebProviderEndpoints
             localizer,
             texts,
             branding,
-            httpContext.Items[HttpContextItemKeys.CspNonce] as string);
+            httpContext.Items[HttpContextItemKeys.CspNonce] as string,
+            RegistrationOf(services, channelType)?.ConfirmSlider ?? WebProviderConfigKeys.DefaultConfirmSlider);
     }
 
     /// <summary>
@@ -748,11 +797,12 @@ internal static class WebProviderEndpoints
     }
 
     /// <summary>
-    /// Keeps the answer out of every cache: the page and its state change with every event.
+    /// Keeps the answer out of every cache: the page and its state change with every event. The directive is the
+    /// one of every page of the contour (<see cref="CorePageCaching"/>), which the anti-forgery tokens of the
+    /// forms of the page leave as it is.
     /// </summary>
     /// <param name="httpContext">The request.</param>
-    private static void DisableCaching(HttpContext httpContext) =>
-        httpContext.Response.Headers.CacheControl = CacheControlHeaderValue.NoStoreString;
+    private static void DisableCaching(HttpContext httpContext) => CorePageCaching.Forbid(httpContext.Response);
 
     /// <summary>
     /// An HTML answer.
@@ -772,6 +822,16 @@ internal static class WebProviderEndpoints
     private static IChannelAdapter? AdapterOf(IServiceProvider services, string channelType) =>
         services.GetRequiredService<IEnumerable<IChannelAdapter>>()
             .FirstOrDefault(adapter => string.Equals(adapter.ChannelType, channelType, StringComparison.Ordinal));
+
+    /// <summary>
+    /// The registration of the channel in the composition; <c>null</c> — it is not registered.
+    /// </summary>
+    /// <param name="services">Request service provider.</param>
+    /// <param name="channelType">The channel.</param>
+    /// <returns>The registration.</returns>
+    private static WebProviderRegistration? RegistrationOf(IServiceProvider services, string channelType) =>
+        services.GetRequiredService<WebProviderRegistrations>().Enabled
+            .FirstOrDefault(registration => string.Equals(registration.ChannelType, channelType, StringComparison.Ordinal));
 
     /// <summary>
     /// Logger of the routes.

@@ -152,7 +152,9 @@ public interface ITransactionService
     /// <item>Bound to another subject — refused with <see cref="TransactionErrorCodes.ChannelSubjectMismatch"/>.</item>
     /// <item>Bound to the sender, or no longer Pending, or in the claims completion — success, nothing written.</item>
     /// <item>Pending, not past its TTL, the sender admitted (<see cref="ValidateChannelAdmissibilityAsync"/>),
-    /// nobody bound — the binding is written; otherwise the refusal of the failed check.</item>
+    /// nobody bound — the binding is written, keeping the sender's snapshot as the profile of the start
+    /// (<see cref="ChannelSubjectBinding.StartIdentity"/>) unless the binding with it is over the size limit of a
+    /// stored snapshot, which binds without it; otherwise the refusal of the failed check.</item>
     /// </list>
     /// Of two different senders racing for an unbound transaction exactly one is bound, and the other
     /// is refused with <see cref="TransactionErrorCodes.ChannelSubjectMismatch"/>, not with a concurrency

@@ -7,14 +7,17 @@ namespace Veriqa.Core.AuthServer.Configuration.Resolution;
 
 /// <summary>
 /// The catalogs of declared keys the AUTH SERVER ships (SPEC-012 §10.6, CFG-244) — the ONE place that
-/// names them, and what its composition registers into the container.
+/// names them, and what the composition of its configuration resolution
+/// (<c>AddVeriqaAuthServerConfigResolution</c>) registers into the container as its own.
 /// <para>
-/// The list holds the catalogs THIS composition registers and no other. A catalog belongs to the
-/// owner that declares into it, and every owner registers its own at its own composition: the engine
-/// of transactions when the engine is composed, the contour of the channels when the channels are, a
-/// channel satellite when its channel is. An owner named from here would be declared twice over —
-/// once by itself and once by us — and an owner outside the core could not be named here at all: it
-/// does not reference this assembly and cannot (TASK-133).
+/// The list holds the catalogs of THIS assembly's owner and no other. A catalog belongs to the owner
+/// that declares into it, and every owner keeps its list at home: the engine of transactions and the
+/// contour of the channels each in one method of their own, which their own composition calls and the
+/// composition of the resolution calls too — so it names the method, never the catalogs behind it; a
+/// channel satellite registers its catalog when its channel is. A catalog of another owner listed here
+/// would be a second list of it, which the owner's next catalog would silently miss, and an owner
+/// outside the core could not be named here at all: it does not reference this assembly and cannot
+/// (TASK-133).
 /// </para>
 /// <para>
 /// All but one of the catalogs are declared in this assembly; the odd one — the inbound-verification

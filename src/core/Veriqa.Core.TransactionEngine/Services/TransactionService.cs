@@ -670,11 +670,11 @@ internal sealed class TransactionService : ITransactionService
         // Pending and out of nothing else (SPEC-001 §4.4 item 4), so a confirmed one awaiting
         // finalization is returned with the state it is actually in: its wait ends on the
         // finalization timeout, and the sweep that enforces it writes Failed, never Expired — how
-        // long the wait can run is therefore a fact about the store this deployment runs, not about
-        // the engine (ITransactionStore.GetStalledConfirmedAsync names the store that ends it
-        // never). Asking "not terminal" instead would answer "expired" about a transaction the
-        // state machine cannot expire, and every reader of this method would carry that answer —
-        // the status surface among them, which maps any refusal to "no such transaction".
+        // long the wait can run is therefore the finalization window, not the deadline (the sweep
+        // reads ITransactionStore.GetStalledConfirmedAsync). Asking "not terminal" instead would
+        // answer "expired" about a transaction the state machine cannot expire, and every reader of
+        // this method would carry that answer — the status surface among them, which maps any
+        // refusal to "no such transaction".
         if (transaction.IsSubjectToExpiry() && transaction.IsExpired(_timeProvider.GetUtcNow()))
         {
             return Result<Transaction>.Failure(
@@ -1068,9 +1068,17 @@ internal sealed class TransactionService : ITransactionService
         var firstBinding = SignInSubjectScope.Of(transaction) is null;
 
         // The state and the snapshot are left as they are: only the binding and the concurrency metadata
-        // move, and the metadata is refreshed the way any write with the token refreshes it.
+        // move, and the metadata is refreshed the way any write with the token refreshes it. The binding
+        // keeps the sender's snapshot as the profile of the start: a decision in the channel is taken with
+        // it, so the press does not have to read the profile again. The binding is held to the same size
+        // limit as every stored snapshot, measured on its memoized JSON — the one the store writes. A
+        // binding over it is written without the profile of the start, and the start is not refused for
+        // it — the press then goes with its own snapshot, which the confirmation checks against the limit
+        // on its own.
         var previousToken = transaction.ConcurrencyToken;
-        transaction.SubjectBinding = ChannelSubjectBinding.Of(sender, answerBrowserBound: false);
+        var binding = ChannelSubjectBinding.Of(sender, answerBrowserBound: false) with { StartIdentity = sender };
+        var bindingSize = Encoding.UTF8.GetByteCount(TransactionEntityMapper.SerializeImmutableSnapshot(binding));
+        transaction.SubjectBinding = bindingSize > MaxSnapshotSize ? binding with { StartIdentity = null } : binding;
         transaction.UpdatedAt = _timeProvider.GetUtcNow();
         transaction.ConcurrencyToken = Guid.NewGuid().ToString("N");
 

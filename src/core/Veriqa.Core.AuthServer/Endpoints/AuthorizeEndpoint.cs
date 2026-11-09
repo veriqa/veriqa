@@ -310,11 +310,21 @@ public static class AuthorizeEndpoint
             (transaction.OidcContext!.Scope ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries),
             StringComparer.Ordinal);
 
+        // The avatar of the channel is asked for here, when the code is issued and only for these scopes;
+        // the supplemented identity goes to the mapping and is never stored.
+        var resolvedIdentity = await httpContext.RequestServices.GetRequiredService<ChannelAvatarSupplement>()
+            .SupplementAsync(
+                transaction,
+                transaction.ResolvedIdentitySnapshot!,
+                transaction.CompletionSnapshot!,
+                scopeSet,
+                httpContext.RequestAborted);
+
         // The attribution of the calling relying party is read through the context accessors: a
         // transaction carries it either on the OIDC context or on the request-context container, and
         // reading one of the two directly would make this call site blind to the other.
         var claimsResult = await claimsMapper.MapToClaimsAsync(
-            transaction.ResolvedIdentitySnapshot!,
+            resolvedIdentity,
             transaction.CompletionSnapshot!,
             new ClaimsMappingContext(
                 transaction.GetApplicationId(),
@@ -740,6 +750,11 @@ public static class AuthorizeEndpoint
             // The layout of the channels as the levels state it; whether this page has anything to
             // arrange is the renderer's to tell.
             ChannelLayout = pageSettings.ChannelLayout,
+            // Both switches of remembering the channel, as the levels state them; which page has a
+            // choice to put the channel forward in, or a unified QR code to offer the checkbox under, is
+            // the renderer's to tell.
+            RememberChannelHint = pageSettings.RememberChannelHint,
+            RememberChannelCheckbox = pageSettings.RememberChannelCheckbox,
             UnifiedQrCodeBase64 = unifiedQr?.QrCodeBase64,
             UnifiedQrExpiresAt = unifiedQr?.ExpiresAt,
             UnifiedQrWithChannelQrCodes = unifiedQr is { WithChannelQrCodes: true },
@@ -748,6 +763,12 @@ public static class AuthorizeEndpoint
         };
 
         var html = authPageRenderer.RenderAuthPage(renderContext);
+
+        // The window is not cached, with the cancel button or without it: it holds the session identifier
+        // of the transaction, the QR code and the links into the channels. The directive is the one the
+        // anti-forgery tokens of the cancel form already wrote, so Cache-Control reads the same with the button
+        // or without it.
+        CorePageCaching.Forbid(httpContext.Response);
 
         return Results.Content(html, AuthPageConstants.HtmlContentType, Encoding.UTF8);
     }

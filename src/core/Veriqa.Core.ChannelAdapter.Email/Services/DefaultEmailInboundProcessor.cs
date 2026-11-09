@@ -66,8 +66,8 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
 
     /// <summary>
     /// Transaction service — the source of the tenant the confirmed transaction belongs to, which is
-    /// the tenant of the identity record and not the one the inbound request is scoped to (see the
-    /// snapshot build in ProcessAsync).
+    /// the tenant of the identity record and of the audit record of a refused sender, and not the one
+    /// the inbound request is scoped to (see the read in ProcessInboundEmailAsync).
     /// </summary>
     private readonly ITransactionService _transactionService;
 
@@ -202,6 +202,29 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
             return new ChannelUnrelatedResult();
         }
 
+        // Tenant of the transaction this mail answers — read from the transaction and NOT from the
+        // ambient scope, even though the inbound route now opens one. The two answer different
+        // questions: the scope says whose inbound mailbox received the mail (the route segment), the
+        // transaction says whose sign-in it completes, and both the identity record and the audit
+        // record below belong to the latter. They coincide in every correct configuration and are
+        // told apart deliberately, so that a mail arriving on one tenant's mailbox never writes an
+        // identity under that tenant for somebody else's transaction.
+        // Read once, ahead of the sender check, because both of its outcomes need it: the refusal is
+        // journaled under this tenant, the accepted mail builds its identity under it.
+        // A failed read degrades to the default tenant rather than dropping the mail: the pipeline
+        // reads the transaction again and reports the real outcome. The tenant is not an access
+        // boundary here — it separates identity records and rate-limit budgets, and for a refusal it
+        // decides the audit mode and the journal the record is addressed to; a refusal of an unread
+        // transaction goes to the journal without a tenant and is judged at the level of the core.
+        // A store that throws is not caught: the mail is not handled at all, on either outcome, and is
+        // left to be offered again — the IMAP mail stays unread, a webhook answers with a server error
+        // that the provider retries under its own policy. A later attempt made while the correlation is
+        // still live journals the refusal; a retry after the correlation has expired is dropped as
+        // unrelated mail before any refusal.
+        var tenantTxResult = await _transactionService.GetTransactionAsync(
+            transactionId, cancellationToken);
+        var tenantId = tenantTxResult.IsSuccess ? tenantTxResult.Value.GetTenantId() : null;
+
         // Resolve the verified sender according to the verification policy (SPEC-016 §5.5)
         if (!TryResolveVerifiedSender(message, inbound, out var verifiedSender))
         {
@@ -214,6 +237,7 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
             // the transaction is not confirmed, the rejection is recorded for audit consumers
             await PublishSenderVerificationFailedAsync(
                 transactionId,
+                tenantId,
                 inbound.VerificationPolicy,
                 verifiedSender,
                 cancellationToken);
@@ -231,20 +255,6 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
         // DisplayName → name stays the full verified address: name reads as an established fact next to
         // email_verified, and the alias is not verified by SPF/DKIM/DMARC.
         var senderDisplayName = ResolveSenderDisplayName(message, verifiedSender, normalization);
-
-        // Tenant of the transaction this mail confirms — read from the transaction and NOT from the
-        // ambient scope, even though the inbound route now opens one. The two answer different
-        // questions: the scope says whose inbound mailbox received the mail (the route segment), the
-        // transaction says whose sign-in it completes, and the identity record belongs to the latter.
-        // They coincide in every correct configuration and are told apart deliberately, so that a mail
-        // arriving on one tenant's mailbox never writes an identity under that tenant for somebody
-        // else's transaction.
-        // A failed read degrades to the default tenant rather than dropping the mail: the pipeline
-        // reads the transaction again and reports the real outcome, and the tenant only separates
-        // identity records and rate-limit budgets — it is not an access boundary.
-        var tenantTxResult = await _transactionService.GetTransactionAsync(
-            transactionId, cancellationToken);
-        var tenantId = tenantTxResult.IsSuccess ? tenantTxResult.Value.GetTenantId() : null;
 
         // Build a ChannelIdentitySnapshot from the verified sender (SPEC-016 §6.1, §6.3)
         var snapshot = new ChannelIdentitySnapshot
@@ -282,19 +292,22 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
     /// A publish failure does not change the mail processing result.
     /// </summary>
     /// <remarks>
-    /// The event carries no attribution (SPEC-001 §10.3): the inbound path decides on the correlation
-    /// record alone and never holds the transaction, so there is nothing to capture it from. Reading the
-    /// store here would put an extra read on the live webhook path for the journal's sake only, so the
-    /// gap is left as it is — the audit record then falls back to its closing rule (a system actor and
-    /// empty application attributes), which is exactly what the journal states for a publisher without
-    /// a transaction.
+    /// The event carries the tenant of the transaction and no other attribution (SPEC-011 R44): the
+    /// tenant is not an attribution of the sender but the layer the audit mode is resolved at and the
+    /// journal the record is addressed to. It is the tenant the caller has read off the transaction,
+    /// never the one of the inbound route; a transaction that could not be read — gone, expired, a
+    /// failed read — leaves the event without attribution, and the audit settings are then resolved at
+    /// the level of the core. The rest of the record falls back to its closing rule (a system actor
+    /// and empty application attributes).
     /// </remarks>
     /// <param name="transactionId">Transaction identifier from correlation.</param>
+    /// <param name="tenantId">Tenant of that transaction; null when it could not be read or states none.</param>
     /// <param name="policy">Applied verification policy.</param>
     /// <param name="sender">Sender address (will be masked).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     private async Task PublishSenderVerificationFailedAsync(
         TransactionId transactionId,
+        string? tenantId,
         EmailVerificationPolicy policy,
         string? sender,
         CancellationToken cancellationToken)
@@ -309,7 +322,8 @@ internal sealed class DefaultEmailInboundProcessor : IEmailInboundProcessor
                     OccurredAt = _timeProvider.GetUtcNow(),
                     ChannelType = ChannelTypes.Email,
                     EventCode = EmailAdapterConstants.ErrorCodeSenderVerificationFailed,
-                    Details = $"policy={policy}; sender={ChannelIdentityMask.MaskEmail(sender)}"
+                    Details = $"policy={policy}; sender={ChannelIdentityMask.MaskEmail(sender)}",
+                    Context = TransactionEventContext.ForTenant(tenantId)
                 },
                 cancellationToken);
         }

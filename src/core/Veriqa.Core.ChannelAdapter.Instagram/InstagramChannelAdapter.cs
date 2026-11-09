@@ -781,10 +781,12 @@ internal sealed class InstagramChannelAdapter : IChannelAdapter, IChannelBotName
     }
 
     /// <summary>
-    /// Turns a recognized event into the result the core acts on. A step of a sign-in carries the
-    /// profile of the user: the webhook names only the scoped ID, and without the read every claim
-    /// would be that ID. A pressed button that names no transaction, an answer of the phone step and
-    /// a pressed menu item are not worth a network call: the core reads nothing but the sender off them.
+    /// Turns a recognized event into the result the core acts on. A start and a start by code carry the
+    /// profile of the user: the webhook names only the scoped ID, and without the read every claim would
+    /// be that ID. A "Yes" and a "No" carry the sender alone: the core decides them with the profile the
+    /// start read, which it keeps with the binding of the subject. A pressed button that names no
+    /// transaction, an answer of the phone step and a pressed menu item are not worth a network call
+    /// either: the core reads nothing but the sender off them.
     /// </summary>
     /// <param name="recognized">Recognized messaging event.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -844,6 +846,21 @@ internal sealed class InstagramChannelAdapter : IChannelAdapter, IChannelBotName
                     Value = recognized.MenuItemValue ?? string.Empty,
                     PressId = recognized.PressId
                 };
+
+            // "Yes" and "No" are decided with the profile of the start, so the press reads no profile.
+            case InboundIntent.Confirm:
+                return new ChannelAuthConfirmResult
+                {
+                    TransactionId = recognized.TransactionId,
+                    Identity = BuildIdentitySnapshot(recognized.SenderId, profile: null)
+                };
+
+            case InboundIntent.Decline:
+                return new ChannelAuthDeclineResult
+                {
+                    TransactionId = recognized.TransactionId,
+                    Identity = BuildIdentitySnapshot(recognized.SenderId, profile: null)
+                };
         }
 
         var identity = BuildIdentitySnapshot(
@@ -856,16 +873,6 @@ internal sealed class InstagramChannelAdapter : IChannelAdapter, IChannelBotName
             InboundIntent.StartByCode => new ChannelAuthStartByCodeResult
             {
                 Code = recognized.StartCode ?? string.Empty,
-                Identity = identity
-            },
-            InboundIntent.Confirm => new ChannelAuthConfirmResult
-            {
-                TransactionId = recognized.TransactionId,
-                Identity = identity
-            },
-            InboundIntent.Decline => new ChannelAuthDeclineResult
-            {
-                TransactionId = recognized.TransactionId,
                 Identity = identity
             },
             _ => new ChannelAuthStartResult

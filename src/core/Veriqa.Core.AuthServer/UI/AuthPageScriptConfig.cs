@@ -81,6 +81,15 @@ internal sealed record AuthPageScriptConfig
     public required string HopStartedAttribute { get; init; }
 
     /// <summary>
+    /// Name of the root attribute the script sets while the address form of Email is open — on the tap that
+    /// opens it, the link of the Push section or the button of the Pull panel — and takes off on the tap that
+    /// closes it, the way back of the Push section or the same button. Its presence alone is the signal: the
+    /// stylesheet then takes the rest of the channel choice away and shows the instruction of the form in place
+    /// of the lead instruction, as it does on <see cref="HopStartedAttribute"/>.
+    /// </summary>
+    public required string EmailFormOpenAttribute { get; init; }
+
+    /// <summary>
     /// Codes of the hop family — the channel statuses that set <see cref="HopStartedAttribute"/>.
     /// Email codes are not among them, and the channel type of the event is not consulted.
     /// </summary>
@@ -248,6 +257,18 @@ internal sealed record AuthPageScriptConfig
     /// against and the one that leaves the screen once the hop has started.
     /// </summary>
     public required string ChannelsElementId { get; init; }
+
+    /// <summary>
+    /// Prefix of the identifier of a channel panel: the panel of a channel is the element of this prefix
+    /// followed by its channel type — the one way the script finds the panel of a channel.
+    /// </summary>
+    public required string PanelElementIdPrefix { get; init; }
+
+    /// <summary>
+    /// What the page remembers of the channel the user went through on this device, and at which moment;
+    /// null — the page remembers nothing.
+    /// </summary>
+    public required AuthPageScriptRememberChannel? RememberChannel { get; init; }
 
     /// <summary>
     /// The "Any channel" tab of a page of the unified QR code that keeps the per-channel QR codes: how the
@@ -419,9 +440,16 @@ internal sealed record AuthPageScriptHopLaunchCodes(
 /// channel outside the map leaves the status line alone. A sign-in and a confirmation are given the map
 /// alike; only the wording of its lines follows the transaction.
 /// </param>
+/// <param name="AnsweredChannel">
+/// The channel whose answer was already awaited when the page was rendered; null — none. The page was then
+/// rendered in the state the answer puts it in — with the line of that channel from <paramref name="Lines"/>
+/// on its status line and the channel choice away, where the map has the line — and the script takes the
+/// answer as already acted on from the load: the replay of it changes nothing.
+/// </param>
 internal sealed record AuthPageScriptChannelAnswer(
     string StatusCode,
-    IReadOnlyDictionary<string, string> Lines);
+    IReadOnlyDictionary<string, string> Lines,
+    string? AnsweredChannel);
 
 /// <summary>
 /// The spare start codes of a page: the message a person sends into a channel when its link opened the chat
@@ -488,6 +516,108 @@ internal sealed record AuthPageScriptSpareCode(
 internal sealed record AuthPageScriptAnyChannelTab(
     string TabElementId,
     string StateClass);
+
+/// <summary>
+/// The channel the user went through on this device, as the script remembers it in a cookie of the host and
+/// puts it forward on the next visit. The cookie holds a channel type and nothing else, and the script takes
+/// it into account only where it is one of <paramref name="ChannelTypes"/>: any other value — a channel this
+/// page does not carry, a value that is no channel at all — leaves the page as it is without the cookie, and
+/// is never put into the markup or into a selector. Every value is the server's, handed over for the same
+/// reason the status names are.
+/// <para>
+/// The moment a channel is remembered is the moment it has shown it works: the first of
+/// <paramref name="AnswerStatusCodes"/> naming it — the answer of its bot, the opened link or the received
+/// mail of Email — or, on the scanner page, a tap on a link into it (<paramref name="TapSelector"/>). An event
+/// naming no channel, or a channel outside the page, remembers nothing.
+/// </para>
+/// </summary>
+/// <param name="ChannelTypes">The channel types of the page, in the order of its panels.</param>
+/// <param name="AnswerStatusCodes">
+/// The channel status codes that tell the channel of the event works; empty on the scanner page, which
+/// remembers by the tap.
+/// </param>
+/// <param name="TapSelector">
+/// Selector of a link into a channel inside its panel, whose tap remembers that channel — the scanner page
+/// only; null — the page remembers by the status codes.
+/// </param>
+/// <param name="Hint">The hint of the last channel; null — the page has it off.</param>
+/// <param name="Checkbox">
+/// The checkbox that remembers the channel; null — the page does not offer it. Where the page shows it, the
+/// hint is not written: only the checkbox keeps the channel there.
+/// </param>
+internal sealed record AuthPageScriptRememberChannel(
+    IReadOnlyList<string> ChannelTypes,
+    IReadOnlyList<string> AnswerStatusCodes,
+    string? TapSelector,
+    AuthPageScriptLastChannelHint? Hint,
+    AuthPageScriptRememberCheckbox? Checkbox);
+
+/// <summary>
+/// The checkbox that remembers the channel on a page of the unified QR code (SPEC-025 HOP-187), as the script
+/// runs it. The block is in the markup, hidden: the script shows it unless the head marked the device a phone.
+/// Ticked, it keeps the channel that works — at the moment the hint would, or at once where a channel has
+/// worked before the tick; unticked, it deletes the cookie. On the next visit a cookie naming a channel of the
+/// page opens the page in the state of that channel's tab with the strip of the tabs hidden — the state of the
+/// remembered channel — the box ticked, and the way back under the lead instruction, shown until the hop has
+/// started and taken off the page once a channel has answered. The way back returns to the "Any channel"
+/// state without a request.
+/// </summary>
+/// <param name="Cookie">The cookie the checkbox keeps the channel in.</param>
+/// <param name="ElementId">Identifier of the block of the checkbox.</param>
+/// <param name="InputElementId">Identifier of the checkbox.</param>
+/// <param name="LabelElementId">Identifier of its label.</param>
+/// <param name="BackElementId">Identifier of the way back from the state of the remembered channel.</param>
+/// <param name="RememberText">Localized text of the label, except in the state of the remembered channel ticked.</param>
+/// <param name="AlwaysText">
+/// Localized text of the label in the state of the remembered channel while the box is ticked; its <c>{0}</c>
+/// slot takes the name of the channel (<see cref="AuthPageScriptConfig.ChannelNames"/>).
+/// </param>
+/// <param name="DeviceAttribute">The attribute of the root the head marks the device in.</param>
+/// <param name="PhoneDeviceValue">Its value on a phone, where the checkbox is never shown.</param>
+/// <param name="HeldAttribute">
+/// The attribute of the root the head sets while the channels are held out of sight for the state of the
+/// remembered channel; the script takes it off once the state of the load is applied.
+/// </param>
+internal sealed record AuthPageScriptRememberCheckbox(
+    AuthPageScriptChannelCookie Cookie,
+    string ElementId,
+    string InputElementId,
+    string LabelElementId,
+    string BackElementId,
+    string RememberText,
+    string AlwaysText,
+    string DeviceAttribute,
+    string PhoneDeviceValue,
+    string HeldAttribute);
+
+/// <summary>
+/// The hint of the last channel (SPEC-025 HOP-146, HOP-187), as the script shows it once the cookie names a
+/// channel of the page. Behind tabs the page opens on the tab of that channel; next to the "Any channel" tab it
+/// still opens on that tab and labels the tab of the channel; where the channels stand as buttons — a phone,
+/// the scanner page, the page of the unified QR code and the state of the "Any channel" tab — the panel of the
+/// channel comes first in the markup, so the order of the focus is the order on screen, and its button carries
+/// the label. The grid of a desktop is left as it is: every channel is on screen there already.
+/// </summary>
+/// <param name="Cookie">The cookie the hint is kept in.</param>
+/// <param name="ButtonSelector">Selector of the channel button inside a panel, the label goes into the first one.</param>
+/// <param name="LabelClass">Classes of the label.</param>
+/// <param name="LabelText">Localized text of the label.</param>
+internal sealed record AuthPageScriptLastChannelHint(
+    AuthPageScriptChannelCookie Cookie,
+    string ButtonSelector,
+    string LabelClass,
+    string LabelText);
+
+/// <summary>
+/// A cookie in which the script remembers a channel type (<see cref="RememberedChannelCookies"/>).
+/// </summary>
+/// <param name="Name">Name of the cookie.</param>
+/// <param name="MaxAgeSeconds">Lifetime of the cookie from its write, in seconds.</param>
+/// <param name="Attributes">The rest of its attributes, ready to be appended to the cookie string.</param>
+internal sealed record AuthPageScriptChannelCookie(
+    string Name,
+    int MaxAgeSeconds,
+    string Attributes);
 
 /// <summary>
 /// The lead instruction of a page with tabs, as the script switches it by the selected tab (SPEC-007 UI-121): a

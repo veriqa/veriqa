@@ -24,7 +24,7 @@
 
   <ItemGroup>
     <!-- Logging only: the adapter has no web surface of its own, the host owns all of it. -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13" />
   </ItemGroup>
 
 </Project>

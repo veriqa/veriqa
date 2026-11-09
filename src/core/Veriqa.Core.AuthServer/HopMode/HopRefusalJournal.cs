@@ -3,6 +3,7 @@
 
 using Veriqa.Core.TransactionEngine.Domain;
 using Veriqa.Core.TransactionEngine.Events;
+using Veriqa.Core.TransactionEngine.Services;
 
 namespace Veriqa.Core.AuthServer.HopMode;
 
@@ -156,7 +157,9 @@ internal sealed class HopRefusalJournal
         {
             // CancellationToken.None — see RecordAsync. No attribution is attached: the visitor is
             // unauthenticated by definition, and the identity the transaction carries belongs to its
-            // owner, who did not act.
+            // owner, who did not act. The tenant alone goes with the event (SPEC-011 R44): it is not an
+            // attribution of the visitor but the layer the audit mode is resolved at and the journal
+            // the record is addressed to.
             await _eventPublisher.PublishAsync(
                 new TransactionChannelAuditEvent
                 {
@@ -164,7 +167,8 @@ internal sealed class HopRefusalJournal
                     OccurredAt = _timeProvider.GetUtcNow(),
                     ChannelType = token.ChannelType,
                     EventCode = resultCode,
-                    Details = requestMarker
+                    Details = requestMarker,
+                    Context = TransactionEventContext.ForTenant(transaction.GetTenantId())
                 },
                 CancellationToken.None);
         }

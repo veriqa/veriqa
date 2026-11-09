@@ -1,0 +1,62 @@
+{
+  // The settings of this stand that docker-compose.yml mounts at /app/config/veriqa.json. The secrets
+  // (the bot token, the client secret) are not here: docker-compose.yml passes them from .env.
+  "Veriqa": {
+    "Channels": {
+      // The receipt of the outcome arrives as a message of its own, under the question. The shipped
+      // value ReplacePrompt would put it in place of the question, and the conversation would keep
+      // the answer without what it answered.
+      "OutcomeNotice": {
+        "DisplayIntent": "NewMessage"
+      }
+    },
+    // The receipts name the application that asked: {app} is a server slot, filled with the
+    // ClientId for a confirmation. The last wording of each list uses no slot.
+    "MessageTemplates": {
+      "outcome-receipt-confirmed": {
+        "Contract": {
+          "Slots": [ { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext" } ]
+        },
+        "Templates": [ "{app}: approved ✅", "Approved ✅" ]
+      },
+      "outcome-receipt-declined": {
+        "Contract": {
+          "Slots": [ { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext" } ]
+        },
+        "Templates": [ "{app}: declined ❌", "Declined ❌" ]
+      }
+    },
+    "OpenIddict": {
+      "Clients": [
+        {
+          // The backend that runs the agent. It calls the confirmation API with its own token
+          // (client_credentials) and, once an approval is confirmed, learns who gave it
+          // (the confirmation grant with the openid scope).
+          "ClientId": "support-agent",
+          "DisplayName": "Support agent",
+          "AllowClientCredentials": true,
+          "AllowConfirmationTokenGrant": true,
+          "AllowedScopes": [ "openid", "channel" ],
+          // The action type the agent's refund tool asks about. It is declared in the client entry:
+          // an action type the client does not declare is refused with action_type_unknown. The
+          // person reads these wordings with the slot values filled in, never text the agent wrote.
+          "MessageTemplates": {
+            "approve-refund": {
+              "Contract": {
+                "Slots": [
+                  { "Name": "amount", "Type": "string", "MaxLength": 32, "Required": true },
+                  { "Name": "order", "Type": "string", "MaxLength": 32, "Required": true },
+                  { "Name": "reason", "Type": "string", "MaxLength": 120 }
+                ]
+              },
+              "Templates": [
+                "The support agent wants to refund {amount} for order {order}: {reason}. Allow it?",
+                "The support agent wants to refund {amount} for order {order}. Allow it?"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -14,7 +14,7 @@
   <ItemGroup>
     <!-- The relying party needs the standard OIDC handler and nothing from Veriqa: there is
          deliberately no ProjectReference to src/core here — the client side stays Veriqa-free. -->
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.13" />
   </ItemGroup>
 
 </Project>

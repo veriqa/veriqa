@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 
 using Veriqa.Core.Contracts;
 using Veriqa.Core.TransactionEngine.Configuration;
@@ -64,8 +63,11 @@ internal static class IdentityValueNormalizer
     }
 
     /// <summary>
-    /// Case folding of the domain part alone: the local part of an address is case-SENSITIVE by
-    /// RFC 5321, so folding it would call two different mailboxes one and the same.
+    /// The canonical form of the domain part alone (<see cref="EmailDomain.ToCanonical"/>: lower case,
+    /// an internationalized name as its A-label, no trailing dot): the local part of an address is
+    /// case-SENSITIVE by RFC 5321, so folding it would call two different mailboxes one and the same.
+    /// The domain is brought by the same rule the Email channel records the address by, so an expectation
+    /// spelled in Unicode matches the A-label the channel confirmed.
     /// </summary>
     /// <param name="trimmed">Trimmed value.</param>
     /// <param name="normalized">The canonical form.</param>
@@ -84,13 +86,13 @@ internal static class IdentityValueNormalizer
         var domain = trimmed[(separator + 1)..];
 
         // An address holding a second '@' in its domain is not one this rule can fold: the domain is
-        // what is being lowercased, and there would be two candidates for it.
+        // what is being brought to its canonical form, and there would be two candidates for it.
         if (domain.Contains('@'))
         {
             return false;
         }
 
-        normalized = string.Concat(local, "@", domain.ToLower(CultureInfo.InvariantCulture));
+        normalized = string.Concat(local, "@", EmailDomain.ToCanonical(domain));
 
         return true;
     }

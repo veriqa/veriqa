@@ -40,10 +40,11 @@ namespace Veriqa.Core.ChannelAdapter.WebProviders;
 internal sealed class WebProviderChannelAdapter : IChannelAdapter, IChannelDisplayMetadata, IChannelOwnPage
 {
     /// <summary>
-    /// Facts of every web provider channel. The question and its answer live on the page; messages are
-    /// texts, links to the claim form and buttons, none of which the page edits later; the outcome is
-    /// shown; the provider states the language of the account. The provider states no phone number the
-    /// core could rely on — a number goes through the claim form.
+    /// Facts every web provider channel shares. The question and its answer live on the page; messages
+    /// are texts, links to the claim form and buttons, none of which the page edits later; the outcome is
+    /// shown, and the page in the browser renders the emoji its receipt carries; the provider states the
+    /// language of the account. The phone number is the fact of each channel's own
+    /// (<see cref="Capabilities"/>): none here.
     /// </summary>
     private static readonly ChannelCapabilities WebProviderCapabilities = new()
     {
@@ -56,6 +57,7 @@ internal sealed class WebProviderChannelAdapter : IChannelAdapter, IChannelDispl
         }.ToFrozenSet(),
         SupportsMessageUpdate = false,
         DeliversOutcomeNotice = true,
+        RendersEmoji = true,
         ProvidesRecipientLocale = true,
         PhoneNumber = PhoneNumberCapability.None,
         SupportedCompletionBehaviorActions = new[]
@@ -72,6 +74,11 @@ internal sealed class WebProviderChannelAdapter : IChannelAdapter, IChannelDispl
     /// The channel this instance serves.
     /// </summary>
     private readonly WebProviderRegistration _registration;
+
+    /// <summary>
+    /// Facts of the channel this instance serves.
+    /// </summary>
+    private readonly ChannelCapabilities _capabilities;
 
     /// <summary>
     /// The accessor this adapter takes the templates of its channel messages from.
@@ -144,6 +151,10 @@ internal sealed class WebProviderChannelAdapter : IChannelAdapter, IChannelDispl
         ILogger<WebProviderChannelAdapter> logger)
     {
         _registration = registration ?? throw new ArgumentNullException(nameof(registration));
+        _capabilities = WebProviderCapabilities with
+        {
+            PhoneNumber = registration.PhoneNumber?.Capability ?? PhoneNumberCapability.None
+        };
         _messageTemplates = messageTemplates ?? throw new ArgumentNullException(nameof(messageTemplates));
         _promptLocalizer = promptLocalizer ?? throw new ArgumentNullException(nameof(promptLocalizer));
         _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
@@ -160,8 +171,11 @@ internal sealed class WebProviderChannelAdapter : IChannelAdapter, IChannelDispl
     /// </summary>
     public string ChannelType => _registration.ChannelType;
 
-    /// <inheritdoc />
-    public ChannelCapabilities Capabilities => WebProviderCapabilities;
+    /// <summary>
+    /// Facts of the channel: those every web provider channel shares, and the phone number its
+    /// registration declares — <see cref="PhoneNumberCapability.None"/> without one.
+    /// </summary>
+    public ChannelCapabilities Capabilities => _capabilities;
 
     /// <summary>
     /// Name of the channel on the sign-in button and in the head of its page: the one the section

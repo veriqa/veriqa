@@ -30,4 +30,11 @@ public sealed record ChannelStartCode
     /// Moment the code stops answering — the deadline of the transaction.
     /// </summary>
     public required DateTimeOffset ExpiresAt { get; init; }
+
+    /// <summary>
+    /// Tenant of the transaction the code stands for; null — the default implicit tenant. A start by the
+    /// code that arrives with a tenant of the event takes the code only when this is that tenant,
+    /// compared ordinally (<see cref="IChannelStartCodeStore.TakeAsync"/>).
+    /// </summary>
+    public string? TenantId { get; init; }
 }

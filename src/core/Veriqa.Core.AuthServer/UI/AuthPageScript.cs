@@ -60,6 +60,17 @@ namespace Veriqa.Core.AuthServer.UI;
 /// the panel of one channel with its QR code, a tab panel labelled by its tab; the arrows move round all
 /// tabs, "Any channel" included (SPEC-025 HOP-187);
 /// </description></item>
+/// <item><description>the page remembers the type of the channel that has worked — the answer of its bot, the
+/// opened link or the received mail of Email, the tap on the scanner page — in a cookie of the host, and takes
+/// a value into account only where it is a channel of the page. The hint puts that channel forward on the next
+/// visit (SPEC-025 HOP-146, HOP-187). The checkbox of a page of the unified QR code, shown on a desktop alone,
+/// keeps it only while ticked and deletes it once unticked, and the page that shows the checkbox writes no
+/// hint. On the next visit its cookie opens the page in the state of the remembered channel: the state of
+/// that channel's tab with the strip hidden, the box ticked and a way back to every channel under the
+/// lead instruction, behind an "OR" divider — a way back without a request, out of sight while the hop has
+/// started and taken off the page by the first answer of a channel, as the way back of the started hop is
+/// (SPEC-025 HOP-170, HOP-180);
+/// </description></item>
 /// <item><description>on the scanner page of the unified hop QR code the first hop code leaves the channel
 /// buttons on screen, a tap on a channel link sends <c>channel_launched</c> with the type of the channel by
 /// <c>sendBeacon</c> to the address of the document (SPEC-025 HOP-156);</description></item>
@@ -94,8 +105,9 @@ namespace Veriqa.Core.AuthServer.UI;
 /// <item><description>a sign-in page that puts the line of the answer of a channel's bot on its status line
 /// takes the channel choice, the lead instruction and the block of the started hop off the page with it; the
 /// status line, the countdown and the cancel form stay, and the polling fallback does not read the answer
-/// of the bot — the line names the channel, the status surface does not (SPEC-025 HOP-180, SPEC-007
-/// UI-119);</description></item>
+/// of the bot — the line names the channel, the status surface does not; a page rendered while the answer
+/// is already awaited comes in that state, and the script takes the answer as acted on from the load, so
+/// its replay by the hub changes nothing (SPEC-025 HOP-180, SPEC-007 UI-119);</description></item>
 /// <item><description>both of those states move a focus standing in the part that leaves onto the status
 /// line, focusable by the script alone; a focus anywhere else stays;</description></item>
 /// <item><description>a hop QR code whose token expires before the transaction is replaced over the hub alone

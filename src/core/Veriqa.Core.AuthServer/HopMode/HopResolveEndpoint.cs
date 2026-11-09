@@ -4,7 +4,6 @@
 using System.Buffers;
 using System.Globalization;
 using System.Text;
-using Microsoft.Net.Http.Headers;
 using Veriqa.Core.AuthServer.Configuration.Enums;
 using Veriqa.Core.AuthServer.Configuration.Resolution;
 using Veriqa.Core.AuthServer.Constants;
@@ -14,6 +13,7 @@ using Veriqa.Core.ChannelAdapter.Abstractions;
 using Veriqa.Core.ChannelAdapter.Constants;
 using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.ChannelAdapter.MultiTenancy;
+using Veriqa.Core.ChannelAdapter.UI;
 using Veriqa.Core.TransactionEngine.Domain;
 using Veriqa.Core.TransactionEngine.Services;
 
@@ -105,8 +105,9 @@ internal static class HopResolveEndpoint
         var cancellationToken = httpContext.RequestAborted;
 
         // No answer of this route is cached: a target is single-use, and a refusal describes a moment
-        // (SPEC-025 HOP-067).
-        httpContext.Response.Headers[HeaderNames.CacheControl] = CacheControlHeaderValue.NoStoreString;
+        // (SPEC-025 HOP-067). The directive is the one of every page of the contour, which the anti-forgery
+        // tokens of the cancel form of the scanner page leave as it is.
+        CorePageCaching.Forbid(httpContext.Response);
 
         // HTTPS only (SPEC-025 HOP-062) — a protection of the endpoint as a whole, like its rate limit,
         // not a row of the answer matrix: the token is neither decoded nor recorded.

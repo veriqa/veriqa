@@ -1,10 +1,12 @@
 # Veriqa.Core.ChannelAdapter.Instagram
 
-**Instagram login and authentication by QR code for your website or app.** Your users scan a QR code on the
-sign-in page (on a phone, they tap a button) and confirm the sign-in in Instagram Direct: no
-password, no SMS code and no sign-up form. Your application receives standard OpenID Connect tokens.
-Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a QR
-code.
+**Instagram login and authentication by QR code for your website or app.**
+
+- Your users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm the
+  sign-in in Instagram Direct: no password, no SMS code and no sign-up form.
+- Your application receives standard OpenID Connect tokens.
+- Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a
+  QR code.
 
 ![Signing in on a computer with Instagram: the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in the Instagram chat, and the chat replies "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-instagram-cross-device.webp)
 

@@ -44,9 +44,11 @@ public sealed class SampleOptions
 /// </summary>
 public sealed class VeriqaConfirmationClient(HttpClient http, SampleOptions options, VeriqaAccessTokenCache tokens)
 {
-    private const string TokenPath = "/connect/token";
-    private const string CreatePath = "/api/transaction/confirmation";
-    private const string ResultPathFormat = "/api/transaction/{0}/result";
+    // Relative to the issuer's address (BaseAddress, with a trailing slash), never from the root: a path
+    // from the root drops the path of an issuer published under a prefix, such as https://example.com/id.
+    private const string TokenPath = "connect/token";
+    private const string CreatePath = "api/transaction/confirmation";
+    private const string ResultPathFormat = "api/transaction/{0}/result";
     private const string ConfirmationGrantType = "urn:veriqa:params:oauth:grant-type:confirmation";
     private const string ClientCredentialsGrantType = "client_credentials";
     private const string BearerScheme = "Bearer";

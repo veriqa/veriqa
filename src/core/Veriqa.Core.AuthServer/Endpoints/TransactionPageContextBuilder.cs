@@ -428,6 +428,12 @@ internal sealed class TransactionPageContextBuilder
             Channels = channels,
             ChannelLines = channelLines.Lines,
             FallbackChannelLaunchedLine = channelLines.FallbackLaunched,
+            // The answer of the bot by the predicate the hub replays it under: a page opened again while the
+            // answer is awaited in the channel — reloaded, or reopened from the same address — is rendered
+            // in the state the replay would put it in, rather than with the channel choice it then takes away.
+            AnsweredChannelType = transaction.IsAwaitingAnswerInChannel()
+                ? transaction.SubjectBinding?.ChannelType
+                : null,
             Language = language,
             CspNonce = httpContext.Items[SecurityHeaderConstants.CspNonceItemKey] as string,
             Design = pageSettings.Design,
@@ -445,6 +451,11 @@ internal sealed class TransactionPageContextBuilder
             // The layout of the channels, as on the sign-in window: the channel choice of a confirmation
             // is the same page. The scanner page is laid out as buttons and has nothing to arrange.
             ChannelLayout = pageSettings.ChannelLayout,
+            // Remembering the channel, as on the sign-in window: the entry page of a confirmation and the
+            // scanner page behave as it does. Whether this page has a choice to put the channel forward
+            // in, or a unified QR code to offer the checkbox under, is the renderer's to tell.
+            RememberChannelHint = pageSettings.RememberChannelHint,
+            RememberChannelCheckbox = pageSettings.RememberChannelCheckbox,
             // No callback URL and no navigation: a confirmation is finalized on the server, and the
             // callback of the sign-in path would end it as a stale session instead; a sign-in is
             // finished by the callback of the browser that started it, not by this one (HOP-008).

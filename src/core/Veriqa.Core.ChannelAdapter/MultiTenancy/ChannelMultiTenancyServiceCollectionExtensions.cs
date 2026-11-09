@@ -29,12 +29,9 @@ public static class ChannelMultiTenancyServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Canonical layer resolver (the only one in the core) — the basis of credential/capability resolution.
-        services.AddVeriqaConfigurationResolver();
-
-        // Core getters of the channel keys (channel credentials + channels_enabled) in the core-level provider.
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IRegisterConfigKeys, ChannelCoreConfigKeys>());
+        // Canonical layer resolver (the only one in the core) — the basis of credential/capability
+        // resolution — and the Core getter of channels_enabled in the core-level provider.
+        services.AddChannelCoreConfigKeys();
 
         // Default source of active polling tenants (N=1 — degenerate, TASK-051).
         // The Cloud profile supplies the multi-tenant implementation opt-in behind the NuGet boundary (CA-172) — this code does not change.
@@ -55,6 +52,24 @@ public static class ChannelMultiTenancyServiceCollectionExtensions
         // not inside a request path.
         services.TryAddScoped(provider => new ChannelWebhookSupport(
             provider.GetService<IConfigurationResolver>()));
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the canonical layer resolver and the Core getter of the channel contour's
+    /// <c>channels_enabled</c> capability (<see cref="ChannelCoreConfigKeys"/>) — the ONE place that
+    /// registers that getter. Called by the multi-tenancy seam above and by the configuration half the
+    /// channel compositions share. Idempotent: the resolver guards itself, and the getter is added with
+    /// <c>TryAddEnumerable</c>.
+    /// </summary>
+    /// <param name="services">Service collection.</param>
+    /// <returns>Service collection for chaining.</returns>
+    internal static IServiceCollection AddChannelCoreConfigKeys(this IServiceCollection services)
+    {
+        services.AddVeriqaConfigurationResolver();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IRegisterConfigKeys, ChannelCoreConfigKeys>());
 
         return services;
     }

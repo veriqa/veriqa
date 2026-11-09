@@ -4,6 +4,7 @@
 using Microsoft.Extensions.Logging;
 
 using Veriqa.Core.Configuration;
+using Veriqa.Core.Contracts;
 using Veriqa.Core.TransactionEngine.Domain;
 
 namespace Veriqa.Core.TransactionEngine.RestrictionPolicies;
@@ -301,11 +302,29 @@ internal sealed class RestrictionPolicyEvaluator(
     private static Func<string, string, bool> SelectComparison(string field) => field switch
     {
         RestrictionPolicyFields.PhoneCountryCode => HasCountryCode,
+        RestrictionPolicyFields.EmailAddress => IsSameEmailAddress,
+        RestrictionPolicyFields.EmailDomain => IsSameEmailDomain,
         _ => EqualsIgnoringCase
     };
 
     /// <summary>
-    /// Case-insensitive equality — the comparison of every field but the country code (RP-022).
+    /// Whether an address claim names the address of the rule: the rule value is read by the derivation
+    /// the claim was read by, so a domain spelled in Unicode in the rule matches its A-label in the claim
+    /// (SPEC-016 EM-041). A value that is not an address matches nothing.
+    /// </summary>
+    private static bool IsSameEmailAddress(string claim, string value) =>
+        RestrictionClaimReader.ReadEmailAddress(value) is { } address && EqualsIgnoringCase(claim, address);
+
+    /// <summary>
+    /// Whether a domain claim names the domain of the rule: both in the canonical form of an email
+    /// domain (SPEC-016 EM-041).
+    /// </summary>
+    private static bool IsSameEmailDomain(string claim, string value) =>
+        EqualsIgnoringCase(claim, EmailDomain.ToCanonical(value.Trim()));
+
+    /// <summary>
+    /// Case-insensitive equality (RP-022) — the comparison of every field without a comparison of its
+    /// own; the email fields compare by it after bringing the rule value to the form of the claim.
     /// </summary>
     private static bool EqualsIgnoringCase(string claim, string value) =>
         string.Equals(claim, value, StringComparison.OrdinalIgnoreCase);

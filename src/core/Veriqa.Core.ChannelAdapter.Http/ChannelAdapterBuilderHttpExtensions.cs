@@ -32,10 +32,18 @@ public static class ChannelAdapterBuilderHttpExtensions
     /// </summary>
     /// <param name="adapters">Channel adapter builder.</param>
     /// <returns>Builder for call chaining.</returns>
-    /// <exception cref="InvalidOperationException">An HTTP channel section violates SPEC-042 E53/E55.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// An HTTP channel section violates SPEC-042 E53/E55. Or the builder registers the configuration half of
+    /// the channels only (<c>AddVeriqaChannelConfiguration</c>).
+    /// </exception>
     public static ChannelAdapterBuilder AddHttpChannels(this ChannelAdapterBuilder adapters)
     {
         ArgumentNullException.ThrowIfNull(adapters);
+
+        // Not a channel of the configuration-only composition: this method registers its clients and
+        // its start-up check before any adapter, and its early return below would take the mark of a
+        // later full call for its own.
+        adapters.ThrowIfConfigurationOnly(nameof(AddHttpChannels));
 
         // The catalog of the keys is the mark of an earlier call: nothing but this method registers it,
         // so its presence means the channels of this configuration are registered already, and a second
@@ -67,11 +75,9 @@ public static class ChannelAdapterBuilderHttpExtensions
         // declaration is what puts the channel into channels_enabled and under the start-up check of
         // the inbound-verification level (SPEC-042 R6, L41). The Enabled flag is read live, the way
         // the flag of a built-in channel is; the channel pulls no updates of its own (SPEC-042 R3).
-        // The declaration also carries the two facts the core checks outside this package: the owner
-        // of the registration (SPEC-042 R60) — known for an enabled registration only, the one that
-        // gets an adapter to serve anybody with — and the rule that an answer to an event of an HTTP
-        // channel takes a prompt reference of that channel alone (SPEC-042 L62), which holds for every
-        // HTTP registration, with an owner or without.
+        // The declaration also carries the fact the core checks outside this package: the owner of the
+        // registration (SPEC-042 R60) — known for an enabled registration only, the one that gets an
+        // adapter to serve anybody with.
         var owners = registrations.Enabled.ToDictionary(
             static registration => registration.ChannelType,
             static registration => registration.Tenant,
@@ -84,8 +90,7 @@ public static class ChannelAdapterBuilderHttpExtensions
                 () => HttpChannelRegistrationReader.IsEnabled(configuration, channelType),
                 usesPolling: null)
             {
-                OwnerTenantId = owners.GetValueOrDefault(channelType),
-                TakesOwnPromptReferenceOnly = true
+                OwnerTenantId = owners.GetValueOrDefault(channelType)
             });
         }
 

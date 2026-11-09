@@ -1,23 +1,8 @@
 {
-  "Kestrel": {
-    "Endpoints": {
-      "Http": {
-        "Url": "http://127.0.0.1:8080"
-      },
-      "Https": {
-        "Url": "https://127.0.0.1:8443",
-        "Certificate": {
-          "Path": "REPLACE_ME/veriqa-local.pfx",
-          "Password": "REPLACE_ME"
-        }
-      }
-    }
-  },
   "Veriqa": {
     "Channels": {
       "Telegram": {
         "Enabled": true,
-        "BotToken": "REPLACE_ME",
         "UpdateMode": "Polling",
         "InboundVerification": "outbound_fetch"
       },
@@ -89,7 +74,6 @@
       "Clients": [
         {
           "ClientId": "claude-code",
-          "ClientSecret": "REPLACE_ME",
           "AllowClientCredentials": true,
           "HopMode": {
             "Enabled": false,

@@ -4,6 +4,8 @@
 using System.Globalization;
 using System.Text;
 
+using Veriqa.Core.Contracts;
+
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
 /// <summary>
@@ -55,7 +57,8 @@ public static class ChannelIdentityMask
 
     /// <summary>
     /// Masks an email address: first character of the local part + <c>***</c> + <c>@</c> + domain
-    /// (<c>user@gmail.com</c> → <c>u***@gmail.com</c>).
+    /// (<c>user@gmail.com</c> → <c>u***@gmail.com</c>); a domain holding an A-label is shown in Unicode
+    /// (<see cref="EmailDomain.ToDisplay"/>).
     /// </summary>
     /// <param name="email">The email address.</param>
     /// <returns>The masked email; <c>***</c> for an empty value or a value without a local part.</returns>
@@ -84,10 +87,12 @@ public static class ChannelIdentityMask
         }
 
         var local = email[..atIndex];
-        var domain = email[atIndex..];
+
+        // The address is kept with its domain as an A-label; the person is shown the name they typed.
+        var domain = EmailDomain.ToDisplay(email[(atIndex + 1)..]);
         var firstChar = local.Length > 0 ? local[0].ToString() : string.Empty;
 
-        return $"{firstChar}{HiddenPart}{domain}";
+        return $"{firstChar}{HiddenPart}{EmailAtSign}{domain}";
     }
 
     /// <summary>

@@ -5,6 +5,8 @@
 // Standalone host for running the Veriqa.Core.AuthServer library.
 
 using System.Net.Mime;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -383,9 +385,14 @@ static void ConfigureSignalRBackplane(WebApplicationBuilder builder)
 }
 
 /// <summary>
-/// Configures DataProtection with persistent key storage.
-/// Priority: Redis (Veriqa:DataProtection:RedisConnectionString) → file system (Veriqa:DataProtection:KeysDirectory).
-/// If neither is set — keys are stored in memory (not suitable for production).
+/// Configures DataProtection: where the key ring is stored and whether its keys are encrypted at rest.
+/// Storage priority: Redis (Veriqa:DataProtection:RedisConnectionString) → file system
+/// (Veriqa:DataProtection:KeysDirectory). Neither set — ASP.NET Core keeps the keys in its default location
+/// for the account the host runs under; in the container image that is .aspnet/DataProtection-Keys in the
+/// home directory of the app user inside the container, lost when the container is recreated.
+/// A certificate (Veriqa:DataProtection:Certificate*) encrypts the new keys; it and the previous certificate
+/// (Veriqa:DataProtection:PreviousCertificate*) decrypt the stored ones. Neither set — the keys are stored
+/// unencrypted.
 /// </summary>
 static void ConfigureDataProtection(WebApplicationBuilder builder)
 {
@@ -415,7 +422,82 @@ static void ConfigureDataProtection(WebApplicationBuilder builder)
         // Persist keys on the file system — for single-instance or a shared volume
         dpBuilder.PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
     }
-    // Otherwise keys are stored in-memory (dev/testing only — lost on restart)
+    // Otherwise ASP.NET Core picks its default location for the account (see the summary above)
+
+    var certificate = LoadDataProtectionCertificate(
+        builder.Configuration,
+        InfrastructureConfigConstants.DataProtectionCertificateBase64Key,
+        InfrastructureConfigConstants.DataProtectionCertificatePathKey,
+        InfrastructureConfigConstants.DataProtectionCertificatePasswordKey);
+    var previousCertificate = LoadDataProtectionCertificate(
+        builder.Configuration,
+        InfrastructureConfigConstants.DataProtectionPreviousCertificateBase64Key,
+        InfrastructureConfigConstants.DataProtectionPreviousCertificatePathKey,
+        InfrastructureConfigConstants.DataProtectionPreviousCertificatePasswordKey);
+
+    // The certificate encrypts the new keys and is registered for their decryption by the same call.
+    if (certificate is not null)
+    {
+        dpBuilder.ProtectKeysWithCertificate(certificate);
+    }
+
+    // Decryption looks any other certificate up in the X509 store, and a container has none there: the
+    // previous certificate is handed over in memory, so the keys it encrypted stay readable while the
+    // certificate is replaced.
+    if (previousCertificate is not null)
+    {
+        dpBuilder.UnprotectKeysWithAnyCertificate(previousCertificate);
+    }
+}
+
+/// <summary>
+/// Loads a PFX certificate of the DataProtection key ring, the way the signing certificate of the server is
+/// loaded: Base64 takes priority over the path. Neither set — null. A certificate that is set but cannot be
+/// loaded (malformed Base64, missing file, wrong password) or carries no private key refuses the start, naming
+/// the key it came from: without the private key the keys it encrypts could not be decrypted after a restart.
+/// </summary>
+static X509Certificate2? LoadDataProtectionCertificate(
+    IConfiguration configuration,
+    string base64Key,
+    string pathKey,
+    string passwordKey)
+{
+    var base64 = configuration[base64Key];
+    var path = configuration[pathKey];
+    var password = configuration[passwordKey];
+
+    var fromBase64 = !string.IsNullOrEmpty(base64);
+
+    if (!fromBase64 && string.IsNullOrEmpty(path))
+    {
+        return null;
+    }
+
+    var sourceKey = fromBase64 ? base64Key : pathKey;
+    X509Certificate2 certificate;
+
+    try
+    {
+        certificate = fromBase64
+            ? X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(base64!), password)
+            : X509CertificateLoader.LoadPkcs12FromFile(path!, password);
+    }
+    catch (Exception exception) when (exception is FormatException or CryptographicException or IOException or UnauthorizedAccessException)
+    {
+        throw new InvalidOperationException(
+            $"The DataProtection certificate set by {sourceKey} could not be loaded.",
+            exception);
+    }
+
+    if (!certificate.HasPrivateKey)
+    {
+        certificate.Dispose();
+
+        throw new InvalidOperationException(
+            $"The DataProtection certificate set by {sourceKey} has no private key.");
+    }
+
+    return certificate;
 }
 
 /// <summary>

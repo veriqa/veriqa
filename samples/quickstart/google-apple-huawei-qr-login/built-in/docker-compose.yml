@@ -1,0 +1,99 @@
+# Veriqa with sign-in through a Google, Apple or HUAWEI ID account - a local sign-in stand for the
+# clients/ of this repository.
+#
+# A local evaluation setup, not a production one: the Development environment keeps the OpenIddict
+# store in memory and signs tokens with development certificates, so every restart forgets the
+# registered sessions. Production setup: https://veriqa.app/docs/quickstart/self-hosted
+#
+# Each provider is a channel of the adapter built into Veriqa, and it turns on when its client ID is
+# set in .env: set one, two or all three. The provider sends the user back to
+# {PUBLIC_BASE_URL}/auth/web-provider/{google|apple|huawei}/callback - register that address with it.
+#
+# Before `docker compose up -d`: fill .env from .env.example and export the HTTPS certificate into
+# certs/ (README, "Run it").
+
+name: google-apple-huawei-qr-login
+
+services:
+  veriqa:
+    image: registry.gitlab.com/veriqa/veriqa
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # HTTPS for the browser and the client; plain HTTP stays inside the container for the image's
+      # own health check.
+      ASPNETCORE_URLS: "https://+:8443;http://+:8080"
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /https/localhost.pfx
+      ASPNETCORE_Kestrel__Certificates__Default__Password: "${CERT_PASSWORD:?set CERT_PASSWORD in .env - see .env.example}"
+
+      # The issuer must be https, and the browser and the client must see the same address.
+      Veriqa__OpenIddict__Server__Issuer: "https://localhost:8443"
+
+      # The clients of this repository (clients/): a public client, so Veriqa requires PKCE from them. The
+      # ASP.NET Core one serves HTTPS, the others plain HTTP - on localhost only the provider needs TLS.
+      Veriqa__OpenIddict__Clients__0__ClientId: rp
+      Veriqa__OpenIddict__Clients__0__DisplayName: "Quickstart client"
+      Veriqa__OpenIddict__Clients__0__AllowedRedirectUris__0: "https://localhost:7020/signin-oidc"
+      Veriqa__OpenIddict__Clients__0__AllowedRedirectUris__1: "http://localhost:7020/signin-oidc"
+      Veriqa__OpenIddict__Clients__0__AllowedScopes__0: openid
+      Veriqa__OpenIddict__Clients__0__AllowedScopes__1: profile
+
+      # Google: a web application OAuth client.
+      Veriqa__Channels__google__Enabled: "${GOOGLE_CLIENT_ID:+true}"
+      Veriqa__Channels__google__InboundVerification: outbound_fetch
+      Veriqa__Channels__google__WebProvider__Provider: Google
+      Veriqa__Channels__google__WebProvider__ClientId: "${GOOGLE_CLIENT_ID:-}"
+      Veriqa__Channels__google__WebProvider__ClientSecret: "${GOOGLE_CLIENT_SECRET:-}"
+      Veriqa__Channels__google__WebProvider__Scopes__0: email
+      Veriqa__Channels__google__WebProvider__Scopes__1: profile
+      # The account chooser on every sign-in, so a shared phone does not sign in with the last account.
+      Veriqa__Channels__google__WebProvider__Settings__Prompt: select_account
+      Veriqa__Channels__google__WebProvider__PublicBaseUrl: "${PUBLIC_BASE_URL:-https://localhost:8443}"
+
+      # Apple: a Services ID, and a private key instead of a client secret.
+      Veriqa__Channels__apple__Enabled: "${APPLE_CLIENT_ID:+true}"
+      Veriqa__Channels__apple__InboundVerification: outbound_fetch
+      Veriqa__Channels__apple__WebProvider__Provider: Apple
+      Veriqa__Channels__apple__WebProvider__ClientId: "${APPLE_CLIENT_ID:-}"
+      Veriqa__Channels__apple__WebProvider__Settings__TeamId: "${APPLE_TEAM_ID:-}"
+      Veriqa__Channels__apple__WebProvider__SigningKey: "${APPLE_PRIVATE_KEY:-}"
+      Veriqa__Channels__apple__WebProvider__SigningKeyId: "${APPLE_KEY_ID:-}"
+      Veriqa__Channels__apple__WebProvider__Scopes__0: email
+      # OpenIddict names this provider "Sign in with Apple", and the button would read "Sign in with
+      # Sign in with Apple".
+      Veriqa__Channels__apple__WebProvider__DisplayName: Apple
+      Veriqa__Channels__apple__WebProvider__PublicBaseUrl: "${PUBLIC_BASE_URL:-https://localhost:8443}"
+
+      # HUAWEI ID: a web app of AppGallery Connect.
+      Veriqa__Channels__huawei__Enabled: "${HUAWEI_CLIENT_ID:+true}"
+      Veriqa__Channels__huawei__InboundVerification: outbound_fetch
+      Veriqa__Channels__huawei__WebProvider__Provider: Huawei
+      Veriqa__Channels__huawei__WebProvider__ClientId: "${HUAWEI_CLIENT_ID:-}"
+      Veriqa__Channels__huawei__WebProvider__ClientSecret: "${HUAWEI_CLIENT_SECRET:-}"
+      Veriqa__Channels__huawei__WebProvider__Scopes__0: email
+      # The provider page laid out for a phone.
+      Veriqa__Channels__huawei__WebProvider__Settings__Display: touch
+      Veriqa__Channels__huawei__WebProvider__PublicBaseUrl: "${PUBLIC_BASE_URL:-https://localhost:8443}"
+    volumes:
+      - ./certs:/https:ro
+
+  # Creates the HTTPS certificate for the Python, Node.js, Go and PHP clients; run it once with
+  # `docker compose run --rm certificate`. The ASP.NET Core client uses the .NET development
+  # certificate instead (README, "Run it").
+  certificate:
+    image: alpine/openssl:3.5.9
+    profiles: [setup]
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj /CN=localhost
+        -addext subjectAltName=DNS:localhost -keyout /tmp/localhost.key -out /certs/localhost.crt
+        && openssl pkcs12 -export -inkey /tmp/localhost.key -in /certs/localhost.crt
+        -out /certs/localhost.pfx -passout env:CERT_PASSWORD
+        && chmod 644 /certs/localhost.crt /certs/localhost.pfx
+    environment:
+      CERT_PASSWORD: "${CERT_PASSWORD:?set CERT_PASSWORD in .env - see .env.example}"
+    volumes:
+      - ./certs:/certs

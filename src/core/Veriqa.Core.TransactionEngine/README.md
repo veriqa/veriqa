@@ -86,6 +86,17 @@ its properties. `Restore` freezes `AllowedChannelTypes` for you, so any read-onl
 transaction. A field added to `Transaction` must be added here as well, in the same change —
 otherwise stores keep compiling and quietly stop carrying it.
 
+**Upgrading your store.** A new property of `TransactionSnapshot` can arrive without breaking the
+build of your store. Store the snapshot as one serialized document, with a serializer that writes every
+public property, or compare the properties of `TransactionSnapshot` with your mapping after each
+upgrade: a property you do not map is lost on every write. The values of the conditional `Try…` writes
+are an exception: a new one can arrive without a new member of the store — a new value of
+`HopObservationMark`, for example, is a new mark for `TryMarkHopObservationAsync` to write — and
+`UpdateAsync` neither writes nor erases it. After each upgrade, make sure that your `Try…` members
+write every new value and that `UpdateAsync` keeps it; if your
+`UpdateAsync` carries such values over from the stored record by a fixed list of fields, add the new
+one to the list.
+
 ### Obligations of AddAsync and UpdateAsync
 
 - `AddAsync` **must throw** `DuplicateIdempotencyKeyException` when a transaction with the same
@@ -135,11 +146,11 @@ member has no default body — a store that does not implement it does not compi
 
 ### Obligations of the hop observation writes
 
-A hop link leaves four observations on its transaction — the scanner context
-(`ScannerContextSnapshot`) and three marks (`HopFirstResolvedAt`, `HopInterstitialOpenedAt`,
-`HopChannelLaunchedAt`). They are observations, not state, and once the transaction is stored a store
-writes them through three methods of their own, all abstract — there is no default body to fall back
-on:
+A hop link leaves five observations on its transaction — the scanner context
+(`ScannerContextSnapshot`) and four marks (`HopFirstResolvedAt`, `HopInterstitialOpenedAt`,
+`HopChannelLaunchedAt`, `HopRepeatResolvedAt`). They are observations, not state, and once the
+transaction is stored a store writes them through three methods of their own, all abstract — there is
+no default body to fall back on:
 
 - `TryMarkHopObservationAsync(id, mark, markedAt)` — writes the mark named by `HopObservationMark`;
 - `TryAttachScannerContextAsync(id, snapshot)` — attaches the scanner snapshot, which arrives without

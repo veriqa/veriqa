@@ -224,9 +224,9 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
     /// <summary>
     /// Merges an adapter's free-form claims into the claim set, dropping every key the adapter does
     /// not own. Ownership is decided in a fixed order, so a key has exactly one verdict: names the
-    /// core issues or reserves are never taken from an adapter; the closed vendor list is accepted
-    /// as an exception; everything else must live under the adapter's own <c>{ChannelType}_</c>
-    /// prefix. A violating key is dropped with a warning and never fails the authentication —
+    /// core issues or reserves are never taken from an adapter; the closed lists of standard profile
+    /// claims and of vendor names are accepted as exceptions; everything else must live under the
+    /// adapter's own <c>{ChannelType}_</c> prefix. A violating key is dropped with a warning and never fails the authentication —
     /// a bad claim name is not a reason to refuse a user who has already confirmed.
     ///
     /// Ownership is decided through <see cref="VeriqaClaimTypes.NameComparison"/>, the same
@@ -256,11 +256,11 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
                 continue;
             }
 
-            // Names the adapter may issue: the closed vendor list, or its own {ChannelType}_
-            // namespace. Both questions are asked with the contract's name identity, so the verdict
-            // "not yours" does not depend on letter case either.
-            var declaredVendorName = FindDeclaredVendorClaim(kvp.Key);
-            if (declaredVendorName is null
+            // Names the adapter may issue: the closed standard-profile and vendor lists, or its own
+            // {ChannelType}_ namespace. Both questions are asked with the contract's name identity, so
+            // the verdict "not yours" does not depend on letter case either.
+            var declaredExceptionName = FindDeclaredExceptionClaim(kvp.Key);
+            if (declaredExceptionName is null
                 && !kvp.Key.StartsWith(adapterPrefix, VeriqaClaimTypes.NameComparison))
             {
                 logger.LogWarning(
@@ -272,11 +272,11 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
                 continue;
             }
 
-            // The name is the adapter's — but the part of it the contract owns (the whole vendor
+            // The name is the adapter's — but the part of it the contract owns (the whole listed
             // name, or the channel-type prefix) must be spelled the way the contract writes it:
             // "Veriqa_Channel" and "TELEGRAM_note" would otherwise reach the token under a name no
             // documented reader looks for. What follows the prefix is the adapter's own to spell.
-            var declaredSpelling = declaredVendorName ?? adapterPrefix;
+            var declaredSpelling = declaredExceptionName ?? adapterPrefix;
             if (!kvp.Key.StartsWith(declaredSpelling, StringComparison.Ordinal))
             {
                 logger.LogWarning(
@@ -308,14 +308,23 @@ internal sealed class DefaultIdentityResolutionService : IIdentityResolutionServ
     }
 
     /// <summary>
-    /// Returns the vendor claim of that name as <see cref="VeriqaClaimTypes.VendorClaims"/> spells
-    /// it, or null when the name is no vendor claim at all. The lookup ignores letter case — the
-    /// name identity of the contract — while the returned value carries the declared spelling, so
-    /// the caller can both recognize the name and tell how it is meant to be written.
+    /// Returns the claim of that name as one of the closed exception lists —
+    /// <see cref="VeriqaClaimTypes.StandardProfileClaims"/> or <see cref="VeriqaClaimTypes.VendorClaims"/>
+    /// — spells it, or null when the name is on neither. The lookup ignores letter case — the name
+    /// identity of the contract — while the returned value carries the declared spelling, so the
+    /// caller can both recognize the name and tell how it is meant to be written.
     /// </summary>
-    private static string? FindDeclaredVendorClaim(string claimName)
+    private static string? FindDeclaredExceptionClaim(string claimName) =>
+        FindDeclaredClaim(VeriqaClaimTypes.StandardProfileClaims, claimName)
+        ?? FindDeclaredClaim(VeriqaClaimTypes.VendorClaims, claimName);
+
+    /// <summary>
+    /// Returns the member of a declared list equal to the name under the contract's name identity, in
+    /// the spelling the list declares; null — no such member.
+    /// </summary>
+    private static string? FindDeclaredClaim(IReadOnlySet<string> declaredNames, string claimName)
     {
-        foreach (var declaredName in VeriqaClaimTypes.VendorClaims)
+        foreach (var declaredName in declaredNames)
         {
             if (string.Equals(declaredName, claimName, VeriqaClaimTypes.NameComparison))
             {

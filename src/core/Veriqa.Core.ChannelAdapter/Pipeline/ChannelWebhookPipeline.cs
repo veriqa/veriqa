@@ -390,9 +390,10 @@ public static partial class ChannelWebhookPipeline
                 return Results.Ok();
             }
 
-            // The processing applies the facts the registration of the channel states for the core
-            // (SPEC-042 R60, L62) itself — the owner of the registration and whether an answer takes
-            // only this channel's prompt reference.
+            // The processing applies the tenant of the event (SPEC-042 R60) — the owner of the
+            // registration, otherwise the tenant of this route — the tenant of the identity snapshot
+            // (SPEC-003 CA-164) and the rule that an answer takes only this channel's prompt reference
+            // (SPEC-003 CA-244) itself.
             await processor.ProcessAsync(
                 inboundResult.Value,
                 adapter,
@@ -520,14 +521,14 @@ public static partial class ChannelWebhookPipeline
     /// choices of the call.
     /// </summary>
     /// <remarks>
-    /// SPEC-042 R60: with an owner stated, an event that names a transaction is acted on only when the
-    /// transaction belongs to the owner. The transaction is read once, past the TTL gate, before any
-    /// other work with it — before its deadline is looked at, so an expired transaction of another
-    /// tenant is answered like a live one and like an identifier nobody issued. Any read that does not
-    /// yield a transaction of the owner — another tenant's, none, or a failed read — gets the answer to
-    /// an unknown transaction, which reads and spends nothing keyed by the transaction: no prompt
-    /// reference, no journal, no write. A failed read is not retried by the handler, so no second read
-    /// can find a transaction whose tenant was never compared.
+    /// SPEC-042 R60: with a tenant of the event stated, an event that names a transaction is acted on
+    /// only when the transaction belongs to that tenant. The transaction is read once, past the TTL gate,
+    /// before any other work with it — before its deadline is looked at, so an expired transaction of
+    /// another tenant is answered like a live one and like an identifier nobody issued. Any read that
+    /// does not yield a transaction of the tenant — another tenant's, none, or a failed read — gets the
+    /// answer to an unknown transaction, which reads and spends nothing keyed by the transaction: no
+    /// prompt reference, no journal, no write. A failed read is not retried by the handler, so no second
+    /// read can find a transaction whose tenant was never compared.
     /// </remarks>
     /// <param name="processor">Processor holding the services of the event's scope.</param>
     /// <param name="inboundResult">Inbound event processing result.</param>
@@ -540,9 +541,13 @@ public static partial class ChannelWebhookPipeline
     /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — the outcome notice
     /// carries no prompt reference).</param>
     /// <param name="ownerTenantId">
-    /// Tenant that owns the channel registration (SPEC-042 R60); null — the registration of the
-    /// operator, whose events are processed for any tenant.
+    /// Tenant of the event (SPEC-042 R60): the owner of the channel registration, otherwise the tenant of
+    /// the route or of the polling loop the event arrived by; null — the route without a tenant segment
+    /// or the polling of the implicit tenant, whose events are processed for any tenant.
     /// </param>
+    /// <param name="snapshotTenant">The tenant of the identity snapshot of the event (SPEC-003 CA-164):
+    /// without a tenant of the event, a branch that reads the transaction the event addresses hands the
+    /// tenant of that transaction to the snapshot before it uses the snapshot.</param>
     /// <param name="letterKey">What identifies the letter the event is, so that its decision is charged
     /// once (<see cref="TakeConfirmBudgetOnceAsync"/>); null — the event is no letter.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -555,11 +560,13 @@ public static partial class ChannelWebhookPipeline
         IConfirmationPromptLocalizer? promptLocalizer,
         IChannelPromptMessageStore? promptMessageStore,
         string? ownerTenantId,
+        InboundSnapshotTenant snapshotTenant,
         string? letterKey,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(processor);
         ArgumentNullException.ThrowIfNull(replyTexts);
+        ArgumentNullException.ThrowIfNull(snapshotTenant);
 
         var transactionService = processor.TransactionService;
         var transactionStore = processor.TransactionStore;
@@ -582,7 +589,8 @@ public static partial class ChannelWebhookPipeline
             case ChannelAuthStartResult start:
                 await RouteAuthStartAsync(
                     processor, start, adapter, replyTexts, userAuthRateLimiter,
-                    confirmationPromptOrchestrator, promptLocalizer, ownerTenantId, cancellationToken);
+                    confirmationPromptOrchestrator, promptLocalizer, ownerTenantId, snapshotTenant,
+                    cancellationToken);
                 break;
 
             case ChannelAuthStartByCodeResult startByCode:
@@ -596,7 +604,7 @@ public static partial class ChannelWebhookPipeline
 
                 await HandleAuthStartByCodeAsync(
                     processor, startByCode, adapter, replyTexts, confirmationPromptOrchestrator,
-                    promptLocalizer, ownerTenantId, cancellationToken);
+                    promptLocalizer, ownerTenantId, snapshotTenant, cancellationToken);
                 break;
 
             case ChannelAuthConfirmResult confirm:
@@ -604,6 +612,14 @@ public static partial class ChannelWebhookPipeline
                     var decision = await ReadDecisionTransactionAsync(
                         transactionStore, confirm.TransactionId, ownerTenantId, promptMessageStore,
                         adapter, logger, metrics, cancellationToken);
+
+                    if (decision.Transaction is { } confirmed)
+                    {
+                        confirm = confirm with
+                        {
+                            Identity = WithStartProfile(snapshotTenant.ForTransaction(confirm.Identity, confirmed), confirmed)
+                        };
+                    }
 
                     await HandleAuthConfirmAsync(
                         processor, confirm, decision.Transaction, adapter, transactionService, transactionStore,
@@ -620,6 +636,14 @@ public static partial class ChannelWebhookPipeline
                         transactionStore, decline.TransactionId, ownerTenantId, promptMessageStore,
                         adapter, logger, metrics, cancellationToken);
 
+                    if (decision.Transaction is { } declined)
+                    {
+                        decline = decline with
+                        {
+                            Identity = WithStartProfile(snapshotTenant.ForTransaction(decline.Identity, declined), declined)
+                        };
+                    }
+
                     await HandleAuthDeclineAsync(
                         processor, decline, decision.Transaction, adapter, transactionService, transactionStore,
                         timeProvider, logger, metrics, confirmationPromptOrchestrator,
@@ -631,13 +655,14 @@ public static partial class ChannelWebhookPipeline
             case ChannelPhoneSharedResult phoneShared:
                 await HandlePhoneSharedAsync(
                     processor, phoneShared, adapter, confirmationPromptOrchestrator, promptMessageStore,
-                    ownerTenantId, cancellationToken);
+                    ownerTenantId, snapshotTenant, cancellationToken);
                 break;
 
             case ChannelPhoneStepActionResult phoneStepAction:
                 await ApplyPhoneStepActionAsync(
                     processor, phoneStepAction.TransactionId, phoneStepAction.Identity, phoneStepAction.Action,
-                    adapter, confirmationPromptOrchestrator, promptMessageStore, ownerTenantId, cancellationToken);
+                    adapter, confirmationPromptOrchestrator, promptMessageStore, ownerTenantId, snapshotTenant,
+                    cancellationToken);
                 break;
 
             case ChannelMenuItemPressedResult menuItemPressed:
@@ -649,7 +674,7 @@ public static partial class ChannelWebhookPipeline
                 // (SPEC-041 L73); every other such message keeps the answer it always had.
                 if (await TryApplyPhoneStepButtonTextAsync(
                         processor, unaddressed, adapter, confirmationPromptOrchestrator, promptMessageStore,
-                        ownerTenantId, cancellationToken))
+                        ownerTenantId, snapshotTenant, cancellationToken))
                 {
                     break;
                 }
@@ -673,9 +698,22 @@ public static partial class ChannelWebhookPipeline
     }
 
     /// <summary>
+    /// The snapshot a press of "Yes" or "No" is decided with: the profile the bound subject entered the
+    /// transaction with, completed by the press (<see cref="ChannelSubjectBinding.WithStartProfile"/>).
+    /// Everything the decision takes from the identity — the finalization snapshot, the planning of missing
+    /// claims, the language of the receipt — then reads the profile of the start, so an adapter does not
+    /// read the profile again on the press. Without a binding the press is taken as it is.
+    /// </summary>
+    /// <param name="pressed">Snapshot of the press, already carrying the tenant of the core.</param>
+    /// <param name="transaction">The transaction the press addresses.</param>
+    /// <returns>The snapshot the decision is taken with.</returns>
+    private static ChannelIdentitySnapshot WithStartProfile(ChannelIdentitySnapshot pressed, Transaction transaction)
+        => transaction.SubjectBinding?.WithStartProfile(pressed) ?? pressed;
+
+    /// <summary>
     /// Starts the authentication of the transaction an event names — the one path both a start by
-    /// link and a start by code take once the transaction is known: the check of the owner of the
-    /// registration (SPEC-042 R60), then <see cref="HandleAuthStartAsync"/>.
+    /// link and a start by code take once the transaction is known: the check of the tenant of the
+    /// event (SPEC-042 R60), then <see cref="HandleAuthStartAsync"/>.
     /// </summary>
     /// <param name="processor">Processor holding the services of the event's scope.</param>
     /// <param name="start">The start, naming its transaction.</param>
@@ -689,7 +727,9 @@ public static partial class ChannelWebhookPipeline
     /// <param name="confirmationPromptOrchestrator">Confirmation prompt orchestrator (null — the path
     /// asks no question in the chat).</param>
     /// <param name="promptLocalizer">Channel message localizer (null — base language).</param>
-    /// <param name="ownerTenantId">Tenant that owns the channel registration (null — no owner).</param>
+    /// <param name="ownerTenantId">Tenant of the event (SPEC-042 R60); null — none, the transaction of
+    /// any tenant is served.</param>
+    /// <param name="snapshotTenant">The tenant of the identity snapshot of the event (SPEC-003 CA-164).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     private static async Task RouteAuthStartAsync(
         ChannelInboundProcessor processor,
@@ -700,6 +740,7 @@ public static partial class ChannelWebhookPipeline
         IConfirmationPromptOrchestrator? confirmationPromptOrchestrator,
         IConfirmationPromptLocalizer? promptLocalizer,
         string? ownerTenantId,
+        InboundSnapshotTenant snapshotTenant,
         CancellationToken cancellationToken)
     {
         var logger = processor.Logger;
@@ -707,8 +748,8 @@ public static partial class ChannelWebhookPipeline
 
         if (ownerTenantId is not null
             && await ReadOwnedTransactionAsync(
-                processor.TransactionStore, start.TransactionId, ownerTenantId, adapter, logger, metrics,
-                cancellationToken) is null)
+                processor.TransactionStore, start.TransactionId, ownerTenantId, adapter.ChannelType, logger,
+                metrics, cancellationToken) is null)
         {
             // The answer of the handler's branch for an identifier no record answers to: the
             // unserved start is counted and the declared reply goes out in the language of
@@ -722,7 +763,7 @@ public static partial class ChannelWebhookPipeline
             return;
         }
 
-        // The transaction of the owner is read again by the handler, through the service
+        // The transaction of the tenant is read again by the handler, through the service
         // it needs the transaction from; the identifier is the one just compared, and the
         // tenant of a transaction is written once, at its creation.
         await HandleAuthStartAsync(
@@ -730,7 +771,7 @@ public static partial class ChannelWebhookPipeline
             processor.IdentityResolutionService, logger, metrics,
             userAuthRateLimiter, confirmationPromptOrchestrator, processor.ReceiptText,
             processor.DisplayIntentSource, processor.EventPublisher, processor.CompletionBehaviorDispatcher,
-            replyTexts, promptLocalizer, cancellationToken);
+            replyTexts, promptLocalizer, ownerTenantId, snapshotTenant, cancellationToken);
     }
 
     /// <summary>
@@ -744,6 +785,8 @@ public static partial class ChannelWebhookPipeline
     /// it declares none.
     /// This handler shows no outcome itself; it carries the display intent onwards because the
     /// web-confirmation branch it hands over to does answer a closed window with a receipt.
+    /// Once the transaction is read, the snapshot of the sender carries the tenant the core chose for it
+    /// (SPEC-003 CA-164) — the identity it attaches and the key of its budget alike.
     /// </summary>
     private static async Task HandleAuthStartAsync(
         ChannelInboundProcessor processor,
@@ -762,6 +805,8 @@ public static partial class ChannelWebhookPipeline
         ICompletionBehaviorDispatcher completionBehaviorDispatcher,
         ChannelReplyTexts replyTexts,
         IConfirmationPromptLocalizer? promptLocalizer,
+        string? ownerTenantId,
+        InboundSnapshotTenant snapshotTenant,
         CancellationToken cancellationToken)
     {
         var errorText = replyTexts.ErrorMessageText;
@@ -790,10 +835,14 @@ public static partial class ChannelWebhookPipeline
             // two sides of that pass (SPEC-039 E48) — while an identifier with nothing behind it
             // writes nothing, or a stranger sending random ones would be the one filling the journal.
             // The counter above is what makes that second branch visible.
+            // The transaction is not in hand, so the record goes under the tenant of the event: when
+            // the event states one, the caller has already read this very transaction from the store
+            // and found it of that tenant; when it states none, the record carries no tenant
+            // (SPEC-011 R44).
             if (txResult.Error.Code is TransactionErrorCodes.TransactionExpired)
             {
                 await PublishChannelRefusalAsync(
-                    eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+                    eventPublisher, timeProvider, transactionId, ownerTenantId, adapter.ChannelType,
                     ChannelInteractionAuditCodes.LinkExpired, txResult.Error.Code, logger);
             }
 
@@ -809,6 +858,8 @@ public static partial class ChannelWebhookPipeline
         }
 
         TagCorrelatingTrace(txResult.Value);
+
+        result = result with { Identity = snapshotTenant.ForTransaction(result.Identity, txResult.Value) };
 
         // Recipient-locale chain (B17): channel snapshot locale → initiation-page language stored in
         // the transaction → base language (the localizer applies the base fallback for null).
@@ -831,7 +882,7 @@ public static partial class ChannelWebhookPipeline
                 return;
             }
 
-            await RecordSubjectMismatchAsync(transactionId, adapter, eventPublisher, timeProvider, logger);
+            await RecordSubjectMismatchAsync(txResult.Value, adapter, eventPublisher, timeProvider, logger);
 
             // Answered as an identifier with nothing behind it (SPEC-039 C15): the same text, in the
             // language of the snapshot alone, under the same budget.
@@ -864,7 +915,7 @@ public static partial class ChannelWebhookPipeline
             // The transaction was found, so this refusal reaches the journal (SPEC-039 E48). No
             // engine code went with it — the state itself is the reason — hence no details.
             await PublishChannelRefusalAsync(
-                eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+                eventPublisher, timeProvider, txResult.Value, adapter.ChannelType,
                 ChannelInteractionAuditCodes.LinkExpired, refusalErrorCode: null, logger);
 
             // The snapshot locale alone, not the recipientLocale chain above: the answer must read
@@ -911,7 +962,7 @@ public static partial class ChannelWebhookPipeline
             metrics.RecordUnservedStart(adapter.ChannelType);
 
             await RecordClaimCompletionRefusalAsync(
-                transactionId, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
+                txResult.Value, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
 
             if (adapter.Capabilities.SupportsMessageUpdate)
             {
@@ -985,7 +1036,7 @@ public static partial class ChannelWebhookPipeline
         if (bindResult.IsFailure)
         {
             await AnswerRefusedBindingAsync(
-                bindResult.Error.Code, result.Identity, transactionId, adapter,
+                bindResult.Error.Code, result.Identity, txResult.Value, adapter,
                 replyTexts.StaleLinkReplyText, promptLocalizer, eventPublisher, timeProvider, logger,
                 metrics, cancellationToken);
             return;
@@ -1096,7 +1147,7 @@ public static partial class ChannelWebhookPipeline
             metrics.RecordUnservedStart(adapter.ChannelType);
 
             await RecordClaimCompletionRefusalAsync(
-                transactionId, adapter, finalizeResult.Error.Code, eventPublisher, timeProvider, logger);
+                transaction, adapter, finalizeResult.Error.Code, eventPublisher, timeProvider, logger);
 
             await SendDeclaredReplyAsync(
                 adapter, result.Identity, replyTexts.StaleLinkReplyText, result.Identity.Locale,
@@ -1283,7 +1334,7 @@ public static partial class ChannelWebhookPipeline
 
     /// <summary>
     /// Reads the transaction a channel decision names and states the store its answer may take a
-    /// prompt reference from. Without an owner of the registration it is the read every decision has
+    /// prompt reference from. Without a tenant of the event it is the read every decision has
     /// always had (<see cref="ReadForDecisionAsync"/>); with one, it is the single read of
     /// <see cref="ReadOwnedTransactionAsync"/>, and a decision it yields no transaction for is answered
     /// with no store at all — the answer to an unknown transaction reads nothing keyed by the
@@ -1291,7 +1342,8 @@ public static partial class ChannelWebhookPipeline
     /// </summary>
     /// <param name="transactionStore">Transaction store.</param>
     /// <param name="transactionId">Transaction identifier the decision names.</param>
-    /// <param name="ownerTenantId">Tenant that owns the channel registration (null — no owner).</param>
+    /// <param name="ownerTenantId">Tenant of the event (SPEC-042 R60); null — none, the transaction of
+    /// any tenant is served.</param>
     /// <param name="promptMessageStore">Store of sent-prompt coordinates (null — no prompt reference).</param>
     /// <param name="adapter">Channel adapter the decision arrived through.</param>
     /// <param name="logger">Logger.</param>
@@ -1316,17 +1368,18 @@ public static partial class ChannelWebhookPipeline
         }
 
         var owned = await ReadOwnedTransactionAsync(
-            transactionStore, transactionId, ownerTenantId, adapter, logger, metrics, cancellationToken);
+            transactionStore, transactionId, ownerTenantId, adapter.ChannelType, logger, metrics, cancellationToken);
 
         return new DecisionTransaction(owned, owned is null ? null : promptMessageStore);
     }
 
     /// <summary>
-    /// The one read of the transaction an event of a registration with an owner names (SPEC-042
-    /// R60): from the STORE, past the TTL gate, so the tenant is compared before the deadline is. It
-    /// yields the transaction only when its tenant is the owner, compared ordinally; a transaction of
-    /// another tenant — the implicit one included — is logged with the identifier as a fingerprint and
-    /// counted, and a failed read is logged; both, like a missing record, yield null.
+    /// The one read of the transaction an event with a tenant names (SPEC-042 R60) — an event of a
+    /// channel, and the mail of the Email push before its processor is asked: from the STORE, past the
+    /// TTL gate, so the tenant is compared before the deadline is. It yields the transaction only when
+    /// its tenant is the tenant of the event, compared ordinally; a transaction of another tenant — the
+    /// implicit one included — is logged with the identifier as a fingerprint and counted, and a failed
+    /// read is logged; both, like a missing record, yield null.
     /// </summary>
     /// <remarks>
     /// Unlike <see cref="ReadForDecisionAsync"/> the three outcomes stay apart here: a failed read is
@@ -1336,17 +1389,17 @@ public static partial class ChannelWebhookPipeline
     /// </remarks>
     /// <param name="transactionStore">Transaction store.</param>
     /// <param name="transactionId">Transaction identifier the event names.</param>
-    /// <param name="ownerTenantId">Tenant that owns the channel registration.</param>
-    /// <param name="adapter">Channel adapter the event arrived through.</param>
+    /// <param name="ownerTenantId">Tenant of the event.</param>
+    /// <param name="channelType">Channel type the event arrived through.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="metrics">Component metrics a foreign transaction is counted into.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The transaction of the owner, or null.</returns>
-    private static async Task<Transaction?> ReadOwnedTransactionAsync(
+    /// <returns>The transaction of the tenant, or null.</returns>
+    internal static async Task<Transaction?> ReadOwnedTransactionAsync(
         ITransactionStore transactionStore,
         TransactionId transactionId,
         string ownerTenantId,
-        IChannelAdapter adapter,
+        string channelType,
         ILogger logger,
         ChannelAdapterMetrics metrics,
         CancellationToken cancellationToken)
@@ -1361,8 +1414,8 @@ public static partial class ChannelWebhookPipeline
         {
             logger.LogWarning(
                 ex,
-                "Failed to read the transaction a channel event of an owned registration names — answered as an unknown transaction. ChannelType: {ChannelType}, TransactionIdHash: {TransactionIdHash}",
-                adapter.ChannelType,
+                "Failed to read the transaction a channel event with a tenant names — answered as an unknown transaction. ChannelType: {ChannelType}, TransactionIdHash: {TransactionIdHash}",
+                channelType,
                 LogMasking.Fingerprint(transactionId.ToString()));
             return null;
         }
@@ -1374,12 +1427,12 @@ public static partial class ChannelWebhookPipeline
         }
 
         logger.LogWarning(
-            "Channel event names a transaction of another tenant — answered as an unknown transaction. ChannelType: {ChannelType}, RouteTenant: {RouteTenant}, TransactionIdHash: {TransactionIdHash}",
-            adapter.ChannelType,
-            ChannelTenantContext.CurrentTenantId,
+            "Channel event names a transaction of another tenant — answered as an unknown transaction. ChannelType: {ChannelType}, EventTenant: {EventTenant}, TransactionIdHash: {TransactionIdHash}",
+            channelType,
+            ownerTenantId,
             LogMasking.Fingerprint(transactionId.ToString()));
 
-        metrics.RecordForeignTransactionEvent(adapter.ChannelType);
+        metrics.RecordForeignTransactionEvent(channelType);
         return null;
     }
 
@@ -1521,7 +1574,7 @@ public static partial class ChannelWebhookPipeline
                 if (errorCode is not TransactionErrorCodes.TransactionNotFound)
                 {
                     await PublishChannelRefusalAsync(
-                        eventPublisher, timeProvider, transaction.Id, adapter.ChannelType,
+                        eventPublisher, timeProvider, transaction, adapter.ChannelType,
                         ChannelInteractionAuditCodes.LinkExpired, errorCode, logger);
                 }
 
@@ -1559,7 +1612,7 @@ public static partial class ChannelWebhookPipeline
                     if (ending != pressedDecision)
                     {
                         await PublishChannelRefusalAsync(
-                            eventPublisher, timeProvider, transaction.Id, adapter.ChannelType,
+                            eventPublisher, timeProvider, transaction, adapter.ChannelType,
                             ending == TransactionOutcome.Expired
                                 ? ChannelInteractionAuditCodes.LinkExpired
                                 : ChannelInteractionAuditCodes.LinkNotAnswerable,
@@ -1924,7 +1977,7 @@ public static partial class ChannelWebhookPipeline
             // The transaction was found, so the late press reaches the journal (SPEC-039 E48). No
             // engine code went with it — the deadline or the state itself is the reason.
             await PublishChannelRefusalAsync(
-                eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+                eventPublisher, timeProvider, transaction, adapter.ChannelType,
                 ChannelInteractionAuditCodes.LinkExpired, refusalErrorCode: null, logger);
 
             await ShowOutcomeAsync(
@@ -1999,7 +2052,7 @@ public static partial class ChannelWebhookPipeline
         if (transaction.IsCompletingClaims())
         {
             await RecordClaimCompletionRefusalAsync(
-                transactionId, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
+                transaction, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
 
             await AnswerRepeatedPressInTheCompletionAsync(
                 processor, adapter, transaction, transaction.UpdatedAt, result.Identity,
@@ -2059,7 +2112,7 @@ public static partial class ChannelWebhookPipeline
             // write: the answer of the subject gate, reached through the race.
             if (finalizeResult.Error.Code is TransactionErrorCodes.ChannelSubjectMismatch)
             {
-                await RecordSubjectMismatchAsync(transactionId, adapter, eventPublisher, timeProvider, logger);
+                await RecordSubjectMismatchAsync(transaction, adapter, eventPublisher, timeProvider, logger);
 
                 await ShowUnknownTransactionAsync(
                     adapter, transactionId, result.Identity, result.InboundToken, receiptText,
@@ -2238,7 +2291,7 @@ public static partial class ChannelWebhookPipeline
         metrics.RecordUnservedStart(adapter.ChannelType);
 
         switch (await RecordChannelRefusalAsync(
-                    RefusedIdentityAttach, refusalCode, transactionId, adapter, eventPublisher, timeProvider,
+                    RefusedIdentityAttach, refusalCode, transaction, adapter, eventPublisher, timeProvider,
                     logger))
         {
             case DecisionRefusalClass.Expired:
@@ -2327,7 +2380,7 @@ public static partial class ChannelWebhookPipeline
         if (string.Equals(transaction.Type, TransactionTypes.Confirmation, StringComparison.Ordinal))
         {
             await PublishChannelRefusalAsync(
-                processor.EventPublisher, processor.TimeProvider, transaction.Id, adapter.ChannelType,
+                processor.EventPublisher, processor.TimeProvider, transaction, adapter.ChannelType,
                 ChannelInteractionAuditCodes.LinkNotAnswerable, refusalErrorCode: null, processor.Logger);
 
             return Result<Transaction>.Failure(TransactionErrorCodes.InvalidStateTransition, LetterNotAttached);
@@ -2407,7 +2460,7 @@ public static partial class ChannelWebhookPipeline
             }
         }
 
-        await RecordLetterRefusalAsync(processor, transactionId, refusalCode, adapter);
+        await RecordLetterRefusalAsync(processor, transaction, refusalCode, adapter);
 
         return attachResult;
     }
@@ -2460,7 +2513,6 @@ public static partial class ChannelWebhookPipeline
         var timeProvider = processor.TimeProvider;
         var eventPublisher = processor.EventPublisher;
         var logger = processor.Logger;
-        var transactionId = transaction.Id;
 
         if (transaction.IsBoundToAnotherSubject(identity))
         {
@@ -2469,7 +2521,7 @@ public static partial class ChannelWebhookPipeline
                     transaction, identity, adapter, transactionService, eventPublisher, timeProvider, logger,
                     cancellationToken) is null)
             {
-                await RecordSubjectMismatchAsync(transactionId, adapter, eventPublisher, timeProvider, logger);
+                await RecordSubjectMismatchAsync(transaction, adapter, eventPublisher, timeProvider, logger);
             }
 
             return Result<Transaction>.Failure(TransactionErrorCodes.ChannelSubjectMismatch, LetterNotAttached);
@@ -2483,7 +2535,7 @@ public static partial class ChannelWebhookPipeline
         if (transaction.State is not TransactionState.Pending)
         {
             await PublishChannelRefusalAsync(
-                eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+                eventPublisher, timeProvider, transaction, adapter.ChannelType,
                 ChannelInteractionAuditCodes.LinkNotAnswerable, refusalErrorCode: null, logger);
 
             return Result<Transaction>.Failure(TransactionErrorCodes.InvalidStateTransition, LetterNotAttached);
@@ -2501,7 +2553,7 @@ public static partial class ChannelWebhookPipeline
         if (transaction.IsCompletingClaims())
         {
             await RecordClaimCompletionRefusalAsync(
-                transactionId, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
+                transaction, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
 
             return Result<Transaction>.Failure(TransactionErrorCodes.ClaimCompletionInProgress, LetterNotAttached);
         }
@@ -2603,7 +2655,7 @@ public static partial class ChannelWebhookPipeline
             if (ending != TransactionOutcome.Confirmed)
             {
                 await PublishChannelRefusalAsync(
-                    processor.EventPublisher, processor.TimeProvider, transaction.Id, adapter.ChannelType,
+                    processor.EventPublisher, processor.TimeProvider, transaction, adapter.ChannelType,
                     ending == TransactionOutcome.Expired
                         ? ChannelInteractionAuditCodes.LinkExpired
                         : ChannelInteractionAuditCodes.LinkNotAnswerable,
@@ -2674,7 +2726,7 @@ public static partial class ChannelWebhookPipeline
         }
 
         await PublishChannelRefusalAsync(
-            processor.EventPublisher, processor.TimeProvider, transaction.Id, adapter.ChannelType,
+            processor.EventPublisher, processor.TimeProvider, transaction, adapter.ChannelType,
             ChannelInteractionAuditCodes.LinkExpired, refusalErrorCode: null, processor.Logger);
 
         return Result<Transaction>.Failure(TransactionErrorCodes.TransactionExpired, LetterNotAttached);
@@ -2690,28 +2742,29 @@ public static partial class ChannelWebhookPipeline
     /// sign-in and the letter of a confirmation alike.
     /// </summary>
     /// <param name="processor">Processor holding the services of the scope of the letter.</param>
-    /// <param name="transactionId">Transaction the letter names.</param>
+    /// <param name="transaction">Transaction the letter names, as the caller read it.</param>
     /// <param name="refusalCode">Code the engine refused the attach with.</param>
     /// <param name="adapter">The channel adapter of the letter.</param>
     /// <returns>A task completed once the refusal is journaled.</returns>
     internal static async Task RecordLetterRefusalAsync(
         ChannelInboundProcessor processor,
-        TransactionId transactionId,
+        Transaction transaction,
         string refusalCode,
         IChannelAdapter adapter)
     {
         ArgumentNullException.ThrowIfNull(processor);
+        ArgumentNullException.ThrowIfNull(transaction);
         ArgumentNullException.ThrowIfNull(adapter);
 
         if (refusalCode is TransactionErrorCodes.ChannelSubjectMismatch)
         {
             await RecordSubjectMismatchAsync(
-                transactionId, adapter, processor.EventPublisher, processor.TimeProvider, processor.Logger);
+                transaction, adapter, processor.EventPublisher, processor.TimeProvider, processor.Logger);
         }
         else
         {
             _ = await RecordChannelRefusalAsync(
-                RefusedIdentityAttach, refusalCode, transactionId, adapter, processor.EventPublisher,
+                RefusedIdentityAttach, refusalCode, transaction, adapter, processor.EventPublisher,
                 processor.TimeProvider, processor.Logger);
         }
     }
@@ -2883,7 +2936,7 @@ public static partial class ChannelWebhookPipeline
     /// decision recorded in parallel is written under. What the sender is answered with stays with
     /// the caller, which knows whether the event's budget is already spent.
     /// </summary>
-    /// <param name="transactionId">Transaction the event named.</param>
+    /// <param name="transaction">Transaction the event named, as the caller read it.</param>
     /// <param name="adapter">Channel adapter the event arrived through.</param>
     /// <param name="refusalErrorCode">Code the engine refused with, when a write was refused; null
     /// when the transaction as read already carried the mark.</param>
@@ -2891,7 +2944,7 @@ public static partial class ChannelWebhookPipeline
     /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
     /// <param name="logger">Logger.</param>
     private static async Task RecordClaimCompletionRefusalAsync(
-        TransactionId transactionId,
+        Transaction transaction,
         IChannelAdapter adapter,
         string? refusalErrorCode,
         ITransactionEventPublisher? eventPublisher,
@@ -2901,12 +2954,12 @@ public static partial class ChannelWebhookPipeline
         logger.LogInformation(
             "Channel event on a transaction waiting for missing claims — the event is not acted on. " +
             "TransactionId: {TransactionId}, ChannelType: {ChannelType}, Error: {ErrorCode}",
-            transactionId,
+            transaction.Id,
             adapter.ChannelType,
             refusalErrorCode);
 
         await PublishChannelRefusalAsync(
-            eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+            eventPublisher, timeProvider, transaction, adapter.ChannelType,
             ChannelInteractionAuditCodes.LinkNotAnswerable, refusalErrorCode, logger);
     }
 
@@ -3017,7 +3070,7 @@ public static partial class ChannelWebhookPipeline
             admissibility.Error.Code);
 
         await PublishChannelRefusalAsync(
-            eventPublisher, timeProvider, transaction.Id, adapter.ChannelType,
+            eventPublisher, timeProvider, transaction, adapter.ChannelType,
             ChannelInteractionAuditCodes.SenderNotAdmitted, admissibility.Error.Code, logger);
 
         return admissibility.Error.Code;
@@ -3029,13 +3082,13 @@ public static partial class ChannelWebhookPipeline
     /// <see cref="TransactionErrorCodes.ChannelSubjectMismatch"/> in the details (SPEC-039 E48). Nothing
     /// of the bound subject is written anywhere. What the sender is answered with stays with the caller.
     /// </summary>
-    /// <param name="transactionId">Transaction the event named.</param>
+    /// <param name="transaction">Transaction the event named, as the caller read it.</param>
     /// <param name="adapter">Channel adapter the event arrived through.</param>
     /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
     /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
     /// <param name="logger">Logger.</param>
     private static async Task RecordSubjectMismatchAsync(
-        TransactionId transactionId,
+        Transaction transaction,
         IChannelAdapter adapter,
         ITransactionEventPublisher? eventPublisher,
         TimeProvider timeProvider,
@@ -3044,11 +3097,11 @@ public static partial class ChannelWebhookPipeline
         logger.LogWarning(
             "The sender is not the channel subject the transaction is bound to — the channel event is not acted on. " +
             "TransactionId: {TransactionId}, ChannelType: {ChannelType}",
-            transactionId,
+            transaction.Id,
             adapter.ChannelType);
 
         await PublishChannelRefusalAsync(
-            eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+            eventPublisher, timeProvider, transaction, adapter.ChannelType,
             ChannelInteractionAuditCodes.SenderNotAdmitted, TransactionErrorCodes.ChannelSubjectMismatch, logger);
     }
 
@@ -3109,7 +3162,7 @@ public static partial class ChannelWebhookPipeline
             return;
         }
 
-        await RecordSubjectMismatchAsync(transaction.Id, adapter, eventPublisher, timeProvider, logger);
+        await RecordSubjectMismatchAsync(transaction, adapter, eventPublisher, timeProvider, logger);
 
         await ShowUnknownTransactionAsync(
             adapter, transaction.Id, identity, inboundToken, receiptText, promptMessageStore: null,
@@ -3130,7 +3183,7 @@ public static partial class ChannelWebhookPipeline
     /// </remarks>
     /// <param name="refusalCode">Code the binding was refused with.</param>
     /// <param name="identity">Identity snapshot of the sender.</param>
-    /// <param name="transactionId">Transaction the start named.</param>
+    /// <param name="transaction">Transaction the start named, as it was read before the binding.</param>
     /// <param name="adapter">Channel adapter the start arrived through.</param>
     /// <param name="staleLinkReplyText">Declared reply to an unservable sign-in link (null — silence).</param>
     /// <param name="promptLocalizer">Channel message localizer (null — base language).</param>
@@ -3142,7 +3195,7 @@ public static partial class ChannelWebhookPipeline
     private static async Task AnswerRefusedBindingAsync(
         string refusalCode,
         ChannelIdentitySnapshot identity,
-        TransactionId transactionId,
+        Transaction transaction,
         IChannelAdapter adapter,
         string? staleLinkReplyText,
         IConfirmationPromptLocalizer? promptLocalizer,
@@ -3156,12 +3209,12 @@ public static partial class ChannelWebhookPipeline
 
         if (refusalCode is TransactionErrorCodes.ChannelSubjectMismatch)
         {
-            await RecordSubjectMismatchAsync(transactionId, adapter, eventPublisher, timeProvider, logger);
+            await RecordSubjectMismatchAsync(transaction, adapter, eventPublisher, timeProvider, logger);
         }
         else
         {
             var refusalClass = await RecordChannelRefusalAsync(
-                RefusedSubjectBinding, refusalCode, transactionId, adapter, eventPublisher, timeProvider, logger);
+                RefusedSubjectBinding, refusalCode, transaction, adapter, eventPublisher, timeProvider, logger);
             if (refusalClass is not (DecisionRefusalClass.Expired or DecisionRefusalClass.Race))
             {
                 return;
@@ -3189,7 +3242,7 @@ public static partial class ChannelWebhookPipeline
     /// </remarks>
     /// <param name="refusedWrite">Name of the refused write, for the log.</param>
     /// <param name="refusalCode">Code the engine refused with.</param>
-    /// <param name="transactionId">Transaction the event named.</param>
+    /// <param name="transaction">Transaction the event named, as the caller read it.</param>
     /// <param name="adapter">Channel adapter the event arrived through.</param>
     /// <param name="eventPublisher">Bus the refusal is written to (null — no journal).</param>
     /// <param name="timeProvider">Clock the moment of the audit event is read off.</param>
@@ -3198,7 +3251,7 @@ public static partial class ChannelWebhookPipeline
     private static async Task<DecisionRefusalClass> RecordChannelRefusalAsync(
         string refusedWrite,
         string refusalCode,
-        TransactionId transactionId,
+        Transaction transaction,
         IChannelAdapter adapter,
         ITransactionEventPublisher? eventPublisher,
         TimeProvider timeProvider,
@@ -3214,7 +3267,7 @@ public static partial class ChannelWebhookPipeline
             logger.LogWarning(
                 "{RefusedWrite} — the transaction is no longer stored. TransactionId: {TransactionId}",
                 refusedWrite,
-                transactionId);
+                transaction.Id);
             return refusalClass;
         }
 
@@ -3240,14 +3293,38 @@ public static partial class ChannelWebhookPipeline
             "{RefusedWrite} — {Reason}. TransactionId: {TransactionId}, Error: {ErrorCode}",
             refusedWrite,
             reason,
-            transactionId,
+            transaction.Id,
             refusalCode);
 
         await PublishChannelRefusalAsync(
-            eventPublisher, timeProvider, transactionId, adapter.ChannelType, auditCode, refusalCode, logger);
+            eventPublisher, timeProvider, transaction, adapter.ChannelType, auditCode, refusalCode, logger);
 
         return refusalClass;
     }
+
+    /// <summary>
+    /// Writes a refusal of the channel side of the interaction surface into the integrator's journal
+    /// (SPEC-039 E48) for a transaction in hand: it reads the identifier and the tenant off that
+    /// transaction and hands them to the overload taking the identifier.
+    /// </summary>
+    /// <param name="eventPublisher">Bus the event goes to (null — the composition has no journal).</param>
+    /// <param name="timeProvider">Clock the moment of the event is read off.</param>
+    /// <param name="transaction">Transaction the event named, as the caller read it.</param>
+    /// <param name="channelType">Channel the event arrived through.</param>
+    /// <param name="auditCode">Reason the journal reads (see <see cref="ChannelInteractionAuditCodes"/>).</param>
+    /// <param name="refusalErrorCode">Code the engine refused with, when there was one.</param>
+    /// <param name="logger">Logger.</param>
+    private static Task PublishChannelRefusalAsync(
+        ITransactionEventPublisher? eventPublisher,
+        TimeProvider timeProvider,
+        Transaction transaction,
+        string channelType,
+        string auditCode,
+        string? refusalErrorCode,
+        ILogger logger) =>
+        PublishChannelRefusalAsync(
+            eventPublisher, timeProvider, transaction.Id, transaction.GetTenantId(), channelType, auditCode,
+            refusalErrorCode, logger);
 
     /// <summary>
     /// Writes a refusal of the channel side of the interaction surface into the integrator's journal
@@ -3260,10 +3337,17 @@ public static partial class ChannelWebhookPipeline
     /// <see cref="CancellationToken.None"/> for the publish: the occurrence must reach the journal
     /// even if the platform's delivery attempt is being cancelled, or abandoning a request would
     /// suppress its own trace.
+    /// <para>
+    /// The event carries the tenant of the transaction and no other attribution (SPEC-011 R44): the
+    /// tenant is not an attribution of who acted, it is the layer the audit mode is resolved at and the
+    /// journal the record is addressed to.
+    /// </para>
     /// </remarks>
     /// <param name="eventPublisher">Bus the event goes to (null — the composition has no journal).</param>
     /// <param name="timeProvider">Clock the moment of the event is read off.</param>
     /// <param name="transactionId">Transaction the event named.</param>
+    /// <param name="tenantId">Tenant of that transaction (null — none is known: the event carries no
+    /// attribution, and the audit settings are resolved at the level of the core).</param>
     /// <param name="channelType">Channel the event arrived through.</param>
     /// <param name="auditCode">Reason the journal reads (see <see cref="ChannelInteractionAuditCodes"/>).</param>
     /// <param name="refusalErrorCode">Code the engine refused with, when there was one.</param>
@@ -3272,6 +3356,7 @@ public static partial class ChannelWebhookPipeline
         ITransactionEventPublisher? eventPublisher,
         TimeProvider timeProvider,
         TransactionId transactionId,
+        string? tenantId,
         string channelType,
         string auditCode,
         string? refusalErrorCode,
@@ -3291,7 +3376,8 @@ public static partial class ChannelWebhookPipeline
                     OccurredAt = timeProvider.GetUtcNow(),
                     ChannelType = channelType,
                     EventCode = auditCode,
-                    Details = refusalErrorCode
+                    Details = refusalErrorCode,
+                    Context = TransactionEventContext.ForTenant(tenantId)
                 },
                 CancellationToken.None);
         }
@@ -3504,7 +3590,7 @@ public static partial class ChannelWebhookPipeline
             // The transaction was found, so the late press reaches the journal (SPEC-039 E48). No
             // engine code went with it — the deadline or the state itself is the reason.
             await PublishChannelRefusalAsync(
-                eventPublisher, timeProvider, transactionId, adapter.ChannelType,
+                eventPublisher, timeProvider, transaction, adapter.ChannelType,
                 ChannelInteractionAuditCodes.LinkExpired, refusalErrorCode: null, logger);
 
             await ShowOutcomeAsync(
@@ -3570,7 +3656,7 @@ public static partial class ChannelWebhookPipeline
         if (transaction.IsCompletingClaims())
         {
             await RecordClaimCompletionRefusalAsync(
-                transactionId, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
+                transaction, adapter, refusalErrorCode: null, eventPublisher, timeProvider, logger);
 
             await AnswerRepeatedPressInTheCompletionAsync(
                 processor, adapter, transaction, transaction.UpdatedAt, result.Identity,

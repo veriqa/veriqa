@@ -4,6 +4,7 @@
 using Veriqa.Core.AuthServer.Configuration;
 using Veriqa.Core.AuthServer.Constants;
 using Veriqa.Core.AuthServer.Infrastructure;
+using Veriqa.Core.ChannelAdapter.UI;
 using Veriqa.Core.TransactionEngine.Domain;
 using Veriqa.Core.TransactionEngine.Services;
 
@@ -62,6 +63,11 @@ public static class TransactionStatusEndpoint
         HttpContext httpContext)
     {
         // The method parses the id as a session_id, fetches the transaction, and returns its public status.
+
+        // No answer is cached: the status moves with every event, and a copy kept by the browser or by a
+        // cache on the way would show a page a state that has passed. Not every page that polls it asks the
+        // browser for a fresh answer, so the directive is what keeps every copy out.
+        CorePageCaching.Forbid(httpContext.Response);
 
         // 1. Map session_id → TransactionId
         var transactionId = SessionIdMapper.ToTransactionId(id);

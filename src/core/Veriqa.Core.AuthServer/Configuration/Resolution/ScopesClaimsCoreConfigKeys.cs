@@ -13,11 +13,12 @@ namespace Veriqa.Core.AuthServer.Configuration.Resolution;
 /// </summary>
 /// <remarks>
 /// The level is read off the bound section rather than by path because the catalog is judged as bound: the
-/// startup validation reads the text the deployment wrote and applies the catalog rules to the catalog the
-/// root options bind from that text, so the resolver serves the catalog the start accepted. It is the
-/// section bound on its own, not the root: a resolution of this key would otherwise validate the whole
-/// root. <see cref="IOptions{TOptions}"/> is the snapshot taken at startup — the same one the OpenIddict
-/// registration of scopes follows, once per process.
+/// startup check of the catalog (<see cref="ScopesClaimsCatalogValidator"/>) reads the text the deployment
+/// wrote and applies the catalog rules to the catalog bound from that text on a named instance of the same
+/// section, so the resolver serves the catalog the start accepted. It reads the DEFAULT instance of the
+/// section bound on its own, which is not validated: a resolution of this key would otherwise validate the
+/// whole root, or raise the failure of the catalog inside the read. <see cref="IOptions{TOptions}"/> is the
+/// snapshot taken at startup — the same one the OpenIddict registration of scopes follows, once per process.
 /// </remarks>
 internal sealed class ScopesClaimsCoreConfigKeys : IRegisterConfigKeys
 {

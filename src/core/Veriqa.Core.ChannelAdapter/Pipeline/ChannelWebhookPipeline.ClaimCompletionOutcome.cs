@@ -170,8 +170,9 @@ public static partial class ChannelWebhookPipeline
     }
 
     /// <summary>
-    /// Removes the record tying the chat of the snapshot to the phone number request of the transaction.
-    /// The store removes it only while it still points to this transaction.
+    /// Removes the record tying the chats of the snapshot to the phone number request of the transaction
+    /// (<see cref="PhoneRequestCorrelationChats"/>). The store removes it only while it still points to this
+    /// transaction.
     /// </summary>
     /// <param name="phoneRequestCorrelationStore">Store of the phone number request waiting in a chat.</param>
     /// <param name="snapshot">Channel snapshot of the ended transaction.</param>
@@ -180,7 +181,6 @@ public static partial class ChannelWebhookPipeline
         IPhoneRequestCorrelationStore phoneRequestCorrelationStore,
         ChannelIdentitySnapshot snapshot,
         TransactionId transactionId) =>
-        phoneRequestCorrelationStore.RemoveAsync(
-            snapshot.TenantId, snapshot.ChannelType, snapshot.ChannelUserId, transactionId,
-            CancellationToken.None);
+        PhoneRequestCorrelationChats.RemoveAsync(
+            phoneRequestCorrelationStore, snapshot, transactionId, CancellationToken.None);
 }

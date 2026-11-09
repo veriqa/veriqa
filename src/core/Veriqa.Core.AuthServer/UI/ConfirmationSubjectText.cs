@@ -18,6 +18,12 @@ namespace Veriqa.Core.AuthServer.UI;
 internal static class ConfirmationSubjectText
 {
     /// <summary>
+    /// The modifier of the instruction primitive the subject line carries; the stylesheets of the sign-in
+    /// window and of the service pages declare it under the same name.
+    /// </summary>
+    public const string ModifierClass = "veriqa-instruction--subject";
+
+    /// <summary>
     /// Resolves the subject of the confirmation.
     /// </summary>
     /// <remarks>
@@ -72,8 +78,10 @@ internal static class ConfirmationSubjectText
     }
 
     /// <summary>
-    /// The line of the subject on a page — the same text primitive of the card the instruction uses, the
-    /// wording HTML-encoded on output (it arrives plain from the engine that produced it).
+    /// The line of the subject on a page — the text primitive of the card the instruction uses, with the
+    /// modifier that sets it as the first sentence of the card (<see cref="ModifierClass"/>): the action
+    /// the person is asked about reads larger than the instruction under it. The wording is HTML-encoded
+    /// on output (it arrives plain from the engine that produced it).
     /// </summary>
     /// <remarks>
     /// The subject is worded in the language it was asked in, and the page's own texts fall back to the
@@ -97,6 +105,6 @@ internal static class ConfirmationSubjectText
             ? string.Empty
             : $" lang=\"{WebUtility.HtmlEncode(subjectLanguage)}\"";
 
-        return $"<p class=\"veriqa-instruction\"{languageAttribute}>{WebUtility.HtmlEncode(subjectText)}</p>";
+        return $"<p class=\"veriqa-instruction {ModifierClass}\"{languageAttribute}>{WebUtility.HtmlEncode(subjectText)}</p>";
     }
 }

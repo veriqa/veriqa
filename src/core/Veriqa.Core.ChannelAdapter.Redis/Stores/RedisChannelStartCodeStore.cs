@@ -16,7 +16,7 @@ namespace Veriqa.Core.ChannelAdapter.Redis.Stores;
 /// <summary>
 /// Redis implementation of <see cref="IChannelStartCodeStore"/>: a code shown by one replica starts
 /// the sign-in whichever replica receives the message carrying it. The codes of the whole deployment
-/// share one key space: no key carries a tenant.
+/// share one key space: no key carries a tenant, the tenant of a record is a field of its value.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,8 +29,13 @@ namespace Veriqa.Core.ChannelAdapter.Redis.Stores;
 /// </para>
 /// <para>
 /// Recording a code and taking it are one Lua script each, so the two checks and the two writes of
-/// the former, and the comparison and the two removals of the latter, run as one indivisible step on
-/// the server.
+/// the former, and the comparisons — of the transaction and of the tenant — and the two removals of
+/// the latter, run as one indivisible step on the server.
+/// </para>
+/// <para>
+/// A record of the default implicit tenant has no tenant field. A record written before the field
+/// existed reads the same way, and a take with a tenant of the event leaves it in place; a code lives
+/// no longer than its transaction, so no record of that form outlives an update for long.
 /// </para>
 /// </remarks>
 internal sealed class RedisChannelStartCodeStore : IChannelStartCodeStore
@@ -51,6 +56,21 @@ internal sealed class RedisChannelStartCodeStore : IChannelStartCodeStore
     private const string ExpiresAtField = "ExpiresAt";
 
     /// <summary>
+    /// Hash field holding the tenant of the transaction (both records); absent — the default implicit tenant.
+    /// </summary>
+    private const string TenantIdField = "TenantId";
+
+    /// <summary>
+    /// Script argument stating that a value follows — a tenant to write, a tenant to compare.
+    /// </summary>
+    private const string FlagSet = "1";
+
+    /// <summary>
+    /// Script argument stating that no value follows.
+    /// </summary>
+    private const string FlagUnset = "0";
+
+    /// <summary>
     /// Key segment of the records found by the code.
     /// </summary>
     private const string CodeSegment = "code:";
@@ -68,7 +88,12 @@ internal sealed class RedisChannelStartCodeStore : IChannelStartCodeStore
     /// <summary>
     /// Number of values the read of a record by its transaction returns.
     /// </summary>
-    private const int TransactionRecordValueCount = 2;
+    private const int TransactionRecordValueCount = 3;
+
+    /// <summary>
+    /// Number of values the take of a code returns.
+    /// </summary>
+    private const int TakeResultValueCount = 2;
 
     /// <summary>
     /// Lua script recording a code unless a live record with the same code or of the same transaction
@@ -83,6 +108,10 @@ internal sealed class RedisChannelStartCodeStore : IChannelStartCodeStore
     /// ARGV[6] — the deadline.
     /// ARGV[7] — the deadline in Unix milliseconds (alive when checked in C# before the call); absolute,
     /// so a script delayed on its way does not keep the records past it.
+    /// ARGV[8] — name of the field holding the tenant (<see cref="TenantIdField"/>).
+    /// ARGV[9] — <see cref="FlagSet"/> — the record has a tenant; <see cref="FlagUnset"/> — the default
+    /// implicit tenant, and no tenant field is written.
+    /// ARGV[10] — the tenant (ignored without the flag).
     /// Returns: 1 — recorded by this call; 0 — one of the two records already exists.
     /// </summary>
     /// <remarks>
@@ -95,9 +124,13 @@ if redis.call('EXISTS', KEYS[1]) == 1 or redis.call('EXISTS', KEYS[2]) == 1 then
 end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
 redis.call('HSET', KEYS[1], ARGV[5], ARGV[6])
-redis.call('PEXPIREAT', KEYS[1], ARGV[7])
 redis.call('HSET', KEYS[2], ARGV[3], ARGV[4])
 redis.call('HSET', KEYS[2], ARGV[5], ARGV[6])
+if ARGV[9] == '1' then
+    redis.call('HSET', KEYS[1], ARGV[8], ARGV[10])
+    redis.call('HSET', KEYS[2], ARGV[8], ARGV[10])
+end
+redis.call('PEXPIREAT', KEYS[1], ARGV[7])
 redis.call('PEXPIREAT', KEYS[2], ARGV[7])
 return 1";
 
@@ -109,17 +142,26 @@ return 1";
     /// ARGV[1] — name of the field holding the transaction (<see cref="TransactionIdField"/>).
     /// ARGV[2] — name of the field holding the deadline (<see cref="ExpiresAtField"/>).
     /// ARGV[3] — transaction identifier the record must name.
-    /// Returns: the deadline — both records removed by this call; nil — the record is absent, or
-    /// names another transaction (nothing is removed).
+    /// ARGV[4] — name of the field holding the tenant (<see cref="TenantIdField"/>).
+    /// ARGV[5] — <see cref="FlagSet"/> — the record must be of the tenant that follows; <see cref="FlagUnset"/>
+    /// — its tenant is not compared.
+    /// ARGV[6] — the tenant the record must be of (ignored without the flag). A record without the field
+    /// is of no stated tenant, so it does not match.
+    /// Returns: the deadline and the tenant of the record (nil — none) — both records removed by this
+    /// call; nil — the record is absent, names another transaction or is of another tenant (nothing is
+    /// removed).
     /// </summary>
     private const string TakeLuaScript = @"
-local record = redis.call('HMGET', KEYS[1], ARGV[1], ARGV[2])
+local record = redis.call('HMGET', KEYS[1], ARGV[1], ARGV[2], ARGV[4])
 if record[1] ~= ARGV[3] then
+    return false
+end
+if ARGV[5] == '1' and record[3] ~= ARGV[6] then
     return false
 end
 redis.call('DEL', KEYS[1])
 redis.call('DEL', KEYS[2])
-return record[2]";
+return { record[2], record[3] }";
 
     /// <summary>
     /// Store options (key prefixes).
@@ -179,7 +221,10 @@ return record[2]";
                 record.Code,
                 ExpiresAtField,
                 RedisChannelStoreTimestamps.Format(record.ExpiresAt),
-                deadline.ToUnixTimeMilliseconds()
+                deadline.ToUnixTimeMilliseconds(),
+                TenantIdField,
+                record.TenantId is null ? FlagUnset : FlagSet,
+                record.TenantId ?? string.Empty
             });
 
         return (long)result == 1L;
@@ -194,7 +239,7 @@ return record[2]";
 
         var values = await _db.HashGetAsync(
             GetTransactionKey(transactionId.ToString()),
-            new RedisValue[] { CodeField, ExpiresAtField });
+            new RedisValue[] { CodeField, ExpiresAtField, TenantIdField });
 
         // A record that does not read back whole is treated as absent, the way an expired one is.
         if (values is not { Length: TransactionRecordValueCount }
@@ -215,13 +260,15 @@ return record[2]";
         {
             Code = values[0].ToString(),
             TransactionId = transactionId,
-            ExpiresAt = expiresAt
+            ExpiresAt = expiresAt,
+            TenantId = values[2].IsNull ? null : values[2].ToString()
         };
     }
 
     /// <inheritdoc />
     public async Task<ChannelStartCode?> TakeAsync(
         string code,
+        string? ownerTenantId,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -245,12 +292,22 @@ return record[2]";
         var result = await _db.ScriptEvaluateAsync(
             TakeLuaScript,
             new RedisKey[] { codeKey, GetTransactionKey(transactionId.ToString()) },
-            new RedisValue[] { TransactionIdField, ExpiresAtField, transactionId.ToString() });
+            new RedisValue[]
+            {
+                TransactionIdField,
+                ExpiresAtField,
+                transactionId.ToString(),
+                TenantIdField,
+                ownerTenantId is null ? FlagUnset : FlagSet,
+                ownerTenantId ?? string.Empty
+            });
 
         // A record that does not read back whole is treated as absent, the way an expired one is; the
-        // script has removed it either way.
+        // script has removed it either way. A record of another tenant is absent to this caller, and the
+        // script has left it in place.
         if (result.IsNull
-            || RedisChannelStoreTimestamps.Parse((RedisValue)result) is not { } expiresAt)
+            || (RedisResult[]?)result is not { Length: TakeResultValueCount } taken
+            || RedisChannelStoreTimestamps.Parse((RedisValue)taken[0]) is not { } expiresAt)
         {
             return null;
         }
@@ -264,7 +321,8 @@ return record[2]";
         {
             Code = code,
             TransactionId = transactionId,
-            ExpiresAt = expiresAt
+            ExpiresAt = expiresAt,
+            TenantId = taken[1].IsNull ? null : (string?)taken[1]
         };
     }
 

@@ -92,9 +92,9 @@ public sealed class CorePageTextResolver
                     cancellationToken);
 
                 // The highest level stating an entry decides it whole; a variant of it whose slots differ
-                // from the text's is not applied, and the page shows the text the regular way — the
-                // snapshot report has already named that variant.
-                if (resolved.Value?.ApplicableTo(naturalKey) is { } applicable)
+                // from the text's, the optional ones aside, is not applied, and the page shows the text the
+                // regular way — the snapshot report has already named that variant.
+                if (resolved.Value?.ApplicableTo(naturalKey, _overridable.OptionalSlotsOf(naturalKey)) is { } applicable)
                 {
                     overrides[naturalKey] = applicable;
                 }

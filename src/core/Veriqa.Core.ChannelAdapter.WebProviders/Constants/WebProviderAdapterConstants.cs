@@ -33,6 +33,22 @@ internal static class WebProviderAdapterConstants
     public const string AvatarClaim = "avatar";
 
     /// <summary>
+    /// Value type OpenIddict gives a claim it made of a JSON object of the answer of the provider; the
+    /// value of such a claim is the raw JSON. OpenIddict publishes no constant of it.
+    /// </summary>
+    public const string JsonObjectClaimValueType = "JSON";
+
+    /// <summary>
+    /// Value type OpenIddict gives a claim it made of a JSON array nested in an array of the answer.
+    /// </summary>
+    public const string JsonArrayClaimValueType = "JSON_ARRAY";
+
+    /// <summary>
+    /// Value type OpenIddict gives a claim it made of a JSON <c>null</c> of the answer.
+    /// </summary>
+    public const string JsonNullClaimValueType = "JSON_NULL";
+
+    /// <summary>
     /// Message of the refusal of an event the channel has no webhook for.
     /// </summary>
     public const string NoInboundEventsMessage = "A web provider channel takes no webhook events: its events come from its own routes.";

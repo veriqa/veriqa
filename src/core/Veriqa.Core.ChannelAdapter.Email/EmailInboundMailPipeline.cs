@@ -50,6 +50,12 @@ internal static class EmailInboundMailPipeline
     /// verdict. Its message-id identifies the letter to the budget of the confirmation operation, so a
     /// redelivery of the same mail, a retry among them, costs its sender no second attempt.
     /// </para>
+    /// <para>
+    /// A mail with a tenant — on the inbound route of a tenant, or through the polling of a tenant — acts
+    /// only for a transaction of that tenant (SPEC-042 R60). The transaction its correlation names is
+    /// compared before anything is done for it, and the processor then has to report that very
+    /// transaction; any other answer is rejected like a mail of an unknown transaction, with nothing spent.
+    /// </para>
     /// </remarks>
     /// <param name="services">The service provider of the caller's scope.</param>
     /// <param name="processor">The inbound processor that verifies the sender.</param>
@@ -100,11 +106,12 @@ internal static class EmailInboundMailPipeline
         // the same mail (it is reachable through its own SPI and cannot be handed a token through it),
         // so a mail is read twice; the cost is bounded by MaxCorrelationTokenProbes and the two reads
         // answer identically, because neither of them decides anything on its own.
+        var now = services.GetRequiredService<TimeProvider>().GetUtcNow();
         var correlationToken = await DefaultEmailInboundProcessor.ExtractCorrelationTokenAsync(
             message,
             inbound,
             correlationStore,
-            services.GetRequiredService<TimeProvider>().GetUtcNow(),
+            now,
             cancellationToken);
 
         // The correlation is read once: it tells the mail of the email completion from a sign-in mail, and it
@@ -113,21 +120,57 @@ internal static class EmailInboundMailPipeline
             ? null
             : await correlationStore.GetAsync(correlationToken, cancellationToken);
 
+        // The transaction an unexpired correlation names, worked out once for the tenant check and the status below;
+        // null — no correlation, an expired one, or one whose transaction does not parse.
+        TransactionId? unexpiredCorrelatedTransactionId =
+            receivedCorrelation is not null
+            && !receivedCorrelation.IsExpired(now)
+            && TransactionId.TryParse(receivedCorrelation.TransactionId, out var parsedTransactionId)
+                ? parsedTransactionId
+                : null;
+
+        // The tenant of the mail is compared with the transaction its unexpired correlation names before
+        // anything is done for that transaction: a transaction of another tenant is answered like an
+        // unknown token — no status, no processor, no spending of the correlation or of the message-id.
+        // The inbound processor is taken on every mail: it is the one place the tenant of the event is
+        // worked out, and the check of the transaction the processor of mails reports needs that tenant
+        // even when there is no unexpired correlation.
+        var inboundProcessor = services.GetRequiredService<ChannelInboundProcessor>();
+        var eventTenantId = inboundProcessor.EventTenantOf(ChannelTypes.Email);
+        TransactionId? comparedTransactionId = null;
+
+        if (eventTenantId is not null && unexpiredCorrelatedTransactionId is { } correlatedTransactionId)
+        {
+            if (await ChannelWebhookPipeline.ReadOwnedTransactionAsync(
+                    inboundProcessor.TransactionStore,
+                    correlatedTransactionId,
+                    eventTenantId,
+                    ChannelTypes.Email,
+                    inboundProcessor.Logger,
+                    inboundProcessor.Metrics,
+                    cancellationToken) is null)
+            {
+                return EmailInboundMailOutcome.Rejected;
+            }
+
+            comparedTransactionId = correlatedTransactionId;
+        }
+
+        var compared = new ComparedTransaction(eventTenantId, comparedTransactionId);
+
         // The mail of the Push way of the email completion (SPEC-041 L50) is not a sign-in mail: the sign-in is
         // already confirmed, so it takes its own branch before any status of the sign-in and before the
         // confirmation branch — the sender is verified the same way, and its address is recorded.
         if (!string.IsNullOrEmpty(correlationToken) && receivedCorrelation is { ForClaimCompletion: true })
         {
             return await HandleClaimCompletionMailAsync(
-                services, message, correlationToken, processor, correlationStore, logger, cancellationToken);
+                services, message, correlationToken, processor, correlationStore, compared, logger, cancellationToken);
         }
 
         // Publish the "mail_received" status (SPEC-016 §10.1) if the email correlates
         // with an active transaction — before sender verification
-        if (receivedCorrelation is not null
-            && !receivedCorrelation.IsExpired(services.GetRequiredService<TimeProvider>().GetUtcNow())
-            && !receivedCorrelation.IsConsumed
-            && TransactionId.TryParse(receivedCorrelation.TransactionId, out var receivedTransactionId))
+        if (unexpiredCorrelatedTransactionId is { } receivedTransactionId
+            && receivedCorrelation is { IsConsumed: false })
         {
             await EmailAuthEndpoints.PublishEmailChannelStatusAsync(
                 services,
@@ -149,10 +192,27 @@ internal static class EmailInboundMailPipeline
             return EmailInboundMailOutcome.Rejected;
         }
 
+        if (compared.RefusesReported(confirmResult.TransactionId, logger))
+        {
+            return EmailInboundMailOutcome.Rejected;
+        }
+
         // The transaction of the verified mail, read once: it answers both whether the sender may move it
         // and which path the mail takes below.
         var verifiedTransaction = await ReadVerifiedTransactionAsync(
             services, confirmResult.TransactionId, logger);
+
+        // The snapshot of the mail carries the tenant of its transaction, not the one the processor of mails
+        // wrote (SPEC-003 CA-164): the attaches below go past the processing of the event that sets it
+        // everywhere else. Compared above, the transaction is of the tenant of the mail when it states one.
+        if (verifiedTransaction is not null)
+        {
+            confirmResult = confirmResult with
+            {
+                Identity = InboundSnapshotTenant.OfTransaction(
+                    confirmResult.Identity, verifiedTransaction, ChannelTypes.Email, logger)
+            };
+        }
 
         // Sender verified — the verdict reaches the window only once the transaction has said whether it
         // admits the sender's subject (SPEC-016 §10.1): a transaction bound to the subject of another
@@ -244,7 +304,8 @@ internal static class EmailInboundMailPipeline
             // redelivery getting through there does drive Confirmed → Completed after the deadline
             // (the TTL of a confirmed transaction decides nothing — SPEC-001 §4.4 item 4). Here that
             // drive has already failed, and what is left to retry into is a wait the TTL does not
-            // govern, of a length the store decides — see ITransactionStore.GetStalledConfirmedAsync.
+            // govern, bounded by the finalization window that the cleanup sweep ends — see
+            // ITransactionStore.GetStalledConfirmedAsync.
             // So reject the mail and register the dedup rather than hold its source for all of it.
             if (verifyTxResult.IsSuccess
                 && (verifyTxResult.Value.IsTerminal()
@@ -591,6 +652,7 @@ internal static class EmailInboundMailPipeline
     /// <param name="correlationToken">The correlation token the mail carries.</param>
     /// <param name="processor">The inbound processor that verifies the sender.</param>
     /// <param name="correlationStore">The correlation store.</param>
+    /// <param name="compared">The tenant of the mail and the transaction of its correlation compared with it.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="cancellationToken">Cancels the sender verification only; the write is not interrupted by it.</param>
     /// <returns>The outcome of handling the mail.</returns>
@@ -600,6 +662,7 @@ internal static class EmailInboundMailPipeline
         string correlationToken,
         IEmailInboundProcessor processor,
         IEmailPushCorrelationStore correlationStore,
+        ComparedTransaction compared,
         ILogger logger,
         CancellationToken cancellationToken)
     {
@@ -610,6 +673,11 @@ internal static class EmailInboundMailPipeline
             logger.LogInformation(
                 "Email inbound mail: the mail of the email completion recorded nothing (Result={ResultType}).",
                 inboundResult.GetType().Name);
+            return EmailInboundMailOutcome.Rejected;
+        }
+
+        if (compared.RefusesReported(confirmResult.TransactionId, logger))
+        {
             return EmailInboundMailOutcome.Rejected;
         }
 
@@ -680,5 +748,37 @@ internal static class EmailInboundMailPipeline
         }
 
         return EmailInboundMailOutcome.Completed;
+    }
+
+    /// <summary>
+    /// The tenant of a mail and the transaction of its correlation that was compared with it — what the
+    /// transaction the processor reports is held against (SPEC-042 R60).
+    /// </summary>
+    /// <param name="EventTenantId">Tenant of the mail; null — none, and nothing is compared.</param>
+    /// <param name="CorrelatedTransactionId">Transaction of the unexpired correlation of the mail, found to be of
+    /// that tenant; null — the mail has no unexpired correlation, or no tenant.</param>
+    private readonly record struct ComparedTransaction(string? EventTenantId, TransactionId? CorrelatedTransactionId)
+    {
+        /// <summary>
+        /// Whether the transaction the processor reported is refused: the mail has a tenant, and the
+        /// transaction is not strictly the one of its correlation — another transaction, of any tenant, or
+        /// one reported for a mail whose correlation is missing, expired or was not compared. A refused mail
+        /// is answered like a mail of an unknown transaction: nothing below the refusal runs.
+        /// </summary>
+        /// <param name="reported">Transaction the processor reported.</param>
+        /// <param name="logger">The logger.</param>
+        /// <returns>true — the mail is to be rejected.</returns>
+        public bool RefusesReported(TransactionId reported, ILogger logger)
+        {
+            if (EventTenantId is null || CorrelatedTransactionId == reported)
+            {
+                return false;
+            }
+
+            logger.LogWarning(
+                "Email inbound mail: the processor reported a transaction other than the one the correlation of the mail names — answered as an unknown transaction. ChannelType: {ChannelType}",
+                ChannelTypes.Email);
+            return true;
+        }
     }
 }

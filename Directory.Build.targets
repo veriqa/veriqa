@@ -2,8 +2,10 @@
   Directory.Build.targets — Veriqa-owned file (NOT a copy from .ai-shared/tooling/dotnet/,
   so `git subtree pull` does not overwrite it).
 
-  Two purposes, both of which need a root file that a subtree sync cannot overwrite: guarding the
-  chain version, and suppressing Veriqa's own experimental-API diagnostics for this repository.
+  Four purposes, all of which need a root file that a subtree sync cannot overwrite: guarding the
+  chain version, suppressing Veriqa's own experimental-API diagnostics for this repository, keeping
+  the dependency lists of the published packages as the projects state them, and pinning the
+  dependencies between the core packages to one exact version.
 
   1. Version guard. Both the value (VeriqaCoreVersion) and its mapping
   onto <Version> live in build/Versions.props, but the <Import> that brings that file in lives
@@ -21,6 +23,21 @@
   own projects (core, tests, samples, sandbox) use them everywhere. So the suppression lives here,
   once, instead of a NoWarn in thirty project files or a #pragma around every use — and here rather
   than in Directory.Build.props, which `git subtree pull` overwrites.
+
+  3. Transitive pinning of a published package. NuGet writes every pin into the nuspec as a direct
+  dependency, which flattens the graph of the chain: a package would declare as its own every
+  package listed in Directory.Packages.props that it reaches through a reference. IsPackable is
+  stated in the project body, so this is the first file that can read it. A security pin a package has
+  to pass on to its consumers is therefore a PackageReference without a version in that project.
+
+  4. Exact versions between core packages. NuGet pack writes a ProjectReference as a minimum version
+  ("0.7.1" means ">= 0.7.1"), so an integrator could combine a channel package with a newer core it was
+  not built against. The channel packages and the store packages use internal members of the core
+  (InternalsVisibleTo), and the documentation asks to keep every Veriqa.Core.* package on one version.
+  So a reference to a Veriqa.Core.* project becomes an exact range "[0.7.1]" and restore refuses a
+  mismatch. NuGet has no public switch for this: the target rewrites ProjectVersion on
+  _ProjectReferencesWithVersions, the item that the internal NuGet pack target
+  _GetProjectReferenceVersions fills and the PackTask reads. Other references keep their ranges.
 -->
 <Project>
 
@@ -28,12 +45,23 @@
     <!-- See purpose 2 in the header above. What the identifier marks and what it buys:
          build/README.md, "Public surface that has not settled yet". -->
     <NoWarn>$(NoWarn);VERIQAEXP0001</NoWarn>
+    <!-- See purpose 3 in the header above. -->
+    <CentralPackageTransitivePinningEnabled Condition=" '$(IsPackable)' == 'true' ">false</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
   <Target Name="VeriqaValidateCoreVersion" BeforeTargets="Build;Pack">
     <Error Condition=" '$(VeriqaCoreVersion)' == '' "
            Code="VERIQA0001"
            Text="VeriqaCoreVersion is not defined: build/Versions.props was not imported. Restore the &lt;Import Project=&quot;%24(MSBuildThisFileDirectory)build/Versions.props&quot; /&gt; line in the root Directory.Build.props — it is dropped by `git subtree pull` of .ai-shared. That line is the whole fix for the version scheme: build/Versions.props carries both VeriqaCoreVersion and the &lt;Version&gt; it feeds. It is not the only local edit of Directory.Build.props though, so merge the sync as a diff of that whole file. Without the Import every package would ship the SDK default version 1.0.0." />
+  </Target>
+
+  <!-- See purpose 4 in the header above. -->
+  <Target Name="VeriqaPinCoreReferenceVersions" AfterTargets="_GetProjectReferenceVersions">
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Condition=" $([System.String]::Copy('%(_ProjectReferencesWithVersions.Filename)').StartsWith('Veriqa.Core.')) and '%(_ProjectReferencesWithVersions.ProjectVersion)' != '' ">
+        <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
   </Target>
 
 </Project>

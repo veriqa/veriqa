@@ -28,8 +28,8 @@
   <ItemGroup>
     <!-- Provider-agnostic, like the audit trail itself: only the base EF Core packages. The
          provider package (Npgsql) lives in the migrations assembly and in the host. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
   </ItemGroup>
 
   <ItemGroup>

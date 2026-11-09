@@ -85,10 +85,14 @@ internal sealed class RestrictionClaimReader(ILogger<RestrictionClaimReader> log
     }
 
     /// <summary>
-    /// The whole address, trimmed and lower-cased; absent without a separator or with an empty part
-    /// on either side of the last one.
+    /// The whole address, trimmed: the local part lower-cased, the domain in its canonical form
+    /// (<see cref="EmailDomain.ToCanonical"/>); absent without a separator or with an empty part on
+    /// either side of the last one. The value of an <c>email.address</c> rule is read by the same
+    /// derivation, so a rule and a claim spelling one domain differently still compare equal.
     /// </summary>
-    private static string? ReadEmailAddress(string? email)
+    /// <param name="email">The address.</param>
+    /// <returns>The derived address, or null.</returns>
+    internal static string? ReadEmailAddress(string? email)
     {
         var trimmed = email?.Trim();
         if (string.IsNullOrEmpty(trimmed))
@@ -100,13 +104,16 @@ internal sealed class RestrictionClaimReader(ILogger<RestrictionClaimReader> log
 
         return separatorIndex <= 0 || separatorIndex == trimmed.Length - 1
             ? null
-            : trimmed.ToLowerInvariant();
+            : string.Concat(
+                trimmed[..separatorIndex].ToLowerInvariant(),
+                EmailSeparator.ToString(),
+                EmailDomain.ToCanonical(trimmed[(separatorIndex + 1)..]));
     }
 
     /// <summary>
-    /// The part after the LAST separator, lower-cased; absent wherever the address itself is absent —
-    /// without a separator or with an empty part on either side of the last one: a value that is not
-    /// an address has no domain to derive (RP-021).
+    /// The part after the LAST separator, in its canonical form (<see cref="EmailDomain.ToCanonical"/>);
+    /// absent wherever the address itself is absent — without a separator or with an empty part on
+    /// either side of the last one: a value that is not an address has no domain to derive (RP-021).
     /// </summary>
     private static string? ReadEmailDomain(string? email)
     {
@@ -120,7 +127,7 @@ internal sealed class RestrictionClaimReader(ILogger<RestrictionClaimReader> log
 
         return separatorIndex <= 0 || separatorIndex == trimmed.Length - 1
             ? null
-            : trimmed[(separatorIndex + 1)..].ToLowerInvariant();
+            : EmailDomain.ToCanonical(trimmed[(separatorIndex + 1)..]);
     }
 
     /// <summary>

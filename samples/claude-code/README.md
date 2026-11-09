@@ -21,6 +21,19 @@ Demo 3 takes **two approvers in turn**: `developer`, then `manager`. Each confir
 messaging app account, enrolled once beforehand, and a confirmation from any other account refuses the
 action. Demos 1 and 2 take one approval from whoever holds the link.
 
+<table align="center">
+  <tr>
+    <td><a href="./media/claude-code-1.webp"><img src="./media/claude-code-1-thumb.webp" width="260" alt="Claude Code: git push waits until the user approves it in the messaging app" /></a></td>
+    <td><a href="./media/claude-code-2.webp"><img src="./media/claude-code-2-thumb.webp" width="260" alt="Claude Code: a long command cycle starts only after approval in the messaging app" /></a></td>
+    <td><a href="./media/claude-code-3.webp"><img src="./media/claude-code-3-thumb.webp" width="260" alt="Claude Code: a costly run with a cost estimate is approved by two people in turn" /></a></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>1. A tool call — <code>git push</code>, <code>rm -r</code></sub></td>
+    <td align="center"><sub>2. The start of a long command cycle</sub></td>
+    <td align="center"><sub>3. A costly run — two approvers in turn</sub></td>
+  </tr>
+</table>
+
 **Claude Code 2.1.295 or later** is needed: the sample relies on the mod API of that build.
 
 ## Why this sample exists
@@ -38,7 +51,7 @@ Claude Code and development tasks are just the example chosen here. The same app
 harness and other tasks: take this sample as a starting point, then rework and adapt it to your
 needs — the rules, the action types and their wordings are all yours to change.
 
-Veriqa is installed locally only to make the demo quick to set up. It is not a recommended
+Veriqa runs locally in Docker only to make the demo quick to set up. It is not a recommended
 deployment: in a team, the approving host is a shared service that everyone's agents call.
 
 ### Why not just an "Allow" button in the harness
@@ -146,7 +159,7 @@ The sample asks in one channel, or lets the person pick one on the phone — the
 | `channel` | Where the person answers | What the host needs |
 |---|---|---|
 | `telegram` (default) | Telegram | a bot token; the host uses long polling, so it works on `localhost` |
-| `messenger`, `whatsapp`, `instagram` | that Meta channel | the channel enabled in the fragment, and the host on a public HTTPS address: Meta delivers the answer by webhook |
+| `messenger`, `whatsapp`, `instagram` | that Meta channel | the channel enabled in `host/veriqa.json`, and the host on a public HTTPS address: Meta delivers the answer by webhook |
 | `hop` | the channel the person picks on a page the QR opens | `HopMode.Enabled: true` in the client entry, `Veriqa:OpenIddict:Server:Issuer` set to that public HTTPS address, and at least one channel besides Telegram enabled — with only one channel the host returns its direct link |
 
 With `hop` the phone opens the link, so the host has to be reachable from the phone as well.
@@ -154,60 +167,76 @@ With `hop` the phone opens the link, so the host has to be reachable from the ph
 ## What you need
 
 - Claude Code 2.1.295 or later.
-- The Veriqa auth server installed as an OS service — see
-  [Install as an OS service](https://veriqa.app/docs/quickstart/os-service). Running it from the
-  repository works as well.
+- [Docker](https://docs.docker.com/get-docker/) with Compose: the local host runs in it from the
+  published image `veriqa/veriqa`. Without Docker, install Veriqa
+  [as an OS service](https://veriqa.app/docs/quickstart/os-service) and give it the same settings, or
+  point the plugin at the [Shared stand](#shared-stand), which needs nothing installed.
 - A Telegram bot token from [@BotFather](https://t.me/BotFather). If the bot has a webhook set,
   remove it first (`https://api.telegram.org/bot<token>/deleteWebhook`), otherwise polling gets
-  `409 Conflict`.
-- `openssl` for the local certificate. Git for Windows ships it.
+  `409 Conflict`. Use a bot no other server polls: Telegram hands the updates to one poller only.
 
-## 1. Give the host a local HTTPS address
+Everything below runs in this sample's [`host/`](host/) folder:
 
-The token endpoint accepts HTTPS only, and the service starts on plain `http://127.0.0.1:8080`.
-Make a self-signed certificate for `localhost` and `127.0.0.1`:
-
-```bash
-openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj "/CN=localhost" \
-  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
-  -keyout veriqa-local.key -out veriqa-local.crt
-openssl pkcs12 -export -inkey veriqa-local.key -in veriqa-local.crt \
-  -out veriqa-local.pfx -passout pass:<pfx password>
+```
+host/
+  docker-compose.yml   Veriqa from the published image at https://127.0.0.1:8443
+  veriqa.json          the client entry claude-code, its action types and the channels
+  .env.example         the values you fill in
 ```
 
-- `veriqa-local.pfx` goes to the host. On Linux, put it next to the token certificates, readable
-  only by the service account:
-  `sudo install -o veriqa -g veriqa -m 0600 veriqa-local.pfx /var/lib/veriqa/certs/`.
-- `veriqa-local.crt` stays with Claude Code. The plugin has no setting for a certificate to trust:
-  its requests go through Claude Code, so Claude Code itself has to trust it. Start Claude Code from
-  an environment where `NODE_EXTRA_CA_CERTS` names the file:
+## 1. Fill in the settings and create the certificate
 
-  ```bash
-  NODE_EXTRA_CA_CERTS=/home/me/.config/veriqa/veriqa-local.crt claude
-  ```
+```bash
+cd host
+cp .env.example .env
+```
 
-  On Windows, set it as a user environment variable before you start Claude Code or the desktop app.
-- Delete `veriqa-local.key` once the `.pfx` is made.
+Put your bot token into `TELEGRAM_BOT_TOKEN`, a long random string into `CLIENT_SECRET` (the plugin
+asks for the same value in step 3) and any password into `CERT_PASSWORD`.
 
-## 2. Add the fragment to the host
+The token endpoint accepts HTTPS only. Let the stand create a self-signed certificate for `localhost`
+and `127.0.0.1`:
 
-Copy [`host/appsettings.json`](host/appsettings.json) into the configuration directory of the
-service as `appsettings.json` (`/etc/veriqa/` on Linux, `%ProgramData%\Veriqa\` on Windows). Next to
-it is `appsettings.Production.json`, which the installer wrote, and the two do not overlap. Replace
-the `REPLACE_ME` values you need:
+```bash
+docker compose run --rm certificate
+```
+
+`certs/localhost.pfx` goes to the host. `certs/localhost.crt` stays with Claude Code. The plugin has no
+setting for a certificate to trust: its requests go through Claude Code, so Claude Code itself has
+to trust it. Start Claude Code from an environment where `NODE_EXTRA_CA_CERTS` names the
+file:
+
+```bash
+NODE_EXTRA_CA_CERTS=<path to this folder>/host/certs/localhost.crt claude
+```
+
+On Windows, set it as a user environment variable before you start Claude Code or the desktop app.
+
+## 2. Start the host
+
+```bash
+docker compose up -d
+docker compose ps
+```
+
+Wait until the status reads `healthy`, then check the host from this machine:
+
+```bash
+curl --cacert certs/localhost.crt https://127.0.0.1:8443/health/ready
+```
+
+`docker-compose.yml` publishes the port on `127.0.0.1` only and passes the bot token and the client
+secret from `.env`. The rest of the settings are in [`host/veriqa.json`](host/veriqa.json), which the
+image reads from `/app/config/veriqa.json`. To use the other channels, edit it, then restart with
+`docker compose up -d --force-recreate`:
 
 | Key | Value |
 |---|---|
-| `Kestrel:Endpoints:Https:Certificate:Path` / `Password` | the `.pfx` from step 1 |
-| `Veriqa:Channels:Telegram:BotToken` | your bot token |
-| `Veriqa:OpenIddict:Clients:[0]:ClientSecret` | a long random string, the plugin's secret |
-| `Veriqa:Channels:Messenger`, `WhatsApp`, `Instagram` | only for those channels: their credentials, and `Enabled: true` |
+| `Veriqa:Channels:Messenger`, `WhatsApp`, `Instagram` | only for those channels: replace their `REPLACE_ME` credentials and set `Enabled: true` |
 | `Veriqa:OpenIddict:Server:Issuer` | only for `hop`: the host's public HTTPS address. Left empty, the host uses its own address |
 
-What the fragment declares:
+What `veriqa.json` declares:
 
-- `Kestrel:Endpoints` — `https://127.0.0.1:8443` for the plugin, and `http://127.0.0.1:8080` kept for
-  the health probes. The section replaces `ASPNETCORE_URLS`, so both endpoints are listed.
 - Telegram enabled on long polling; Messenger, WhatsApp (`MetaCloudApi`) and Instagram present but
   disabled, so a host that needs only Telegram starts without their credentials.
 - the client `claude-code` with `AllowClientCredentials` and, in its `MessageTemplates`, the three
@@ -221,23 +250,20 @@ What the fragment declares:
 - `OutcomeNotice:DisplayIntent: NewMessage` — the answer arrives as a new message and the question
   stays readable above it.
 
-If your configuration already declares clients, add the `claude-code` entry to your own `Clients`
-array. Configuration files merge arrays by index, so a second file with its own `Clients:[0]` would
-overwrite fields of your first client instead of adding a new one.
+The host runs in the `Development` environment: issued tokens live in memory and are signed with
+development certificates, so they are lost on restart, and the plugin gets a new token on its own.
+The plugin, not the host, keeps the enrolled approvers. It is a local host, not a deployment.
 
-Restart the service and check it:
-
-```bash
-sudo systemctl restart veriqa
-curl --cacert veriqa-local.crt https://127.0.0.1:8443/health/live
-```
+To use a Veriqa host of your own instead, add the `claude-code` entry from `veriqa.json` to its own
+`Clients` array. Configuration files merge arrays by index, so a second file with its own
+`Clients:[0]` would overwrite fields of your first client instead of adding a new one.
 
 ## 3. Install the plugin
 
-In a Claude Code terminal session, from a clone of this repository:
+In a Claude Code terminal session, add the folder that holds this README as a marketplace:
 
 ```
-/plugin marketplace add <path to the clone>/samples/claude-code
+/plugin marketplace add <path to this folder>
 /plugin install veriqa-approval@veriqa-samples
 ```
 
@@ -248,8 +274,8 @@ The install asks for the plugin's settings. The client secret is kept in secure 
 |---|---|---|
 | `mode` | `own-host` | `own-host` — your own Veriqa host. `shared-stand` — the shared stand, see [Shared stand](#shared-stand) |
 | `host_url` | `https://127.0.0.1:8443` | Address of your host (`own-host`) |
-| `client_id` | `claude-code` | `ClientId` of the entry in the fragment |
-| `client_secret` | — | The client's secret (`own-host`) |
+| `client_id` | `claude-code` | `ClientId` of the entry in `host/veriqa.json` |
+| `client_secret` | — | The client's secret, `CLIENT_SECRET` from `host/.env` (`own-host`) |
 | `stand_url` | empty | Address of the shared stand's facade (`shared-stand`); no default |
 | `channel` | `telegram` | `telegram`, `messenger`, `whatsapp`, `instagram` or `hop` — see [Channels](#channels) |
 | `ttl_seconds` | `300` | How long each approver has to answer, 60…1800; the hook waits that long |
@@ -348,7 +374,7 @@ every guarded action with the reason, rather than turning the gate off. The proj
 to the default only when it is not there at all: a link that leads nowhere is a file that cannot be
 read.
 
-A new action type means a new entry in the host fragment (contract and wordings) plus a rule here.
+A new action type means a new entry in `host/veriqa.json` (contract and wordings) plus a rule here.
 The host checks every value against the contract: a value over `MaxLength`, a number that is not a
 number, or a line break in a string refuses the creation, and with it the action.
 
@@ -406,4 +432,4 @@ transaction with `404`.
 - This sample on the documentation site — <https://veriqa.app/docs/samples/showcase/claude-code>
 - Approving AI-agent actions — <https://veriqa.app/docs/scenarios/agent-approvals>
 - Server-to-server confirmation API — <https://veriqa.app/docs/reference/confirmation-api>
-- The same gate inside your own agent code — [`samples/dotnet/inproc/agent-approval`](../dotnet/inproc/agent-approval/README.md)
+- The same gate inside your own agent code, with Veriqa from the same image and the agent in Python, Node.js, Go, PHP or ASP.NET Core — <https://github.com/veriqa/ai-agent-approval>

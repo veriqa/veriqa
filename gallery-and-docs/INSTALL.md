@@ -110,16 +110,23 @@ A runnable sample: [`samples/dotnet/inproc/login/`](../samples/dotnet/inproc/log
 
 ### 1. Get the image
 
-The image of every release is published to the container registry of this repository:
+Every release image is published to Docker Hub:
 
 ```bash
-docker pull registry.gitlab.com/veriqa/veriqa
+docker pull veriqa/veriqa
 ```
 
 Without a tag Docker takes `latest` — the newest release. To pin a release in production, add its
-version as the tag (`registry.gitlab.com/veriqa/veriqa:<version>`). The published image runs on `linux/amd64`
-and `linux/arm64`. To build it yourself, run this from the repository root — `build/docker/Dockerfile`
-publishes the same host — and use your local tag in place of the image name below:
+version as the tag (`veriqa/veriqa:<version>`).
+
+The same image is also available in the GitLab container registry as
+`registry.gitlab.com/veriqa/veriqa`. Docker Hub limits anonymous pulls per IP address; GitLab does
+not. If many machines pull the image from one address without signing in to Docker Hub (CI runners,
+for example), use the GitLab copy.
+
+The published image runs on `linux/amd64` and `linux/arm64`. To build it yourself, run this from the
+repository root — `build/docker/Dockerfile` publishes the same host — and use your local tag in place
+of the image name below:
 
 ```bash
 docker build -f build/docker/Dockerfile -t veriqa-authserver .
@@ -140,7 +147,7 @@ in an env-file rather than on the command line:
 docker run -d --name veriqa -p 8080:8080 \
   -v "$(pwd)/appsettings.Production.json:/app/appsettings.Production.json:ro" \
   --env-file veriqa.env \
-  registry.gitlab.com/veriqa/veriqa
+  veriqa/veriqa
 ```
 
 Three things are mandatory for anything real, and the container refuses to start without them:

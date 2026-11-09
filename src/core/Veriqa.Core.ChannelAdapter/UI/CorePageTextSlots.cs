@@ -14,6 +14,12 @@ namespace Veriqa.Core.ChannelAdapter.UI;
 /// <c>string.Format</c>. A replacement of a text has to carry exactly the slots
 /// of the text it replaces: a slot it drops loses a value the page supplies, and a slot it adds either
 /// stays on the page as a literal or — a positional one — throws out of the formatting.
+/// <para>
+/// The exception are the OPTIONAL slots the owner of a text declares for it
+/// (<see cref="CorePageTextServiceCollectionExtensions.AddCorePageOverridableTexts(Microsoft.Extensions.DependencyInjection.IServiceCollection, IEnumerable{string}, IEnumerable{string})"/>):
+/// the page of the text fills each of them whenever a text carries it, so a replacement may carry any of
+/// them, all or none — they are left out of the comparison on both sides.
+/// </para>
 /// </summary>
 internal static partial class CorePageTextSlots
 {
@@ -28,6 +34,11 @@ internal static partial class CorePageTextSlots
     private const string ListSeparator = ", ";
 
     /// <summary>
+    /// Text naming the optional slots in a message, after the slots a replacement has to carry.
+    /// </summary>
+    private const string OptionalSlotsLead = "; optional: ";
+
+    /// <summary>
     /// Positional item of a composite format: the index, optionally followed by an alignment or a format
     /// string, which are part of the item and not of its identity.
     /// </summary>
@@ -36,26 +47,56 @@ internal static partial class CorePageTextSlots
     private static partial Regex PositionalItemPattern();
 
     /// <summary>
-    /// Tells whether a replacement carries exactly the slots of the text it replaces.
+    /// Tells whether a replacement carries exactly the slots of the text it replaces, the optional slots of
+    /// the text aside.
     /// </summary>
     /// <param name="naturalKey">Text the replacement stands for.</param>
     /// <param name="replacement">Replacement text.</param>
-    /// <returns><c>true</c> when both carry the same set of slots.</returns>
-    public static bool HaveSameSlots(string naturalKey, string replacement) =>
-        Of(naturalKey).SetEquals(Of(replacement));
+    /// <param name="optionalSlots">Optional slots of the text, in their written form.</param>
+    /// <returns><c>true</c> when both carry the same set of slots besides the optional ones.</returns>
+    public static bool HaveSameSlots(string naturalKey, string replacement, IReadOnlySet<string> optionalSlots) =>
+        RequiredOf(naturalKey, optionalSlots).SetEquals(RequiredOf(replacement, optionalSlots));
 
     /// <summary>
-    /// The slots of a text as a message names them — what a replacement of it has to carry.
+    /// The slots of a text as a message names them — what a replacement of it has to carry, and the
+    /// optional slots it may carry besides.
     /// </summary>
     /// <param name="naturalKey">Text of a core page.</param>
-    /// <returns>Slots of the text, or a phrase saying it has none.</returns>
-    public static string Describe(string naturalKey)
+    /// <param name="optionalSlots">Optional slots of the text, in their written form.</param>
+    /// <returns>Slots of the text, or a phrase saying it has none, followed by its optional slots.</returns>
+    public static string Describe(string naturalKey, IReadOnlySet<string> optionalSlots)
     {
-        var slots = Of(naturalKey);
-
-        return slots.Count == 0
+        var slots = RequiredOf(naturalKey, optionalSlots);
+        var required = slots.Count == 0
             ? NoSlots
             : string.Join(ListSeparator, slots.Order(StringComparer.Ordinal));
+
+        return optionalSlots.Count == 0
+            ? required
+            : required + OptionalSlotsLead + string.Join(ListSeparator, optionalSlots.Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// Tells whether a text is exactly one slot in its written form (<c>{app}</c>) — what an owner may
+    /// declare optional.
+    /// </summary>
+    /// <param name="text">Text to check.</param>
+    /// <returns><c>true</c> when the text is one slot and nothing else.</returns>
+    public static bool IsSlot(string text) =>
+        Of(text) is { Count: 1 } slots && slots.Contains(text);
+
+    /// <summary>
+    /// Slots of a text a replacement has to carry: all of them but the optional ones.
+    /// </summary>
+    /// <param name="text">Text to scan.</param>
+    /// <param name="optionalSlots">Optional slots of the text, in their written form.</param>
+    /// <returns>Slots of the text the comparison counts.</returns>
+    private static HashSet<string> RequiredOf(string text, IReadOnlySet<string> optionalSlots)
+    {
+        var slots = Of(text);
+        slots.ExceptWith(optionalSlots);
+
+        return slots;
     }
 
     /// <summary>

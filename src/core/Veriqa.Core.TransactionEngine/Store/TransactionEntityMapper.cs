@@ -27,7 +27,8 @@ internal static class TransactionEntityMapper
 
     /// <summary>
     /// Cache of JSON representations of immutable snapshots (ConfirmationSnapshot,
-    /// InitiatorContextSnapshot, ChannelIdentitySnapshot, ResolvedIdentitySnapshot)
+    /// InitiatorContextSnapshot, ChannelIdentitySnapshot, ResolvedIdentitySnapshot,
+    /// ChannelSubjectBinding)
     /// keyed by instance identity. Snapshot instances are immutable (init-only fields,
     /// frozen collections) and over the transaction lifecycle are replaced wholesale
     /// (a new instance is assigned on Confirm/Complete) rather than mutated in place —
@@ -40,7 +41,7 @@ internal static class TransactionEntityMapper
     /// Serializes an immutable snapshot to JSON with per-instance memoization.
     /// Apply only to snapshots with immutable instances replaced wholesale
     /// (ConfirmationSnapshot, InitiatorContextSnapshot, ChannelIdentitySnapshot,
-    /// ResolvedIdentitySnapshot) — for snapshots mutated in place, a per-instance
+    /// ResolvedIdentitySnapshot, ChannelSubjectBinding) — for snapshots mutated in place, a per-instance
     /// cache would yield stale JSON.
     /// </summary>
     /// <param name="snapshot">Immutable snapshot.</param>
@@ -384,10 +385,14 @@ internal static class TransactionEntityMapper
     /// <summary>
     /// Serializes the bound channel subject.
     /// </summary>
+    /// <remarks>
+    /// Memoized per instance: the binding is init-only and replaced wholesale, and it may carry the start
+    /// profile, so a write that does not touch the binding does not serialize that profile again.
+    /// </remarks>
     /// <param name="binding">Bound channel subject; null — none.</param>
     /// <returns>JSON of the binding, or null.</returns>
     private static string? SerializeSubjectBinding(ChannelSubjectBinding? binding)
-        => binding is not null ? JsonSerializer.Serialize(binding, SerializerOptions) : null;
+        => binding is not null ? SerializeImmutableSnapshot(binding) : null;
 
     /// <summary>
     /// Deserializes a JSON string array into a FrozenSet for AllowedChannelTypes.

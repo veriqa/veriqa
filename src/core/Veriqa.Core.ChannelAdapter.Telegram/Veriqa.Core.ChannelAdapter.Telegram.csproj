@@ -35,7 +35,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Telegram.Bot" Version="22.9.5.3" />
+    <PackageReference Include="Telegram.Bot" />
+    <!-- Removal of the resilience handler a host puts on every HttpClient: the Bot API client keeps its
+         own timeout and does not re-send. The version is the one Veriqa.ServiceDefaults references, so
+         the standard host resolves one. -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
   </ItemGroup>
 
   <ItemGroup>

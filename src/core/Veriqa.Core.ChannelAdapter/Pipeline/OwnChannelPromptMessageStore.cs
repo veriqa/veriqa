@@ -8,12 +8,12 @@ using Veriqa.Core.TransactionEngine.Domain;
 namespace Veriqa.Core.ChannelAdapter.Pipeline;
 
 /// <summary>
-/// The store of prompt references as the answers to the events of ONE channel see it, when its
-/// declaration says those answers take only a reference of that channel (SPEC-042 L62): every take
-/// becomes a take of this channel's reference and every read returns only this channel's reference,
-/// so a reference another channel stored for the transaction stays in the store and the answer
-/// carries none. The webhook route hands it to the
-/// processing in place of the store itself; the handlers of the events do not change.
+/// The store of prompt references as the answers to the events of ONE channel see it: those answers
+/// take only a reference of that channel, whatever the channel (SPEC-003 CA-244): every take becomes a
+/// take of this channel's reference and every read returns only this channel's reference, so a
+/// reference another channel stored for the transaction stays in the store and the answer carries
+/// none. The processing of an event on a path that asks in the chat hands it to the handlers in place
+/// of the store itself; the handlers of the events do not change.
 /// </summary>
 internal sealed class OwnChannelPromptMessageStore : IChannelPromptMessageStore
 {

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Antiforgery;
 
 using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.ChannelAdapter.UI;
+using Veriqa.Core.ChannelAdapter.WebProviders.Configuration;
 using Veriqa.Core.ChannelAdapter.WebProviders.Constants;
 using Veriqa.Core.ChannelAdapter.WebProviders.State;
 
@@ -26,9 +27,11 @@ namespace Veriqa.Core.ChannelAdapter.WebProviders.Pages;
 /// The page is built from the primitives of the "Core" contour — the card, the title, the button, the
 /// status plate, the spinner — over the service-page stylesheet, and every interpolated value is
 /// HTML-encoded. Without a script the page shows its state as rendered and answers by plain forms; the
-/// script only reloads the page when its state changes. Every page where the request is over — an
-/// outcome, a message the core sent at the end (a receipt, the menu or the button after a sign-in), the
-/// line of an ended request, a refusal — ends with the button that closes its tab.
+/// script reloads the page when its state changes and draws the slider of "Yes" where the channel asks
+/// for it (<see cref="BuildSlider"/>). A page of a session where the request is over shows what a chat
+/// would show — the outcome, a message the core sent at the end (a receipt, the menu or the button after a
+/// sign-in) or the line of an ended request — and adds nothing under it. A refusal ends with the button
+/// that closes its tab.
 /// </para>
 /// </summary>
 internal static class WebProviderPageRenderer
@@ -65,6 +68,12 @@ internal static class WebProviderPageRenderer
     private const string ActionArrow = "<span class=\"veriqa-wp-arrow\" aria-hidden=\"true\">\u2192</span>";
 
     /// <summary>
+    /// Arrow on the handle of the slider: it says which way to draw the handle and is hidden from
+    /// assistive technology, so the name of the handle stays the text of the track.
+    /// </summary>
+    private const string SliderArrow = "<span aria-hidden=\"true\">\u2192</span>";
+
+    /// <summary>
     /// Slot of the name of the channel in <see cref="WebProviderPageStrings.Via"/>.
     /// </summary>
     private const string ChannelNameSlot = "{0}";
@@ -89,13 +98,18 @@ internal static class WebProviderPageRenderer
     /// <param name="antiforgery">Anti-forgery tokens of the forms of the page.</param>
     /// <param name="remainingMs">Milliseconds left of the session — the time the script watches the
     /// state for.</param>
+    /// <param name="closesTab">Whether the script closes the tab as soon as the page loads: the request
+    /// is over and no action after the sign-in follows, so the page of the core under the tab, when
+    /// there is one, shows the outcome. A tab the browser leaves open — among them the tab the scanner
+    /// page navigated to the channel — shows the page as rendered.</param>
     /// <returns>The HTML of the page.</returns>
     public static string BuildSessionPage(
         WebProviderPageFrame frame,
         WebProviderPageView view,
         string transactionId,
         AntiforgeryTokenSet antiforgery,
-        long remainingMs)
+        long remainingMs,
+        bool closesTab)
     {
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentNullException.ThrowIfNull(view);
@@ -103,25 +117,24 @@ internal static class WebProviderPageRenderer
 
         var body = string.Concat(
             BuildFeed(frame, view.Feed, antiforgery),
-            BuildMainBlock(frame, view, transactionId, antiforgery),
-            view.OffersClose
-                ? CorePageCloseAction.Row(frame.Localize(CorePageCloseAction.CloseText), frame.Localize(CorePageCloseAction.CloseHint))
-                : string.Empty);
+            BuildMainBlock(frame, view, transactionId, antiforgery));
 
+        var closesTabAttribute = closesTab ? " " + WebProviderPageFields.ClosesTabAttribute : string.Empty;
         var cardAttributes =
-            $""" id="{WebProviderPageFields.PageElementId}" data-state-url="{Encode(frame.RouteUrl(WebProviderRoutes.PageStateSegment))}" data-fingerprint="{Encode(view.Fingerprint())}" data-remaining-ms="{remainingMs.ToString(CultureInfo.InvariantCulture)}" """;
+            $""" id="{WebProviderPageFields.PageElementId}" data-state-url="{Encode(frame.RouteUrl(WebProviderRoutes.PageStateSegment))}" data-fingerprint="{Encode(view.Fingerprint())}" data-remaining-ms="{remainingMs.ToString(CultureInfo.InvariantCulture)}"{closesTabAttribute} """;
 
-        var script = view.OffersClose
-            ? Script(frame.CspNonce) + CorePageCloseAction.Script(frame.CspNonce)
-            : Script(frame.CspNonce);
+        // The question focuses its default answer, whose ring stays off until a key is pressed.
+        var script = string.Concat(
+            Script(frame.CspNonce),
+            view.Block is WebProviderPageBlock.Question ? CorePageDefaultAnswerFocus.Script(frame.CspNonce) : string.Empty);
 
-        return BuildDocument(frame, cardAttributes, body, script);
+        return BuildDocument(frame, cardAttributes, body, PageStyles, script);
     }
 
     /// <summary>
     /// Builds a page of one line — a refusal: an unknown link, a sign-in the provider did not confirm,
     /// a browser without the mark, an out-of-date form. It shows nothing of a session; nothing is left to
-    /// do on it, so it offers to close the tab, as every page where the request is over does.
+    /// do on it, so it offers to close the tab.
     /// </summary>
     /// <param name="frame">What the page is rendered within.</param>
     /// <param name="naturalKey">Natural Key of the line.</param>
@@ -134,7 +147,12 @@ internal static class WebProviderPageRenderer
             $"""<div class="veriqa-status error" role="status">{Encode(frame.Localize(naturalKey))}</div>""",
             CorePageCloseAction.Row(frame.Localize(CorePageCloseAction.CloseText), frame.Localize(CorePageCloseAction.CloseHint)));
 
-        return BuildDocument(frame, cardAttributes: string.Empty, body, CorePageCloseAction.Script(frame.CspNonce));
+        return BuildDocument(
+            frame,
+            cardAttributes: string.Empty,
+            body,
+            PageStyles + CorePageCloseAction.Css,
+            CorePageCloseAction.Script(frame.CspNonce));
     }
 
     /// <summary>
@@ -144,9 +162,10 @@ internal static class WebProviderPageRenderer
     /// <param name="cardAttributes">Attributes of the card beyond its class, leading space included;
     /// empty — none.</param>
     /// <param name="body">Markup inside the card under its head.</param>
+    /// <param name="styles">The rules of the page over the rules of the service pages.</param>
     /// <param name="script">The script element of the page; empty — none.</param>
     /// <returns>The HTML of the page.</returns>
-    private static string BuildDocument(WebProviderPageFrame frame, string cardAttributes, string body, string script)
+    private static string BuildDocument(WebProviderPageFrame frame, string cardAttributes, string body, string styles, string script)
     {
         var title = Encode(frame.BrandName ?? frame.ChannelName);
 
@@ -158,7 +177,7 @@ internal static class WebProviderPageRenderer
               <meta name="viewport" content="width=device-width, initial-scale=1.0" />
               <meta name="robots" content="noindex" />
               <title>{{title}}</title>
-              {{CorePageHead.BuildServicePageHead(frame.Branding, Styles)}}
+              {{CorePageHead.BuildServicePageHead(frame.Branding, styles)}}
             </head>
             <body>
               <main class="veriqa-card"{{cardAttributes}}>
@@ -173,11 +192,11 @@ internal static class WebProviderPageRenderer
     }
 
     /// <summary>
-    /// The rules of the page over the rules of the service pages, the close action included: a page
-    /// may come to offer it on a reload, and the rules cost less than a second stylesheet would.
+    /// The rules of the page over the rules of the service pages; a refusal adds the rules of the button
+    /// that closes its tab.
     /// </summary>
-    private static string Styles =>
-        CorePageEmbeddedText.Load(typeof(WebProviderPageRenderer).Assembly, StylesResourceName) + CorePageCloseAction.Css;
+    private static string PageStyles =>
+        CorePageEmbeddedText.Load(typeof(WebProviderPageRenderer).Assembly, StylesResourceName);
 
     /// <summary>
     /// Builds the head of the card. The user signs in to the application, not to the provider, so the
@@ -238,6 +257,15 @@ internal static class WebProviderPageRenderer
     /// Builds the question with its two answers. Both answers post the transaction the question
     /// belongs to, so an answer from a browser whose mark has since moved to another transaction is
     /// refused.
+    /// <para>
+    /// "No" is the default answer and the more visible one: the main button of the contour, filled with
+    /// the primary color and focused when the page opens, so Enter answers it; "Yes" is the outlined
+    /// button. The order of the two stays "Yes", then "No". Where the section of the channel asks for the
+    /// slider, the form of "Yes" also carries it, hidden: the script shows it in place of the button of
+    /// "Yes" on the browsers the mode names, and the slider drawn to the end posts that same form. Without
+    /// the script the page answers by the two buttons. The answers look the same for a sign-in and a
+    /// confirmation.
+    /// </para>
     /// </summary>
     /// <param name="frame">What the page is rendered within.</param>
     /// <param name="question">The question as the core rendered it.</param>
@@ -256,17 +284,60 @@ internal static class WebProviderPageRenderer
             {AntiforgeryField(antiforgery)}
             """;
 
+        var hasSlider = frame.ConfirmSlider is not WebProviderConfirmSlider.Off;
+        var sliderMode = hasSlider
+            ? $""" {WebProviderPageFields.ConfirmSliderAttribute}="{frame.ConfirmSlider}" """
+            : string.Empty;
+
         return $"""
             {Paragraphs(question)}
-            <div class="veriqa-actions">
+            <div class="veriqa-actions veriqa-wp-answers"{sliderMode}>
               <form method="post" action="{action}">
                 {fields}
-                <button type="submit" class="veriqa-btn" name="{WebProviderPageFields.Answer}" value="{WebProviderPageFields.AnswerConfirm}">{Encode(frame.Localize(WebProviderPageStrings.ConfirmButton))}</button>
+                <button type="submit" class="veriqa-btn veriqa-btn-decline" name="{WebProviderPageFields.Answer}" value="{WebProviderPageFields.AnswerConfirm}">{Encode(frame.Localize(WebProviderPageStrings.ConfirmButton))}</button>
+                {(hasSlider ? BuildSlider(frame) : string.Empty)}
               </form>
               <form method="post" action="{action}">
                 {fields}
-                <button type="submit" class="veriqa-btn veriqa-btn-decline" name="{WebProviderPageFields.Answer}" value="{WebProviderPageFields.AnswerDecline}">{Encode(frame.Localize(WebProviderPageStrings.DeclineButton))}</button>
+                <button type="submit" class="veriqa-btn" name="{WebProviderPageFields.Answer}" value="{WebProviderPageFields.AnswerDecline}" autofocus>{Encode(frame.Localize(WebProviderPageStrings.DeclineButton))}</button>
               </form>
+            </div>
+            """;
+    }
+
+    /// <summary>
+    /// Builds the slider that takes "Yes", hidden until the script shows it: a track with its text and
+    /// the handle the user draws along it; the part of the track the handle has been drawn over fills
+    /// behind it, and the text fades as the handle goes. Drawn to the end and not let go yet, the track
+    /// turns to the primary color and says that letting go answers "Yes"; that text is kept from assistive
+    /// technology, which answers by the keyboard and never holds the handle at the end. The handle is a button of its own that submits nothing by
+    /// itself, and the script states it a slider to assistive technology once it shows it; its accessible
+    /// name is the text of the track, which is kept from assistive technology so the name is not read
+    /// twice. The script posts the form of "Yes" when the handle is let go at the end of the track, when
+    /// the keyboard activates the handle (Enter, Space) or moves it forward (the right and up arrows, End,
+    /// Page Up — straight to the end), and when assistive technology adjusts it up or activates it by a
+    /// click that names no pointer type. A click that names a pointer type is a press, even when assistive
+    /// technology delivers its activation so, and sends nothing; adjusting the slider up still answers.
+    /// Where the browser names no pointer type for any click, a press is told by a pointer having pressed
+    /// the handle before the click, and an activation right after a drag that ended with no click is taken
+    /// for the end of that press. A touch or a click that does not draw the handle to the end sends
+    /// nothing, and neither does a drag the browser takes over for a scroll; a second answer is not sent.
+    /// The handle goes back to the start of the track when let go early, without the animation under
+    /// <c>prefers-reduced-motion</c>.
+    /// </summary>
+    /// <param name="frame">What the page is rendered within.</param>
+    /// <returns>The markup of the slider.</returns>
+    private static string BuildSlider(WebProviderPageFrame frame)
+    {
+        var text = Encode(frame.Localize(WebProviderPageStrings.ConfirmSlider));
+        var release = Encode(frame.Localize(WebProviderPageStrings.ReleaseSlider));
+
+        return $"""
+            <div class="veriqa-wp-slider" hidden>
+              <span class="veriqa-wp-slider-fill" aria-hidden="true"></span>
+              <span class="veriqa-wp-slider-text" aria-hidden="true">{text}</span>
+              <span class="veriqa-wp-slider-release" aria-hidden="true">{release}</span>
+              <button type="button" class="veriqa-wp-slider-handle" aria-label="{text}">{SliderArrow}</button>
             </div>
             """;
     }

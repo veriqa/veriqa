@@ -1,9 +1,9 @@
 # Veriqa — passwordless login via Telegram, WhatsApp and email: self-hosted OpenID Connect (OIDC) provider
 
-**One QR code or one button instead of forms, passwords and SMS codes.**
+**Cross-device sign-in with a QR code or same-device sign-in with one button, instead of forms, passwords and SMS codes.**
 
-The user scans the QR code on your page or taps a button. The messaging app they already have opens
-with a message and buttons, and they confirm the sign-in with a single tap.
+On a computer, the user scans the QR code on your page with their phone; on the phone itself, they tap a button.
+The messaging app they already have opens with a message and buttons, and they confirm the sign-in with a single tap.
 Users can also sign in with a QR code or a button through a Google or Apple account and 80+ other services.
 
 * **4–6 seconds** to sign in, even the first time ([measurements](https://veriqa.app/docs/concepts/sign-in-comparison)).
@@ -107,7 +107,7 @@ passwordless auth setup: Veriqa with just that channel enabled (in Docker, for s
 clients on Python, Node.js, Go, PHP and ASP.NET Core that show the claims after sign-in. The clients are plain OIDC, so the same server works for
 any stack.
 
-- [Login with Telegram — Telegram authentication over OpenID Connect](https://github.com/veriqa/telegram-passwordless-login)
+- [Login with Telegram — QR code sign-in with no password or SMS](https://github.com/veriqa/telegram-passwordless-login)
 - [WhatsApp login and authentication](https://github.com/veriqa/whatsapp-passwordless-login)
 - [Passwordless email login](https://github.com/veriqa/email-passwordless-login)
 
@@ -165,7 +165,7 @@ Each use case points to a runnable sample in this repository or, where it is the
   [Replacing SMS codes](https://veriqa.app/docs/scenarios/sms-replacement).
 - **Leads and feedback without CAPTCHA.** Before submitting a form, a visitor verifies themselves
   through a messaging app in a few seconds. Your site gets a verified contact and a live channel
-  instead of a "dead" address typed into a field. It takes a small server-side handler on your site. This use case has been tested with Telegram. Recipe:
+  instead of a "dead" address typed into a field. It takes a small server-side handler on your site. Recipe:
   [Leads and feedback without CAPTCHA](https://veriqa.app/docs/scenarios/lead-capture).
 - **Second factor, step-up and action confirmations.** When a user does something sensitive —
   deletes important data, changes payment details, grants someone else access — your product asks
@@ -245,12 +245,11 @@ approves them in a messaging app — and, with the audit trail switched on, ever
 The Veriqa times are our own measurements in Telegram, for a sign-in with confirmation; automatic sign-in takes 2.4–3.5 s. In other messaging apps the time may differ, and the 15–30 minutes assume a Telegram bot.
 The source of every figure, what the user does step by step and how the setup was assessed are in
 the [full comparison](https://veriqa.app/docs/concepts/sign-in-comparison). How Veriqa
-fundamentally differs from passkeys, sign-in widgets built into messaging apps, SMS codes and the
+fundamentally differs from passkeys, Telegram's own sign-in, SMS codes and the
 device flow is covered [separately](https://veriqa.app/docs/concepts/comparison).
 
-Telegram and other messaging apps have free sign-in widgets of their own. The difference isn't price. Veriqa gives you one integration layer for all channels and email instead of a widget per messaging app, and standard OpenID Connect instead of a JS widget: tokens and claims your application can use to link accounts. The
-messaging app need not be on the device the person signs in from, and beyond sign-in you get a
-second factor, channel linking and an audit trail.
+Telegram also has a free sign-in of its own over standard OpenID Connect, with fewer capabilities.
+The two are compared in [How Veriqa differs](https://veriqa.app/docs/concepts/comparison#telegrams-own-sign-in).
 
 ## Architecture
 
@@ -281,6 +280,10 @@ backend.
   [Security and data handling](https://veriqa.app/docs/guides/data-handling), and the production
   setup is in [Preparing for production](https://veriqa.app/docs/guides/hardening). The first public release came out on September 23, 2026, and there has been no independent security audit yet; the code has been audited repeatedly by AI agents. What the
   product does not do yet is in [Known limitations](https://veriqa.app/docs/reference/limitations).
+- **Threat model.** Veriqa works in the threat model of RFC 10027 (BCP 247), the IETF best current
+  practice for cross-device flows. Of the 17 mitigations in its Section 6.1, Veriqa covers 7, partly
+  covers 2 and does not cover 6 (one at SHOULD level, proximity, and 5 recommended); another 2 are addressed to parties other than the authorization server.
+  Each one is listed in [Veriqa, BCP 247 and the threat model](https://veriqa.app/docs/concepts/cross-device-security).
 
 Details are in [Architecture](https://veriqa.app/docs/concepts/architecture).
 
@@ -353,6 +356,9 @@ No — and this question only concerns embedded mode on .NET. There Veriqa is a 
 
 **How does it differ from passkeys, and is it safer?**
 Passkeys are phishing-resistant by design, so they are safer. Veriqa fits where phishing resistance by design isn't required. It also works where cross-device passkeys break: with Bluetooth off, in a VM, over remote desktop.
+
+**How does it differ from device flow (RFC 8628)?**
+Veriqa doesn't implement RFC 8628, but it covers the same need: signing in on a computer, a TV or a kiosk from the phone. In device flow the user opens the provider's page on the phone, by typing a code or scanning a QR code, and goes through a full sign-in there. With Veriqa they confirm in a messaging app where they are already signed in. The details are in the [comparison](https://veriqa.app/docs/concepts/comparison#device-flow-rfc-8628).
 
 **Is the sign-in phishing-resistant?**
 Not fully. A fake site can show the user the real QR code, and if the user confirms, the attacker's

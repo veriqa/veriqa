@@ -25,6 +25,18 @@ internal static class WebProviderPageStrings
     public const string DeclineButton = "No";
 
     /// <summary>
+    /// Text of the track of the slider that takes "Yes" in place of its button, and the accessible name
+    /// of its handle.
+    /// </summary>
+    public const string ConfirmSlider = "Slide to answer Yes";
+
+    /// <summary>
+    /// Text the track of the slider shows in place of <see cref="ConfirmSlider"/> once the handle is
+    /// drawn to its end and not let go yet: letting go answers "Yes".
+    /// </summary>
+    public const string ReleaseSlider = "Release to answer Yes";
+
+    /// <summary>
     /// Line under the brand name in the head of the page, naming the channel the brand is reached
     /// through; <c>{0}</c> — the name of the channel.
     /// </summary>
@@ -71,5 +83,5 @@ internal static class WebProviderPageStrings
     /// Texts of the page an owning level may override through <c>AuthPage.Texts</c>.
     /// </summary>
     public static IReadOnlyList<string> OverridableTexts { get; } =
-        [Via, ConfirmButton, DeclineButton, Waiting, RequestEnded, RequestNotFound, ProviderRefused, NotInThisBrowser, Failed, .. CorePageCloseAction.OverridableTexts];
+        [Via, ConfirmButton, DeclineButton, ConfirmSlider, ReleaseSlider, Waiting, RequestEnded, RequestNotFound, ProviderRefused, NotInThisBrowser, Failed, .. CorePageCloseAction.OverridableTexts];
 }

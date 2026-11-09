@@ -637,8 +637,6 @@ internal sealed class EmailClaimCompletion : IClaimCompletionEmail
         TimeSpan resendInterval,
         DateTimeOffset now)
     {
-        var tenant = tenantId ?? string.Empty;
-
         // The counter of the transaction lives as long as the transaction does.
         var counters = new List<(EmailClaimMailCounter Counter, ClaimEmailSendOutcome Refusal)>
         {
@@ -653,23 +651,13 @@ internal sealed class EmailClaimCompletion : IClaimCompletionEmail
         }
 
         counters.Add((
-            new EmailClaimMailCounter(
-                EmailClaimSecrets.CounterKey(
-                    AddressCounterKind,
-                    string.Join(ScopeSeparator, tenant, EmailAddressHelper.ToComparisonForm(address, normalization))),
-                limits.PerAddress,
-                EmailClaimMailWindows.Address),
+            EmailClaimMailCounter.OfRecipientAddress(AddressCounterKind, tenantId, address, normalization, limits.PerAddress),
             ClaimEmailSendOutcome.AddressLimit));
 
         // Zero switches the limit of the domain off (SPEC-041 E61): no counter, nothing to refuse by.
-        if (limits.PerDomain > 0 && EmailChannelAdapter.ExtractDomain(address) is { } domain)
+        if (EmailClaimMailCounter.OfRecipientDomain(DomainCounterKind, tenantId, address, limits.PerDomain) is { } domainCounter)
         {
-            counters.Add((
-                new EmailClaimMailCounter(
-                    EmailClaimSecrets.CounterKey(DomainCounterKind, string.Join(ScopeSeparator, tenant, domain.ToLowerInvariant())),
-                    limits.PerDomain,
-                    EmailClaimMailWindows.Domain),
-                ClaimEmailSendOutcome.DomainLimit));
+            counters.Add((domainCounter, ClaimEmailSendOutcome.DomainLimit));
         }
 
         // The interval between two mails; zero switches it off.

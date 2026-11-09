@@ -472,6 +472,90 @@ public static class AuthServerConfigKeys
         .Declare();
 
     /// <summary>
+    /// Member the settings of remembering the sign-in channel live in inside the global section of the
+    /// page design and inside the record of a level above the core — the tenant record and the OIDC
+    /// client entry. Written out for the reason <see cref="ShowQrCodeMember"/> is: no level binds the
+    /// member into an object for this setting, and the address of a level is a contract of the
+    /// deployment (SPEC-012 §10.6).
+    /// </summary>
+    private const string RememberChannelSection = "RememberChannel";
+
+    /// <summary>
+    /// Member of <see cref="RememberChannelSection"/> carrying the switch of the hint of the last
+    /// channel, as a deployment spells it.
+    /// </summary>
+    private const string RememberChannelHintMember = "Hint";
+
+    /// <summary>
+    /// Member of <see cref="RememberChannelSection"/> carrying the switch of the "remember" checkbox, as
+    /// a deployment spells it.
+    /// </summary>
+    private const string RememberChannelCheckboxMember = "Checkbox";
+
+    /// <summary>
+    /// Whether the product SHIPS the hint of the last channel on — the value the core level yields where
+    /// the section states none: it is off. It lives at the key for the reason
+    /// <see cref="ShippedVisibility"/> does.
+    /// </summary>
+    private const bool ShippedRememberChannelHint = false;
+
+    /// <summary>
+    /// Whether the product SHIPS the "remember" checkbox on — the value the core level yields where the
+    /// section states none: it is off. It lives at the key for the reason <see cref="ShippedVisibility"/>
+    /// does.
+    /// </summary>
+    private const bool ShippedRememberChannelCheckbox = false;
+
+    /// <summary>
+    /// Whether the sign-in window, the entry page of a confirmation and the scanner page of the unified
+    /// QR code remember, silently, the TYPE of the channel the user went through, and put that channel
+    /// forward on the next visit: its tab is selected, its button comes first. A plain value over the
+    /// core, tenant and application levels, each overriding the one below it freely: the first level
+    /// that states the switch wins. The core level declares the shipped answer — the hint is off.
+    /// <para>
+    /// The channel is kept in a cookie of the Veriqa host that the script of the page writes and reads;
+    /// the server never reads it, and the switch decides only what the page hands its script. The key
+    /// has no <c>ui_config</c> level: the record does not carry the member.
+    /// </para>
+    /// </summary>
+    public static ConfigKey<bool> RememberChannelHint { get; } = Declared
+        .Of<bool>("AuthPageDesign.RememberChannel.Hint")
+        .At(
+            ConfigLevel.Core,
+            AuthPageDesignOptions.SectionName + ":" + RememberChannelSection + ":" + RememberChannelHintMember)
+        .At(ConfigLevel.Tenant, RememberChannelSection + ":" + RememberChannelHintMember)
+        .At(ConfigLevel.Application, RememberChannelSection + ":" + RememberChannelHintMember)
+        .Cached(ConfigCachePolicy.ExternalStore)
+        .Default(ShippedRememberChannelHint)
+        .Declare();
+
+    /// <summary>
+    /// Whether a page that shows the unified QR code — the sign-in window and the entry page of a
+    /// confirmation, on a desktop — offers the checkbox that remembers the channel the user went
+    /// through, so that the next visit opens on the panel of that channel with its own QR code. Where
+    /// the checkbox is shown, the channel is remembered only once it is checked. A plain value over the
+    /// core, tenant and application levels, each overriding the one below it freely: the first level
+    /// that states the switch wins. The core level declares the shipped answer — the checkbox is off.
+    /// <para>
+    /// The channel is kept in a cookie of the Veriqa host that the script of the page writes and reads;
+    /// the server never reads it. The switch decides the markup of the page and what it hands its
+    /// script: under the unified QR code alone, the page then carries the panels of its channels hidden,
+    /// for the script to show the remembered one. The key has no <c>ui_config</c> level: the record does
+    /// not carry the member.
+    /// </para>
+    /// </summary>
+    public static ConfigKey<bool> RememberChannelCheckbox { get; } = Declared
+        .Of<bool>("AuthPageDesign.RememberChannel.Checkbox")
+        .At(
+            ConfigLevel.Core,
+            AuthPageDesignOptions.SectionName + ":" + RememberChannelSection + ":" + RememberChannelCheckboxMember)
+        .At(ConfigLevel.Tenant, RememberChannelSection + ":" + RememberChannelCheckboxMember)
+        .At(ConfigLevel.Application, RememberChannelSection + ":" + RememberChannelCheckboxMember)
+        .Cached(ConfigCachePolicy.ExternalStore)
+        .Default(ShippedRememberChannelCheckbox)
+        .Declare();
+
+    /// <summary>
     /// Hint of the sign-in page FOR A CHANNEL: the owner is the tenant (SPEC-012 §9), resolved by the
     /// common precedence of SPEC-012 §10.3. The channel is the IDENTITY dimension of the key — "the
     /// hint for channel X" is a question to the resolver rather than a lookup inside a resolved map, so

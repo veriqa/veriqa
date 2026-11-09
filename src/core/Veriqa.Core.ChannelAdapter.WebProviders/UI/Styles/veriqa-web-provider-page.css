@@ -42,3 +42,111 @@
     margin: 0 auto var(--veriqa-spacing-md);
 }
 .veriqa-wp-waiting > .veriqa-instruction { margin-bottom: 0; }
+
+/* The answers with the slider in place of "Yes" stand one under another, each across the card: the
+   track above, "No" under it, as tall as the track - a lower "No" would read as the lesser answer. The
+   height is the handle with the padding and the border of the track around it. */
+.veriqa-wp-answers-slider {
+    --veriqa-wp-slider-handle-size: 2.75rem;
+    --veriqa-wp-slider-height: calc(var(--veriqa-wp-slider-handle-size) + 2 * var(--veriqa-spacing-xs) + 2px);
+    flex-direction: column;
+}
+.veriqa-wp-answers-slider form { flex: none; }
+.veriqa-wp-answers-slider .veriqa-btn { min-height: var(--veriqa-wp-slider-height); }
+
+/* The track of the slider: a fill of its own, set apart from the card, its text in the middle, the
+   handle at its start. The part of the track the handle has been drawn over fills behind it, and the
+   text fades as the handle goes, so the handle never stands over half a word. The script states how far
+   the handle is: --veriqa-wp-slider-offset in pixels, --veriqa-wp-slider-share from 0 to 1. */
+.veriqa-wp-slider {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: var(--veriqa-wp-slider-height);
+    padding: var(--veriqa-spacing-xs);
+    border: 1px solid var(--veriqa-surface-variant);
+    border-radius: 999px;
+    background: var(--veriqa-surface-variant);
+    user-select: none;
+    -webkit-user-select: none;
+}
+.veriqa-wp-slider[hidden] { display: none; }
+.veriqa-wp-slider-fill {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: calc(var(--veriqa-wp-slider-offset, 0px) + var(--veriqa-wp-slider-handle-size) + 2 * var(--veriqa-spacing-xs));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--veriqa-primary) 18%, transparent);
+    pointer-events: none;
+    transition: width var(--veriqa-transition-fast);
+}
+.veriqa-wp-slider-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--veriqa-spacing-48);
+    color: var(--veriqa-text);
+    font-family: var(--veriqa-font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-align: center;
+    pointer-events: none;
+    opacity: calc(1 - var(--veriqa-wp-slider-share, 0));
+    transition: opacity var(--veriqa-transition-fast);
+}
+/* Drawn to the end and not let go yet: the track turns to the primary color and its text says that
+   letting go answers; the text of the start is gone by then. */
+.veriqa-wp-slider-release {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--veriqa-spacing-48);
+    color: var(--veriqa-on-primary);
+    font-family: var(--veriqa-font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--veriqa-transition-fast);
+}
+.veriqa-wp-slider-ready .veriqa-wp-slider-fill { background: var(--veriqa-primary); }
+.veriqa-wp-slider-ready .veriqa-wp-slider-release { opacity: 1; }
+/* Answered: the track stays filled while the answer is sent, and the text that asks to let go is gone. */
+.veriqa-wp-slider-sent .veriqa-wp-slider-fill { background: var(--veriqa-primary); }
+.veriqa-wp-slider-sent .veriqa-wp-slider-release { opacity: 0; }
+/* The handle: a target of the size a finger needs, drawn along the track by the pointer alone - the
+   page does not scroll under it. It goes back to the start of the track when let go early. */
+.veriqa-wp-slider-handle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: var(--veriqa-wp-slider-handle-size);
+    height: var(--veriqa-wp-slider-handle-size);
+    border: 1px solid var(--veriqa-surface-variant);
+    border-radius: 50%;
+    background: var(--veriqa-bg);
+    color: var(--veriqa-text);
+    font-size: 1rem;
+    cursor: grab;
+    touch-action: none;
+    transition: transform var(--veriqa-transition-fast);
+}
+.veriqa-wp-slider-handle:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; }
+.veriqa-wp-slider-dragging .veriqa-wp-slider-handle { cursor: grabbing; transition: none; }
+.veriqa-wp-slider-dragging .veriqa-wp-slider-fill,
+.veriqa-wp-slider-dragging .veriqa-wp-slider-text { transition: none; }
+.veriqa-wp-slider-handle:disabled { cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+    .veriqa-wp-slider-handle,
+    .veriqa-wp-slider-fill,
+    .veriqa-wp-slider-text,
+    .veriqa-wp-slider-release { transition: none; }
+}

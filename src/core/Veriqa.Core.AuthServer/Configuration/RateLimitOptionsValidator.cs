@@ -52,6 +52,11 @@ public sealed class RateLimitOptionsValidator : IValidateOptions<RateLimitOption
             failures.Add("WebhookWindowSeconds must be greater than 0.");
         }
 
+        if (options.WebhookMaxPartitions <= 0)
+        {
+            failures.Add("WebhookMaxPartitions must be greater than 0.");
+        }
+
         if (options.TokenPermitLimit <= 0)
         {
             failures.Add("TokenPermitLimit must be greater than 0.");

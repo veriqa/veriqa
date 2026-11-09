@@ -86,16 +86,17 @@ public sealed class CorePageTextOverride
 
     /// <summary>
     /// The part of this value a page may apply in place of <paramref name="naturalKey"/>: the variants
-    /// whose slots match the slots of the text they replace. A variant that does not match is dropped —
-    /// the page then shows the original text the regular way.
+    /// whose slots match the slots of the text they replace, its optional slots aside. A variant that does
+    /// not match is dropped — the page then shows the original text the regular way.
     /// </summary>
     /// <param name="naturalKey">Text the value stands for.</param>
+    /// <param name="optionalSlots">Optional slots of the text (<see cref="CorePageTextSlots"/>).</param>
     /// <returns>Applicable part of the value; null when no variant of it applies.</returns>
-    internal CorePageTextOverride? ApplicableTo(string naturalKey)
+    internal CorePageTextOverride? ApplicableTo(string naturalKey, IReadOnlySet<string> optionalSlots)
     {
         if (ReplacementKey is { } replacement)
         {
-            return CorePageTextSlots.HaveSameSlots(naturalKey, replacement) ? this : null;
+            return CorePageTextSlots.HaveSameSlots(naturalKey, replacement, optionalSlots) ? this : null;
         }
 
         // Exactly one of the two forms is set, so a value without a replacement key is the map.
@@ -104,7 +105,7 @@ public sealed class CorePageTextOverride
 
         foreach (var (language, text) in byLanguage)
         {
-            if (CorePageTextSlots.HaveSameSlots(naturalKey, text))
+            if (CorePageTextSlots.HaveSameSlots(naturalKey, text, optionalSlots))
             {
                 applicable[language] = text;
             }
@@ -119,17 +120,20 @@ public sealed class CorePageTextOverride
     }
 
     /// <summary>
-    /// The texts of this value whose slots do not match the slots of <paramref name="naturalKey"/>, each
-    /// with the address it is stated at relative to the entry — the entry itself for the form "text",
-    /// its language member for the form by language.
+    /// The texts of this value whose slots do not match the slots of <paramref name="naturalKey"/>, its
+    /// optional slots aside, each with the address it is stated at relative to the entry — the entry itself
+    /// for the form "text", its language member for the form by language.
     /// </summary>
     /// <param name="naturalKey">Text the value stands for.</param>
+    /// <param name="optionalSlots">Optional slots of the text (<see cref="CorePageTextSlots"/>).</param>
     /// <returns>Mismatching texts: language (null for the form "text") and text.</returns>
-    internal IEnumerable<(string? Language, string Text)> SlotMismatchesWith(string naturalKey)
+    internal IEnumerable<(string? Language, string Text)> SlotMismatchesWith(
+        string naturalKey,
+        IReadOnlySet<string> optionalSlots)
     {
         if (ReplacementKey is { } replacement)
         {
-            if (!CorePageTextSlots.HaveSameSlots(naturalKey, replacement))
+            if (!CorePageTextSlots.HaveSameSlots(naturalKey, replacement, optionalSlots))
             {
                 yield return (null, replacement);
             }
@@ -139,7 +143,7 @@ public sealed class CorePageTextOverride
 
         foreach (var (language, text) in ByLanguage!)
         {
-            if (!CorePageTextSlots.HaveSameSlots(naturalKey, text))
+            if (!CorePageTextSlots.HaveSameSlots(naturalKey, text, optionalSlots))
             {
                 yield return (language, text);
             }

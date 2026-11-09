@@ -1,9 +1,11 @@
 # Telegram login for Python, Node.js, Go, PHP and ASP.NET Core — passwordless Telegram authentication over OpenID Connect (OIDC)
 
-Sign in with Telegram for a Python, Node.js, Go, PHP or ASP.NET Core app, with no password: QR code login instead of a password or an SMS
-code. Your users scan the QR code on the sign-in page (on a phone, they tap a button) and confirm in Telegram.
+Sign in with Telegram for a Python, Node.js, Go, PHP or ASP.NET Core app, with no password: cross-device QR code login instead of a password or an SMS
+code. Your users scan the QR code on the sign-in page with their phone (on the phone itself, they tap a button) and confirm in Telegram.
 
 The example is a standard OpenID Connect (OIDC) provider plus a minimal client app in each of these languages. Login with Telegram works the same way on any other stack with an OIDC library.
+
+Telegram also has a sign-in of its own over OpenID Connect, with fewer capabilities. The two are compared in [How Veriqa differs](https://veriqa.app/docs/concepts/comparison#telegrams-own-sign-in).
 
 <p align="center">
   <img src="./media/en-telegram-overview.webp" width="800" alt="Signing in on a computer with Telegram: the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in the Telegram chat, and the chat replies &quot;Sign-in confirmed&quot;." /><br />

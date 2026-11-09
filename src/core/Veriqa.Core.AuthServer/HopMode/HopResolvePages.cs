@@ -27,8 +27,9 @@ namespace Veriqa.Core.AuthServer.HopMode;
 /// The pages the resolve endpoint answers with, each built over the context it may read: the refusal and
 /// the neutral page over the request and the core level only, the two launch pages and the scanner page
 /// over their transaction (SPEC-025 HOP-066, HOP-070, HOP-072a, HOP-146). Every page is a <c>200</c> HTML page:
-/// the first three of the core contour's service-page family, the scanner page of the sign-in window's
-/// renderer.
+/// the first three of the core contour's service-page family, the scanner page of the built-in renderer of
+/// the sign-in window. A renderer of the host's own (<c>UseAuthPageRenderer</c>) never receives the scanner
+/// page: the built-in renderer's page script sends the hop signals, whose format is not published.
 /// </summary>
 internal sealed class HopResolvePages
 {
@@ -80,9 +81,10 @@ internal sealed class HopResolvePages
     private readonly TransactionPageContextBuilder _pageContextBuilder;
 
     /// <summary>
-    /// The renderer of the sign-in window, which renders the scanner page as well.
+    /// The built-in renderer of the sign-in window, which renders the scanner page whatever renderer the
+    /// host substituted for the sign-in window.
     /// </summary>
-    private readonly IAuthPageRenderer _authPageRenderer;
+    private readonly DefaultAuthPageRenderer _authPageRenderer;
 
     /// <summary>
     /// Logger a rejected display label of a third-party channel is reported to.
@@ -113,7 +115,7 @@ internal sealed class HopResolvePages
     /// <param name="languageRegistry">Registry of supported languages.</param>
     /// <param name="veriqaOptions">Veriqa options.</param>
     /// <param name="pageContextBuilder">Builder of the context of the scanner page.</param>
-    /// <param name="authPageRenderer">Renderer of the sign-in window.</param>
+    /// <param name="authPageRenderer">Built-in renderer of the sign-in window.</param>
     /// <param name="engineOptions">Settings of the transaction engine.</param>
     /// <param name="userAgentNormalizer">Normalizer of the User-Agent.</param>
     /// <param name="logger">Logger.</param>
@@ -127,7 +129,7 @@ internal sealed class HopResolvePages
         IAuthPageLanguageRegistry languageRegistry,
         IOptions<VeriqaOptions> veriqaOptions,
         TransactionPageContextBuilder pageContextBuilder,
-        IAuthPageRenderer authPageRenderer,
+        DefaultAuthPageRenderer authPageRenderer,
         IOptionsMonitor<TransactionEngineOptions> engineOptions,
         IUserAgentNormalizer userAgentNormalizer,
         ILogger<HopResolvePages> logger)
@@ -379,8 +381,8 @@ internal sealed class HopResolvePages
 
     /// <summary>
     /// The scanner page of the unified hop QR code (SPEC-025 HOP-146): the page of the channel buttons the
-    /// phone that scanned the code chooses its channel on — rendered by the renderer of the sign-in window
-    /// over the context of its transaction, without a redirect and without an automatic start (HOP-144).
+    /// phone that scanned the code chooses its channel on — always rendered by the built-in renderer of the
+    /// sign-in window, never by a renderer of the host's own, over the context of its transaction, without a redirect and without an automatic start (HOP-144).
     /// A tap on a channel button sends the signal of the chosen channel when client signals are effectively
     /// accepted, by the same one reading of the settings the observation steps made (HOP-156). The token of
     /// a channel answered with this page gets the same page, with that channel as its whole list, and that

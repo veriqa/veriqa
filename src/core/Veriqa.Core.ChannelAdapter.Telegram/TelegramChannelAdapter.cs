@@ -35,7 +35,7 @@ namespace Veriqa.Core.ChannelAdapter.Telegram;
 /// Handles inbound events, sends confirmation prompts,
 /// notifications, and manages the deep link.
 /// </summary>
-internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
+internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName, IChannelAvatarSource
 {
     /// <summary>
     /// Per-tenant channel client factory (CA-164/CA-166).
@@ -262,7 +262,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
                 return Result<ChannelInboundResult>.Success(new ChannelUnrelatedResult { RawEvent = update });
             }
 
-            return await ProcessMessageAsync(update.Message, cancellationToken);
+            return ProcessMessage(update.Message);
         }
 
         // Other update types are unrelated to authentication
@@ -765,6 +765,19 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
             cancellationToken);
 
     /// <inheritdoc />
+    public async ValueTask<string?> GetAvatarAsync(string channelUserId, CancellationToken cancellationToken = default)
+    {
+        // The core asks only when the tokens are issued with the avatar scope, so the Bot API is never
+        // called for a chat answer. An identifier that is not a Telegram user id costs no request.
+        if (!long.TryParse(channelUserId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var userId))
+        {
+            return null;
+        }
+
+        return await TryGetAvatarUrlAsync(userId, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<Result<bool>> ReportOutcomeAsync(
         TransactionOutcomeNotice notice,
         CancellationToken cancellationToken = default)
@@ -1125,7 +1138,6 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
 
     /// <summary>
     /// Handles a callback query (an inline-button press).
-    /// Requests the user's avatar for auth intents.
     /// </summary>
     /// <param name="callbackQuery">Callback query from Telegram.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -1155,9 +1167,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
             // Extract the transaction identifier
             var transactionIdStr = data[CallbackDataPrefixes.Confirm.Length..];
 
-            // Request the avatar for the auth intent
-            var avatarUrl = await TryGetAvatarUrlAsync(user.Id, cancellationToken);
-            var identity = ExtractIdentitySnapshotFromUser(user, _timeProvider.GetUtcNow(), avatarUrl);
+            var identity = ExtractIdentitySnapshotFromUser(user, _timeProvider.GetUtcNow());
 
             _logger.LogInformation(
                 "Confirmation received from user {UserIdHash}, transaction {TransactionId}",
@@ -1258,9 +1268,8 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
     /// Handles an inbound message.
     /// </summary>
     /// <param name="message">Message from Telegram.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The processing result.</returns>
-    private async Task<Result<ChannelInboundResult>> ProcessMessageAsync(Message message, CancellationToken cancellationToken)
+    private Result<ChannelInboundResult> ProcessMessage(Message message)
     {
         // Handle a contact (phone number)
         if (message.Contact is not null)
@@ -1271,15 +1280,15 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
         // Handle the /start text command
         if (IsStartCommand(message))
         {
-            return await ProcessStartCommandAsync(message, cancellationToken);
+            return ProcessStartCommand(message);
         }
 
         // Any other message is a direct message to the bot that names no transaction. The sender is
         // carried along, so the core can answer such a message when the registration declares a text
         // for it (SPEC-003 CA-201); From is non-null here because ValidateMessageContext — the single
-        // caller's gate — refuses a message without one. No avatar is requested: a network call per
-        // arbitrary message buys nothing here. The text travels too: the secondary button of the phone
-        // number request is a plain keyboard button, and its label is all its press sends (SPEC-041 L73).
+        // caller's gate — refuses a message without one. The text travels too: the secondary button of
+        // the phone number request is a plain keyboard button, and its label is all its press sends
+        // (SPEC-041 L73).
         return Result<ChannelInboundResult>.Success(new ChannelUnaddressedResult
         {
             Identity = ExtractIdentitySnapshotFromUser(message.From!, _timeProvider.GetUtcNow()),
@@ -1290,12 +1299,10 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
 
     /// <summary>
     /// Handles the /start command with a possible deep link parameter.
-    /// Requests the user's avatar for the auth intent.
     /// </summary>
     /// <param name="message">Message with the /start command.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The processing result.</returns>
-    private async Task<Result<ChannelInboundResult>> ProcessStartCommandAsync(Message message, CancellationToken cancellationToken)
+    private Result<ChannelInboundResult> ProcessStartCommand(Message message)
     {
         var user = message.From;
         if (user is null)
@@ -1327,8 +1334,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
 
         // A /start without our deep link parameter is not a sign-in attempt — nothing to correlate —
         // but it IS a direct message from a vetted sender, so the sender travels with it and the core
-        // may answer (SPEC-003 CA-201). No avatar is requested on this branch: it is the sign-in
-        // intent below that shows one, and a network call per bare /start buys nothing.
+        // may answer (SPEC-003 CA-201).
         if (transactionIdStr is null)
         {
             return Result<ChannelInboundResult>.Success(new ChannelUnaddressedResult
@@ -1343,13 +1349,10 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
             return Result<ChannelInboundResult>.Success(new ChannelUnrelatedResult { RawEvent = message });
         }
 
-        // Request the avatar for the auth intent
-        var avatarUrl = await TryGetAvatarUrlAsync(user.Id, cancellationToken);
-
         return Result<ChannelInboundResult>.Success(new ChannelAuthStartResult
         {
             TransactionId = startTransactionId,
-            Identity = ExtractIdentitySnapshotFromUser(user, _timeProvider.GetUtcNow(), avatarUrl),
+            Identity = ExtractIdentitySnapshotFromUser(user, _timeProvider.GetUtcNow()),
             RawEvent = message
         });
     }
@@ -1456,12 +1459,10 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
     /// </summary>
     /// <param name="user">Telegram user.</param>
     /// <param name="capturedAt">Capture moment (UTC), supplied by the caller's time provider.</param>
-    /// <param name="avatarUrl">User avatar URL (may be null).</param>
     /// <returns>The channel user identity snapshot.</returns>
     private static ChannelIdentitySnapshot ExtractIdentitySnapshotFromUser(
         User user,
-        DateTimeOffset capturedAt,
-        string? avatarUrl = null)
+        DateTimeOffset capturedAt)
     {
         // Build the display name from FirstName and LastName
         var displayName = string.IsNullOrEmpty(user.LastName)
@@ -1491,7 +1492,6 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
             Locale = user.LanguageCode,
             CapturedAt = capturedAt,
             AdapterVersion = TelegramAdapterConstants.AdapterVersion,
-            AvatarUrl = avatarUrl,
             RawMetadata = rawMetadata
         };
     }
@@ -1528,18 +1528,27 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
     /// file download) and returns the image itself as an avatar data URI (<see cref="AvatarDataUri"/>).
     /// The value carries no Bot API link, so the secret bot token and the Telegram file reference
     /// stay inside the adapter. Returns null when the user has no photo, the file is larger than
-    /// <see cref="AvatarDataUri.MaxImageBytes"/>, the bytes are not an accepted image type, or the
-    /// Bot API call fails. Cancellation of the request propagates.
+    /// <see cref="AvatarDataUri.MaxImageBytes"/>, the bytes are not an accepted image type, the
+    /// Bot API call fails, or the requests together take longer than
+    /// <see cref="TelegramAdapterConstants.AvatarBudgetSeconds"/>. Cancellation of the request propagates.
     /// </summary>
     /// <param name="userId">Telegram user identifier.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The avatar data URI, or null.</returns>
     private async Task<string?> TryGetAvatarUrlAsync(long userId, CancellationToken cancellationToken)
     {
+        // One budget for every request of the avatar: a slow Bot API costs the waiting issuance no more
+        // than the budget, and the caller's cancellation still reaches each request through the link.
+        using var budget = new CancellationTokenSource(
+            TimeSpan.FromSeconds(TelegramAdapterConstants.AvatarBudgetSeconds),
+            _timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, budget.Token);
+        var requestToken = linked.Token;
+
         try
         {
             // Resolve the tenant client; if credentials are missing — the avatar is unavailable (return null).
-            var clientResult = await ResolveClientAsync(cancellationToken);
+            var clientResult = await ResolveClientAsync(requestToken);
             if (clientResult.IsFailure)
             {
                 return null;
@@ -1552,7 +1561,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
                 userId: userId,
                 offset: 0,
                 limit: 1,
-                cancellationToken: cancellationToken);
+                cancellationToken: requestToken);
 
             if (photos.Photos.Length is 0)
             {
@@ -1570,7 +1579,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
             var smallestPhoto = photoSizes[0];
             var file = await botClient.GetFile(
                 fileId: smallestPhoto.FileId,
-                cancellationToken: cancellationToken);
+                cancellationToken: requestToken);
 
             if (string.IsNullOrEmpty(file.FilePath))
             {
@@ -1593,7 +1602,7 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
             using var destination = new MemoryStream(image, writable: true);
             try
             {
-                await botClient.DownloadFile(file.FilePath, destination, cancellationToken);
+                await botClient.DownloadFile(file.FilePath, destination, requestToken);
             }
             catch (Exception ex) when (ex is NotSupportedException || ex.InnerException is NotSupportedException)
             {
@@ -1623,6 +1632,15 @@ internal sealed class TelegramChannelAdapter : IChannelAdapter, IChannelBotName
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException) when (budget.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "Avatar of user {UserIdHash} skipped: the Bot API did not answer within {BudgetSeconds} s",
+                LogMasking.Fingerprint(userId.ToString(CultureInfo.InvariantCulture)),
+                TelegramAdapterConstants.AvatarBudgetSeconds);
+
+            return null;
         }
         catch (Exception ex)
         {

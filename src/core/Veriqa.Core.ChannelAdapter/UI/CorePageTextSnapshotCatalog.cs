@@ -9,8 +9,8 @@ namespace Veriqa.Core.ChannelAdapter.UI;
 /// Snapshot catalog of ONE level of <see cref="CorePageTextConfigKeys.Texts"/>: it reports, once per
 /// snapshot of the level's source, the entries a page never applies — an entry keyed by a text no owner
 /// of the pages declared overridable, and a replacement whose slots differ from the slots of the text it
-/// replaces (SPEC-012 CFG-240). The resolution drops both in silence, per render; this is where the
-/// operator hears about them.
+/// replaces, the optional slots of the text aside (SPEC-012 CFG-240). The resolution drops both in
+/// silence, per render; this is where the operator hears about them.
 /// <para>
 /// It is the owner's own catalog rather than a domain of the key: a domain judges a value alone, and
 /// both rules here need the text the entry is keyed by — the value of the identity dimension — and the
@@ -151,9 +151,10 @@ internal sealed class CorePageTextSnapshotCatalog : IConfigSnapshotCatalog
             yield break;
         }
 
-        var slots = CorePageTextSlots.Describe(text);
+        var optionalSlots = _overridable.OptionalSlotsOf(text);
+        var slots = CorePageTextSlots.Describe(text, optionalSlots);
 
-        foreach (var (language, replacement) in stated.SlotMismatchesWith(text))
+        foreach (var (language, replacement) in stated.SlotMismatchesWith(text, optionalSlots))
         {
             yield return Rejected(
                 node,

@@ -1,7 +1,9 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.Configuration;
+using Veriqa.Core.Contracts;
 
 namespace Veriqa.Core.ChannelAdapter.WebProviders.Configuration;
 
@@ -93,9 +95,64 @@ internal static class WebProviderConfigKeys
     public const string IconSvgPathMember = "IconSvgPath";
 
     /// <summary>
+    /// Member: where the page of the channel takes "Yes" by a slider.
+    /// </summary>
+    public const string ConfirmSliderMember = "ConfirmSlider";
+
+    /// <summary>
+    /// Where the page of a channel takes "Yes" by a slider when its section does not say: on a touch
+    /// screen.
+    /// </summary>
+    public const WebProviderConfirmSlider DefaultConfirmSlider = WebProviderConfirmSlider.Mobile;
+
+    /// <summary>
+    /// Subsection: where the phone number of the account is read from in the answer of the provider,
+    /// and what the channel declares about it.
+    /// </summary>
+    public const string PhoneNumberSectionName = "PhoneNumber";
+
+    /// <summary>
+    /// Member of the <c>PhoneNumber</c> subsection: the ways the channel obtains the number.
+    /// </summary>
+    public const string PhoneAcquisitionMember = nameof(PhoneNumberCapability.Acquisition);
+
+    /// <summary>
+    /// Member of the <c>PhoneNumber</c> subsection: whether a number of the provider is proven.
+    /// </summary>
+    public const string PhoneProofMember = nameof(PhoneNumberCapability.Proof);
+
+    /// <summary>
+    /// Member of the <c>PhoneNumber</c> subsection and of an entry of <c>Claims</c>: path of a value in
+    /// the answer of the provider (<c>PhoneNumber</c>), or the name of the claim Veriqa issues
+    /// (<c>Claims</c>).
+    /// </summary>
+    public const string ClaimMember = "Claim";
+
+    /// <summary>
+    /// Member of the <c>PhoneNumber</c> subsection: path of the provider's statement that the number is
+    /// verified.
+    /// </summary>
+    public const string VerifiedClaimMember = "VerifiedClaim";
+
+    /// <summary>
+    /// Member: list of the claims taken from the answer of the provider.
+    /// </summary>
+    public const string ClaimsMember = "Claims";
+
+    /// <summary>
+    /// Member of an entry of <c>Claims</c>: path of the value in the answer of the provider.
+    /// </summary>
+    public const string SourceMember = "Source";
+
+    /// <summary>
     /// Prefix of the canonical names of the keys.
     /// </summary>
     private const string KeyNamePrefix = "Channels." + WebProviderSectionName + ".";
+
+    /// <summary>
+    /// Separator of the segments of a canonical key name.
+    /// </summary>
+    private const char KeyNameSeparator = '.';
 
     /// <summary>
     /// Core-level address of the <c>WebProvider</c> subsection with the channel dimension in it.
@@ -185,6 +242,77 @@ internal static class WebProviderConfigKeys
     public static ConfigKey<string?> IconSvgPath { get; } = Core<string?>(IconSvgPathMember).Declare();
 
     /// <summary>
+    /// <c>WebProvider:ConfirmSlider</c> — where the page of the channel takes "Yes" to its question by a
+    /// slider instead of a button: <c>Off</c>, <c>Mobile</c> (a browser whose main pointer is coarse) or
+    /// <c>Everywhere</c>, compared without regard to case. On a touch screen by default.
+    /// </summary>
+    public static ConfigKey<WebProviderConfirmSlider> ConfirmSlider { get; } =
+        Core<WebProviderConfirmSlider>(ConfirmSliderMember)
+            .Default(DefaultConfirmSlider)
+            .Declare();
+
+    /// <summary>
+    /// <c>WebProvider:PhoneNumber:Acquisition</c> — the ways the channel obtains the phone number of the
+    /// account: <see cref="PhoneNumberAcquisition.Automatic"/> only, since the page of the channel asks
+    /// for no number; a configuration array by index. None by default: the channel gives no number, and
+    /// the rest of the subsection is not used.
+    /// </summary>
+    public static ConfigKey<IReadOnlyList<string>> PhoneAcquisition { get; } =
+        Core<IReadOnlyList<string>>(PhoneNumberMember(PhoneAcquisitionMember))
+            .Default(Array.Empty<string>())
+            .Declare();
+
+    /// <summary>
+    /// <c>WebProvider:PhoneNumber:Proof</c> — whether a number the provider states is proven to belong to
+    /// the user: the ceiling of the proof, which an explicit <c>false</c> of the provider at
+    /// <see cref="PhoneVerifiedClaim"/> lowers. Not proven by default.
+    /// </summary>
+    public static ConfigKey<PhoneNumberProof> PhoneProof { get; } =
+        Core<PhoneNumberProof>(PhoneNumberMember(PhoneProofMember))
+            .Default(PhoneNumberProof.NotProven)
+            .Declare();
+
+    /// <summary>
+    /// <c>WebProvider:PhoneNumber:Claim</c> — path of the number in the answer of the provider: the claim
+    /// type, then the members of the JSON object in its value, separated by dots
+    /// (<c>default_phone.number</c>). By default the standard <c>phone_number</c>.
+    /// </summary>
+    public static ConfigKey<string?> PhoneClaim { get; } =
+        Core<string?>(PhoneNumberMember(ClaimMember))
+            .Default(VeriqaClaimTypes.PhoneNumber)
+            .Declare();
+
+    /// <summary>
+    /// <c>WebProvider:PhoneNumber:VerifiedClaim</c> — path of the provider's statement that the number is
+    /// verified, in the form of <see cref="PhoneClaim"/>. With <see cref="PhoneClaim"/> unstated it is the
+    /// standard <c>phone_number_verified</c>; with <see cref="PhoneClaim"/> stated, only what is stated
+    /// here.
+    /// </summary>
+    public static ConfigKey<string?> PhoneVerifiedClaim { get; } =
+        Core<string?>(PhoneNumberMember(VerifiedClaimMember)).Declare();
+
+    /// <summary>
+    /// <c>WebProvider:PhoneNumber:Scopes</c> — scopes asked of the provider only for a sign-in that
+    /// requires the number or asks for it as optional, a configuration array by index. None by default.
+    /// </summary>
+    public static ConfigKey<IReadOnlyList<string>> PhoneScopes { get; } =
+        Core<IReadOnlyList<string>>(PhoneNumberMember(ScopesMember))
+            .Default(Array.Empty<string>())
+            .Declare();
+
+    /// <summary>
+    /// <c>WebProvider:Claims</c> — claims taken from the answer of the provider, a configuration array by
+    /// index of entries <c>Source</c> (path of the value, in the form of <see cref="PhoneClaim"/>),
+    /// <c>Claim</c> (a name of <see cref="VeriqaClaimTypes.StandardProfileClaims"/> or one prefixed with
+    /// the channel) and <c>Scopes</c> (asked of the provider only for a sign-in with a requirement to that
+    /// claim). None by default.
+    /// </summary>
+    public static ConfigKey<IReadOnlyList<WebProviderClaimMapping>> Claims { get; } =
+        Core<IReadOnlyList<WebProviderClaimMapping>>(ClaimsMember)
+            .Default(Array.Empty<WebProviderClaimMapping>())
+            .Declare();
+
+    /// <summary>
     /// Declarations of the web provider channels — what <c>AddWebProviders()</c> registers into the
     /// container, and what the schema of a deployment carries because of it.
     /// </summary>
@@ -198,7 +326,16 @@ internal static class WebProviderConfigKeys
     /// <param name="member">Member of the <c>WebProvider</c> subsection.</param>
     /// <returns>Builder of the declaration.</returns>
     private static ConfigKeyBuilder<T> Core<T>(string member) => Declared
-        .Of<T>(KeyNamePrefix + member)
+        .Of<T>(KeyNamePrefix + member.Replace(ConfigNode.PathSeparator, KeyNameSeparator))
         .Identity(ConfigDimensionNames.Channel)
         .At(ConfigLevel.Core, CoreWebProviderSectionTemplate + member);
+
+    /// <summary>
+    /// Address of one member of the <c>PhoneNumber</c> subsection, relative to the <c>WebProvider</c>
+    /// subsection.
+    /// </summary>
+    /// <param name="member">Member of the <c>PhoneNumber</c> subsection.</param>
+    /// <returns>The relative address.</returns>
+    private static string PhoneNumberMember(string member) =>
+        PhoneNumberSectionName + ConfigNode.PathSeparator + member;
 }

@@ -1,0 +1,54 @@
+# Veriqa for the veriqa-approval plugin - a local host at https://127.0.0.1:8443, the plugin's default
+# host_url (README, steps 1 and 2).
+#
+# A local evaluation setup, not a production one: the Development environment keeps the OpenIddict
+# store in memory and signs tokens with development certificates, so a restart forgets the issued
+# tokens and the open approvals (the plugin gets a new token by itself; the enrolled approvers are kept
+# by the plugin, not here). Production setup: https://veriqa.app/docs/quickstart/self-hosted
+#
+# Before `docker compose up -d`: fill .env from .env.example and create the HTTPS certificate in
+# certs/ with `docker compose run --rm certificate`.
+
+name: veriqa-claude-code
+
+services:
+  veriqa:
+    image: veriqa/veriqa
+    restart: unless-stopped
+    ports:
+      # Loopback only: the plugin runs on this machine. The hop channel needs a public HTTPS address
+      # in front of this port (README, "Channels").
+      - "127.0.0.1:8443:8443"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # HTTPS for the plugin; plain HTTP stays inside the container for the image's own health check.
+      ASPNETCORE_URLS: "https://+:8443;http://+:8080"
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /https/localhost.pfx
+      ASPNETCORE_Kestrel__Certificates__Default__Password: "${CERT_PASSWORD:?set CERT_PASSWORD in .env - see .env.example}"
+
+      # The secrets of veriqa.json, kept out of it: the plugin's client secret and the bot token.
+      Veriqa__OpenIddict__Clients__0__ClientSecret: "${CLIENT_SECRET:?set CLIENT_SECRET in .env - see .env.example}"
+      Veriqa__Channels__Telegram__BotToken: "${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN in .env - see .env.example}"
+    volumes:
+      - ./certs:/https:ro
+      # The client entry claude-code, its action types and the channels: README, step 2.
+      - ./veriqa.json:/app/config/veriqa.json:ro
+
+  # Creates the HTTPS certificate for localhost and 127.0.0.1; run it once with
+  # `docker compose run --rm certificate`. Claude Code trusts certs/localhost.crt through
+  # NODE_EXTRA_CA_CERTS (README, step 1).
+  certificate:
+    image: alpine/openssl:3.5.9
+    profiles: [setup]
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj /CN=localhost
+        -addext subjectAltName=DNS:localhost,IP:127.0.0.1 -keyout /tmp/localhost.key -out /certs/localhost.crt
+        && openssl pkcs12 -export -inkey /tmp/localhost.key -in /certs/localhost.crt
+        -out /certs/localhost.pfx -passout env:CERT_PASSWORD
+        && chmod 644 /certs/localhost.crt /certs/localhost.pfx
+    environment:
+      CERT_PASSWORD: "${CERT_PASSWORD:?set CERT_PASSWORD in .env - see .env.example}"
+    volumes:
+      - ./certs:/certs

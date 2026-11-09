@@ -71,4 +71,19 @@ internal sealed class WebProviderRegistration
     /// Inner markup of the channel glyph; <c>null</c> — none stated.
     /// </summary>
     public string? IconSvgPath { get; init; }
+
+    /// <summary>
+    /// Where the page of the channel takes "Yes" to its question by a slider instead of a button.
+    /// </summary>
+    public WebProviderConfirmSlider ConfirmSlider { get; init; } = WebProviderConfigKeys.DefaultConfirmSlider;
+
+    /// <summary>
+    /// Where the phone number of the account comes from; <c>null</c> — the channel gives no number.
+    /// </summary>
+    public WebProviderPhoneNumber? PhoneNumber { get; init; }
+
+    /// <summary>
+    /// Claims taken from the answer of the provider, in the order the configuration states them.
+    /// </summary>
+    public required IReadOnlyList<WebProviderClaimMapping> Claims { get; init; }
 }

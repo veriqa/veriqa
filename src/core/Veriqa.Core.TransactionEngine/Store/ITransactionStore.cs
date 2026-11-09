@@ -146,11 +146,9 @@ public interface ITransactionStore
     /// This selection is the ONLY thing that bounds a confirmed transaction in time: its TTL no
     /// longer decides anything about it (SPEC-001 §4.4 item 4), so what ends the wait is the sweep
     /// reading this member and writing Failed with <c>finalization_timeout</c> — a selection every
-    /// store owes (SPEC-001 §8.3 item 3). The Redis store of this delivery does not implement it
-    /// and answers with an empty list: a gap against that norm, not a licensed variant. There
-    /// nothing bounds a confirmed transaction — it stays readable, and answerable, until the
-    /// store drops the record. Callers stating that finalization "has a timeout of its
-    /// own" are therefore stating a fact about the store in use, not a property of the engine.
+    /// store owes (SPEC-001 §8.3 item 3). The threshold is the state and the moment of the last
+    /// write: a transaction is selected when it is <c>Confirmed</c> and its <c>UpdatedAt</c> is
+    /// earlier than <paramref name="confirmedBefore"/>.
     /// </remarks>
     /// <param name="confirmedBefore">Transactions confirmed earlier than this moment.</param>
     /// <param name="batchSize">Maximum batch size.</param>

@@ -9,14 +9,11 @@ using Veriqa.Core.AuthServer.Compatibility;
 using Veriqa.Core.AuthServer.Configuration;
 using Veriqa.Core.AuthServer.Constants;
 using Veriqa.Core.AuthServer.Endpoints;
-using Veriqa.Core.AuthServer.HopMode;
 using Veriqa.Core.AuthServer.InitiatorContext;
 using Veriqa.Core.AuthServer.Infrastructure;
 using Veriqa.Core.AuthServer.UI;
 using Veriqa.Core.AuthServer.UI.Services;
-using Veriqa.Core.ChannelAdapter.Abstractions;
 using Veriqa.Core.ChannelAdapter.UI;
-using Veriqa.Core.Configuration;
 using Veriqa.Core.TransactionEngine.CollectedClaims;
 using Veriqa.Core.TransactionEngine.Events;
 using Veriqa.Core.TransactionEngine.Identity;
@@ -118,6 +115,11 @@ internal static class VeriqaServicesExtensions
         // (SPEC-041 C35, L48). Scoped: it reads the channel adapters, whose lifetime a host may narrow.
         services.TryAddScoped<ClaimRequirementsBuilder>();
 
+        // The one place the avatar of the channel is asked for when the claims of a completed transaction
+        // are issued — the authorization code, the link handle exchange and the confirmation token. Scoped
+        // for the same reason as the requirements builder above: it reads the channel adapters.
+        services.TryAddScoped<ChannelAvatarSupplement>();
+
         // The web step of the claims completion (SPEC-041 L53): the starter the engine asks when the step
         // begins chooses and writes the surface the step is shown on, and sends the link button into the chat
         // when that surface is the device that confirmed the sign-in. Added as one more starter rather than in
@@ -217,9 +219,14 @@ internal static class VeriqaServicesExtensions
         services.TryAddSingleton<IAuthPageLanguageRegistry, AuthPageLanguageRegistry>();
 
         // Authentication page renderer (SPEC-007 §7, UI-050).
+        // The built-in renderer is registered as its own type as well: the scanner page of the hop always
+        // renders with it (SPEC-025 HOP-197), whatever renderer UseAuthPageRenderer<T>() substitutes for the
+        // sign-in window and the confirmation entry page. The interface resolves to the same instance.
         // TryAddSingleton for the same reason as IClaimsMapper above: the shipped default must not
         // overwrite UseAuthPageRenderer<T>() called from the configure delegate.
-        services.TryAddSingleton<IAuthPageRenderer, DefaultAuthPageRenderer>();
+        services.TryAddSingleton<DefaultAuthPageRenderer>();
+        services.TryAddSingleton<IAuthPageRenderer>(
+            serviceProvider => serviceProvider.GetRequiredService<DefaultAuthPageRenderer>());
 
         // Branding of the generated core pages and the resource scope of a request. Both live in the
         // channel contour, which owns the render points, and are registered here as well because a
@@ -227,85 +234,13 @@ internal static class VeriqaServicesExtensions
         // two roots cannot drift apart.
         services.AddCorePageUiServices();
 
-        // The texts of the pages this server owns that an owning level may override (SPEC-012 §4.3): the
-        // sign-in window — both surfaces that render it and the statuses of its script — the block of
-        // the start by a code those surfaces show, the two launch pages of the hop, the "session expired"
-        // page of the callback, the auto-posting page of the form_post response and the title and answers of
-        // the "Yes"/"No" question page of both types (its question is a message of the template mechanism,
-        // as are the lines of the channels of the pages), the title and the instruction of the form of the
-        // claims completion, and the action under an outcome the scanner page, the launch page and the
-        // receipts end on. The other pages of the server keep their texts.
-        services.AddCorePageOverridableTexts(
-        [
-            .. AuthPageStrings.OverridableTexts,
-            .. ChannelStartCodeBlock.OverridableTexts,
-            .. HopInterstitialPage.OverridableTexts,
-            .. HopCodeStartPage.OverridableTexts,
-            .. CallbackExpiredPage.OverridableTexts,
-            .. FormPostResponsePage.OverridableTexts,
-            .. WebConfirmPage.OverridableTexts,
-            .. ClaimCompletionPage.OverridableTexts,
-            .. OutcomeCloseAction.OverridableTexts
-        ]);
-
-        // The name and the two phrases of the button of every registered channel but Email, so a channel a
-        // deployment plugs in is renamed and reworded by the same entries as a built-in one (SPEC-007 UI-121,
-        // SPEC-012 CFG-254). Built by a factory: the adapters are known to the built provider only.
-        services.AddSingleton<CorePageOverridableTextContribution>(RegisteredChannelTexts);
+        // The texts of the pages this server owns that an owning level may override are registered by the
+        // composition of the configuration resolution (AuthServerConfigResolutionExtensions): the snapshot
+        // report of the text key needs them wherever the resolution is composed.
 
         // SignalR transaction event handler (SPEC-007 §5)
         services.AddSingleton<ITransactionEventHandler, SignalRTransactionEventHandler>();
 
         return services;
-    }
-
-    /// <summary>
-    /// Builds the overridable texts of the registered channels: for each adapter but Email, the key of its name
-    /// (<see cref="ChannelNames.NameKeyOf"/>) and the phrases of its button
-    /// (<see cref="AuthPageStrings.ChannelPhrases"/>), from the label the adapter declared. A channel whose texts
-    /// carry the path separator of the configuration is left out — no level addresses an entry for such a
-    /// text — with one warning; its name is still translated by the locale files.
-    /// </summary>
-    /// <param name="provider">Root service provider.</param>
-    /// <returns>The contribution of the registered channels.</returns>
-    private static CorePageOverridableTextContribution RegisteredChannelTexts(IServiceProvider provider)
-    {
-        var logger = provider.GetRequiredService<ILogger<CorePageOverridableTexts>>();
-        var texts = new List<string>();
-
-        // The adapters may be registered with a lifetime narrower than the process, so they are read inside a
-        // scope of their own. None of them depends on the overridable texts, so there is no cycle.
-        using var scope = provider.CreateScope();
-
-        foreach (var adapter in scope.ServiceProvider.GetServices<IChannelAdapter>())
-        {
-            var displayName = ChannelNames.ReadDeclaredMetadata(adapter, logger).DisplayName;
-
-            if (ChannelNames.NameKeyOf(adapter.ChannelType, displayName) is not { } nameKey)
-            {
-                continue;
-            }
-
-            IReadOnlyList<string> channelTexts =
-            [
-                nameKey,
-                .. AuthPageStrings.ChannelPhrases(ChannelNames.GetChannelName(adapter.ChannelType, displayName))
-            ];
-
-            if (channelTexts.Any(text => text.Contains(ConfigNode.PathSeparator)))
-            {
-                logger.LogWarning(
-                    "The name of channel {ChannelType} carries '{PathSeparator}' — its name and button texts "
-                    + "cannot be overridden by {TextsKey}; the locale files still translate the name",
-                    adapter.ChannelType,
-                    ConfigNode.PathSeparator,
-                    CorePageTextConfigKeys.KeyName);
-                continue;
-            }
-
-            texts.AddRange(channelTexts);
-        }
-
-        return new CorePageOverridableTextContribution(texts);
     }
 }

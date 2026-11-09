@@ -226,19 +226,14 @@ internal static partial class HttpChannelRegistrationReader
             WebhookVerificationQueryKey = null
         };
 
-        var tenant = ReadTenant(http);
-        var capabilities = ReadCapabilities(http.GetSection(HttpChannelConfigKeys.CapabilitiesSectionName));
-
-        CheckCodeStartOwner(http, tenant, capabilities);
-
         return new HttpChannelRegistration
         {
             ChannelType = channelType,
-            Tenant = tenant,
+            Tenant = ReadTenant(http),
             BaseUrl = baseUrl,
             TransportSecrets = transportSecrets,
             DeepLinkSchemes = deepLinkSchemes,
-            Capabilities = capabilities,
+            Capabilities = ReadCapabilities(http.GetSection(HttpChannelConfigKeys.CapabilitiesSectionName)),
             DisplayName = ReadText(http, HttpChannelConfigKeys.DisplayNameMember),
             IconSvgPath = ReadText(http, HttpChannelConfigKeys.IconSvgPathMember),
             RegistrationOptions = registrationOptions,
@@ -281,38 +276,6 @@ internal static partial class HttpChannelRegistrationReader
             path,
             "is empty: name the tenant that owns the registration, or remove the key to leave the registration "
             + "to the operator");
-    }
-
-    /// <summary>
-    /// Refuses the start by a code on a registration that has an owner (SPEC-042 E55). A code is taken
-    /// from the store of the whole deployment before the start path compares the tenant of its
-    /// transaction with the owner, so the adapter of one tenant could spend the live codes of another;
-    /// a registration of the operator compares nothing and is not exposed to that. This is the one place
-    /// that ties the owner to the start by a code — the wire, the pipeline and the conformance suite do
-    /// not depend on it.
-    /// </summary>
-    /// <param name="http">The <c>Http</c> subsection.</param>
-    /// <param name="tenant">The owner of the registration; <c>null</c> — none.</param>
-    /// <param name="capabilities">The declared facts of the registration.</param>
-    /// <exception cref="InvalidOperationException">The registration has an owner and declares the start by a code.</exception>
-    private static void CheckCodeStartOwner(IConfigurationSection http, string? tenant, ChannelCapabilities capabilities)
-    {
-        if (tenant is null || capabilities.CodeStart is null)
-        {
-            return;
-        }
-
-        var declarationPath = ConfigurationPath.Combine(
-            http.Path,
-            HttpChannelConfigKeys.CapabilitiesSectionName,
-            nameof(ChannelCapabilities.CodeStart),
-            nameof(ChannelCodeStart.LinkCarriesTransaction));
-
-        throw Invalid(
-            ConfigurationPath.Combine(http.Path, HttpChannelConfigKeys.TenantMember),
-            $"names the tenant that owns the registration while '{declarationPath}' declares the start by a code: "
-            + "in this version the start by a code is available only to a registration without an owner. Remove "
-            + "one of the two keys");
     }
 
     /// <summary>

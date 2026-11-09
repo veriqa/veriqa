@@ -3,12 +3,14 @@
 
 using Veriqa.Core.ChannelAdapter.Pipeline;
 using Veriqa.Core.ChannelAdapter.UI;
+using Veriqa.Core.ChannelAdapter.WebProviders.Configuration;
 
 namespace Veriqa.Core.ChannelAdapter.WebProviders.Pages;
 
 /// <summary>
 /// What every page of a web provider channel is rendered within, whatever it shows: the channel it
-/// and the brand it is headed with, where it lives, its language, its texts and its branding.
+/// and the brand it is headed with, where it lives, its language, its texts, its branding and how its
+/// question takes "Yes".
 /// </summary>
 /// <param name="ChannelType">Channel type — the routes of the page live under it.</param>
 /// <param name="ChannelName">Name of the channel in the head of the page, as on the sign-in button.</param>
@@ -22,6 +24,8 @@ namespace Veriqa.Core.ChannelAdapter.WebProviders.Pages;
 /// <param name="Branding">Effective branding of the page, resolved over its transaction.</param>
 /// <param name="CspNonce">CSP nonce of the request; without one the script goes out without the
 /// attribute, as every inline script of the contour does.</param>
+/// <param name="ConfirmSlider">Where the question of the page takes "Yes" by a slider, as the section of
+/// the channel states it.</param>
 internal sealed record WebProviderPageFrame(
     string ChannelType,
     string ChannelName,
@@ -31,7 +35,8 @@ internal sealed record WebProviderPageFrame(
     IConfirmationPromptLocalizer Localizer,
     CorePageTexts Texts,
     CorePageBranding? Branding,
-    string? CspNonce)
+    string? CspNonce,
+    WebProviderConfirmSlider ConfirmSlider)
 {
     /// <summary>
     /// A text of the page in its language, with the override an owning level states.

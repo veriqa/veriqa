@@ -158,7 +158,7 @@ public sealed class ClaimsMapper : IClaimsMapper
         // draw a value from: issuing one today would be inventing a requirement. Note that acr_values
         // IS already read on the authorize endpoint — as a channel filter ("channel:<type>"), which is
         // Veriqa's own use of the parameter and not a level of assurance. Which specification the
-        // dictionary will live in is still open — SPEC-019 (Binding Levels, frozen) and the hop mode
+        // dictionary will live in is still open — SPEC-019 (Binding Levels, not implemented) and the hop mode
         // are the two candidates (SPEC-025 section 13.2) — and the claim is introduced together with
         // it, wherever it lands; because acr_values is voluntary in OIDC, "ignored today, supported
         // tomorrow" is not a breaking change.

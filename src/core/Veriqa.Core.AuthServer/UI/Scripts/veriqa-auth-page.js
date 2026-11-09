@@ -45,7 +45,11 @@
     }
 
     var statusEl = document.getElementById("veriqa-status");
-    // The line the page was loaded with, before the script wrote any.
+    // The line the page was loaded with, before the script wrote any: the
+    // waiting line, which the wait for the confirmation of the mail may take
+    // the place of. A page rendered with the line of the answer of a
+    // channel's bot keeps that line, so the value is dropped there (see the
+    // answer of the bot below).
     var initialStatusText = statusEl.textContent;
     var spinnerEl = document.getElementById("veriqa-spinner");
     var countdownEl = document.getElementById("veriqa-countdown");
@@ -226,8 +230,14 @@
             t.setAttribute('tabindex', isSelected ? '0' : '-1');
         });
         var channel = selected.getAttribute('data-channel');
-        var panel = channel ? document.getElementById('veriqa-panel-' + channel) : null;
+        var panel = channel ? panelOf(channel) : null;
         if (panel) panel.classList.remove('veriqa-panel--inactive');
+    }
+
+    // The panel of a channel, by the identifier the server builds from the
+    // prefix it hands over and the channel type; null — no such panel.
+    function panelOf(channelType) {
+        return document.getElementById(config.panelElementIdPrefix + channelType);
     }
 
     // Binding handlers to the tabs: click plus roving arrow-key navigation
@@ -254,6 +264,236 @@
             next.focus();
         });
     });
+
+    // The channel the user went through on this device, remembered in a
+    // cookie of the host as its type and nothing else. Null — the page
+    // remembers nothing. The names, the lifetime and the attributes of the
+    // cookie, the moments of the write and the label are all the server's.
+    var REMEMBER_CHANNEL = config.rememberChannel;
+
+    // A remembered value counts only where it is a channel of this page: any
+    // other value — a channel the page does not carry, a value that is no
+    // channel at all — leaves the page as it is without the cookie, and never
+    // reaches the markup or a selector.
+    function isPageChannel(channelType) {
+        return !!REMEMBER_CHANNEL && typeof channelType === 'string'
+            && REMEMBER_CHANNEL.channelTypes.indexOf(channelType) !== -1;
+    }
+
+    // The channel a cookie names, or null. A browser that refuses the page its
+    // cookies (a sandboxed frame) throws on the access, and a value that is not
+    // a valid encoding throws on the decoding: either reads as no cookie.
+    function readChannelCookie(cookie) {
+        var prefix = cookie.name + '=';
+        try {
+            var pairs = document.cookie.split('; ');
+            for (var i = 0; i < pairs.length; i++) {
+                if (pairs[i].indexOf(prefix) !== 0) continue;
+                var channelType = decodeURIComponent(pairs[i].substring(prefix.length));
+                return isPageChannel(channelType) ? channelType : null;
+            }
+        } catch (e) {
+            // No cookie can be read: the page stays as it is without one.
+        }
+        return null;
+    }
+
+    function setChannelCookie(cookie, value, maxAgeSeconds) {
+        try {
+            document.cookie = cookie.name + '=' + value
+                + '; Max-Age=' + maxAgeSeconds + '; ' + cookie.attributes;
+        } catch (e) {
+            // A browser that refuses cookies leaves nothing remembered.
+        }
+    }
+
+    function writeChannelCookie(cookie, channelType) {
+        setChannelCookie(cookie, encodeURIComponent(channelType), cookie.maxAgeSeconds);
+    }
+
+    // A cookie with no lifetime left is deleted, under the same attributes
+    // it was written with.
+    function deleteChannelCookie(cookie) {
+        setChannelCookie(cookie, '', 0);
+    }
+
+    // The checkbox that remembers the channel, on a page of the unified QR
+    // code; null — the page does not offer it. Its block is in the markup,
+    // hidden: it is shown on a desktop alone — never on a device the head
+    // marked a phone.
+    var REMEMBER_CHECKBOX = REMEMBER_CHANNEL && REMEMBER_CHANNEL.checkbox;
+    var rememberEl = REMEMBER_CHECKBOX ? document.getElementById(REMEMBER_CHECKBOX.elementId) : null;
+    var rememberShown = !!rememberEl && document.documentElement.getAttribute(REMEMBER_CHECKBOX.deviceAttribute)
+        !== REMEMBER_CHECKBOX.phoneDeviceValue;
+    var rememberInput = rememberShown ? document.getElementById(REMEMBER_CHECKBOX.inputElementId) : null;
+    var rememberLabel = rememberShown ? document.getElementById(REMEMBER_CHECKBOX.labelElementId) : null;
+    var rememberBack = rememberShown ? document.getElementById(REMEMBER_CHECKBOX.backElementId) : null;
+    // The way back stands in a block of its own with the divider above it:
+    // the block is what is shown and hidden.
+    var rememberBackBlock = rememberBack ? rememberBack.parentNode : null;
+    // The channel that has worked on this page, kept for a tick that comes
+    // after it; the channel the page shows alone (the state of the remembered
+    // channel), null — the page shows every channel.
+    var workingChannel = null;
+    var rememberedChannel = null;
+
+    // The one point every way of learning that a channel works goes through —
+    // a status of the channel on the window, a tap on the scanner page. Where
+    // the checkbox is on screen only it keeps the channel, and only while it is
+    // ticked; elsewhere the hint keeps the channel for the next visit.
+    function noteWorkingChannel(channelType) {
+        if (!isPageChannel(channelType)) return;
+        if (rememberShown) {
+            workingChannel = channelType;
+            if (rememberInput.checked) writeChannelCookie(REMEMBER_CHECKBOX.cookie, channelType);
+            return;
+        }
+        if (REMEMBER_CHANNEL.hint) writeChannelCookie(REMEMBER_CHANNEL.hint.cookie, channelType);
+    }
+
+    // The scanner page hears no answer meant for it: a tap on a link into a
+    // channel is the moment there. The channel is the one whose panel holds
+    // the link.
+    if (REMEMBER_CHANNEL && REMEMBER_CHANNEL.tapSelector) {
+        REMEMBER_CHANNEL.channelTypes.forEach(function(channelType) {
+            var panel = panelOf(channelType);
+            if (!panel) return;
+            panel.querySelectorAll(REMEMBER_CHANNEL.tapSelector).forEach(function(link) {
+                link.addEventListener('click', function() { noteWorkingChannel(channelType); });
+            });
+        });
+    }
+
+    // The label of the remembered channel, put at the end of a tab or of a
+    // channel button.
+    function appendLastUsedLabel(host, hint) {
+        var label = document.createElement('span');
+        label.className = hint.labelClass;
+        label.textContent = hint.labelText;
+        host.appendChild(label);
+    }
+
+    // Where the channels stand as buttons, the panel of the remembered channel
+    // moves ahead of the panel of the first channel of the set, so the order
+    // of the focus is the order on screen, and its button carries the label.
+    function putChannelFirst(channelType, hint) {
+        var panel = panelOf(channelType);
+        var firstPanel = panelOf(REMEMBER_CHANNEL.channelTypes[0]);
+        if (!panel || !firstPanel) return;
+        if (panel !== firstPanel) firstPanel.parentNode.insertBefore(panel, firstPanel);
+        var button = panel.querySelector(hint.buttonSelector);
+        if (button) appendLastUsedLabel(button, hint);
+    }
+
+    // The hint on the load, by the layout on screen. A page of one channel has
+    // nothing to put forward, and the grid of a desktop shows every channel
+    // already: it has neither tabs nor the buttons layout, and stays as it is.
+    function showLastChannelHint() {
+        var hint = REMEMBER_CHANNEL && REMEMBER_CHANNEL.hint;
+        if (!hint || REMEMBER_CHANNEL.channelTypes.length < 2) return;
+        var channelType = readChannelCookie(hint.cookie);
+        if (!channelType) return;
+        if (isButtonsLayout) {
+            putChannelFirst(channelType, hint);
+            return;
+        }
+        var tab = null;
+        channelTabs.forEach(function(t) {
+            if (t.getAttribute('data-channel') === channelType) tab = t;
+        });
+        // Next to the "Any channel" tab the page stays on that tab: the tab of
+        // the channel is labelled, and the buttons of its state put the
+        // channel first. Behind plain tabs the page opens on its tab.
+        if (anyChannelTab) {
+            if (tab) appendLastUsedLabel(tab, hint);
+            putChannelFirst(channelType, hint);
+        } else if (tab) {
+            selectTab(tab);
+        }
+    }
+
+    // The label of the checkbox: the channel it keeps on the page that shows
+    // that channel alone while the box is ticked, the offer to remember
+    // otherwise. The name of the channel takes the slot of the server's text,
+    // through a function so that no "$" pattern of a name is expanded.
+    function wordRememberCheckbox() {
+        if (rememberedChannel && rememberInput.checked) {
+            var name = Object.prototype.hasOwnProperty.call(CHANNEL_NAMES, rememberedChannel)
+                ? CHANNEL_NAMES[rememberedChannel]
+                : rememberedChannel;
+            rememberLabel.textContent = REMEMBER_CHECKBOX.alwaysText.replace('{0}', function() { return name; });
+        } else {
+            rememberLabel.textContent = REMEMBER_CHECKBOX.rememberText;
+        }
+    }
+
+    // The strip of the tabs, and whether it is on screen in the state of the
+    // "Any channel" tab: the page that keeps the QR codes of its channels for
+    // the checkbox alone renders it hidden.
+    var anyChannelTabEl = anyChannelTab ? document.getElementById(anyChannelTab.tabElementId) : null;
+    var tabStripEl = anyChannelTabEl ? anyChannelTabEl.parentNode : null;
+    var tabStripShown = !!tabStripEl && !tabStripEl.hidden;
+
+    // The checkbox on the load. A cookie naming a channel of the page opens
+    // the page in the state of the remembered channel: the state of the tab
+    // of that channel — its panel alone with its own QR code, worded by its
+    // tab — with the strip out of sight, the box ticked and the way back
+    // under the lead instruction. The panel is no tab panel there: no tab on
+    // screen labels it. Returns whether the page opened in that state.
+    function showRememberCheckbox() {
+        if (!rememberShown) return false;
+        rememberEl.hidden = false;
+        var channelType = readChannelCookie(REMEMBER_CHECKBOX.cookie);
+        var tab = null;
+        channelTabs.forEach(function(t) {
+            if (channelType && t.getAttribute('data-channel') === channelType) tab = t;
+        });
+        if (tab) {
+            selectTab(tab);
+            setTabPanelRoles(false);
+            if (tabStripEl) tabStripEl.hidden = true;
+            rememberedChannel = channelType;
+            rememberInput.checked = true;
+            rememberBackBlock.hidden = false;
+        }
+        wordRememberCheckbox();
+        return !!tab;
+    }
+
+    if (rememberShown) {
+        // Ticked, the box keeps the channel that has worked already, if one
+        // has; unticked, it deletes the cookie at once. The page stays as it
+        // is either way — only the label changes.
+        rememberInput.addEventListener('change', function() {
+            if (rememberInput.checked) {
+                if (workingChannel) writeChannelCookie(REMEMBER_CHECKBOX.cookie, workingChannel);
+            } else {
+                deleteChannelCookie(REMEMBER_CHECKBOX.cookie);
+            }
+            wordRememberCheckbox();
+        });
+        // The way back from the remembered channel to every channel: the
+        // state of the "Any channel" tab and its strip as the page has it,
+        // without asking the server — the transaction is the same one. The box
+        // stays as the user left it, and offers to remember again. The focus
+        // follows the content that returned.
+        rememberBack.addEventListener('click', function() {
+            if (isTerminal) return;
+            rememberedChannel = null;
+            rememberBackBlock.hidden = true;
+            if (tabStripEl) tabStripEl.hidden = !tabStripShown;
+            if (anyChannelTabEl) selectTab(anyChannelTabEl);
+            wordRememberCheckbox();
+            if (channelsEl) channelsEl.focus();
+        });
+    }
+
+    // The remembered channel opens the page in its state, and the hint has
+    // nothing to put forward there; any other page shows the hint.
+    if (!showRememberCheckbox()) showLastChannelHint();
+
+    // The state of the load is applied: the channels the head held out of sight for it come on screen.
+    if (REMEMBER_CHECKBOX) document.documentElement.removeAttribute(REMEMBER_CHECKBOX.heldAttribute);
 
     // Tooltip of a clipped third-party label: it opens on hover
     // AND on keyboard focus and closes on Escape — the native title attribute
@@ -574,7 +814,37 @@
         });
     }
 
-    // Toggling the Push/Pull sections of the Email panel
+    // The address form of Email open or closed: the attribute named by the
+    // server on the root, on which the stylesheet takes the rest of the
+    // channel choice away - the tabs, the unified QR code, the panels of the
+    // other channels - and shows the instruction of the form, rendered hidden,
+    // in place of the lead instruction. Closing the form gives all of it back,
+    // and a hop QR code that fell due while the form hid it is asked for then,
+    // as on the way back from a started hop.
+    function setEmailFormOpen(open) {
+        if (open) {
+            document.documentElement.setAttribute(config.emailFormOpenAttribute, "");
+        } else {
+            document.documentElement.removeAttribute(config.emailFormOpenAttribute);
+            reissueHopQr();
+        }
+    }
+
+    // The field the opened email form takes the focus into: the address
+    // field, or the code field when the form comes back on its code step,
+    // which hides the address field.
+    function focusEmailFormField() {
+        var field = emailCodeStep && !emailCodeStep.hidden
+            ? emailCodeInput
+            : document.getElementById("veriqa-email-input");
+        if (field) field.focus();
+    }
+
+    // Toggling the Push/Pull sections of the Email panel. Each toggle hides
+    // the section that holds the focused button, so the focus is moved on
+    // with it instead of falling back to the start of the page: into the
+    // field of the form when it opens, onto the link that opens the form
+    // when "Back" closes it.
     var pushSection = document.getElementById("veriqa-push-section");
     var pullSection = document.getElementById("veriqa-pull-section");
     var showPullBtn = document.getElementById("veriqa-show-pull");
@@ -583,6 +853,8 @@
         showPullBtn.addEventListener('click', function() {
             pushSection.style.display = 'none';
             pullSection.style.display = 'block';
+            setEmailFormOpen(true);
+            focusEmailFormField();
         });
     }
     if (showPushBtn && pushSection && pullSection) {
@@ -591,21 +863,24 @@
             // Back to the display of the stylesheet, which lays the section out
             // as two columns on the split card and as a block elsewhere.
             pushSection.style.display = '';
+            setEmailFormOpen(false);
+            if (showPullBtn) showPullBtn.focus();
         });
     }
 
     // The Email button of the buttons layout: it reveals the email form in
-    // place (a disclosure). The script flips aria-expanded and nothing else —
-    // the stylesheet shows or hides the form on that state. Opening moves the
-    // focus into the field, so the address can be typed without another tap.
+    // place (a disclosure). The script flips aria-expanded and the state of
+    // the open form - the stylesheet shows or hides the form and the rest of
+    // the channel choice on them. Opening moves the focus into the field of
+    // the form, so the address or the code can be typed without another tap.
     var emailRevealBtn = document.getElementById("veriqa-email-reveal");
     if (emailRevealBtn) {
         emailRevealBtn.addEventListener('click', function() {
             var opening = this.getAttribute('aria-expanded') !== 'true';
             this.setAttribute('aria-expanded', opening ? 'true' : 'false');
+            setEmailFormOpen(opening);
             if (!opening) return;
-            var emailField = document.getElementById("veriqa-email-input");
-            if (emailField) emailField.focus();
+            focusEmailFormField();
         });
     }
 
@@ -738,6 +1013,14 @@
             hopChooseAnotherBtn.parentNode.focus();
         }
         hopChooseAnotherBtn.style.display = "none";
+    }
+    // The way back from the remembered channel leaves by the same rule. A
+    // focus standing on it moves onto the status line, which tells what has
+    // happened.
+    function dropRememberBack() {
+        if (!rememberBack) return;
+        if (rememberBack === document.activeElement) statusEl.focus();
+        rememberBackBlock.hidden = true;
     }
     if (hopChooseAnotherBtn) {
         hopChooseAnotherBtn.addEventListener('click', function() {
@@ -965,9 +1248,11 @@
     // the heading of that channel and puts the attribute named by the server
     // on the root, on which the stylesheet takes the title, the lead
     // instruction and the channel choice away and shows the way back. The
-    // headings are in the markup; the script only picks one. A focus left in
-    // the choice moves onto the way back, or onto the status line when the way
-    // back is gone. The way back asks the server nothing: it brings the choice
+    // headings are in the markup; the script only picks one. A page whose
+    // channel has already answered comes from the server in this state, with
+    // the heading of that channel shown and without the way back, as after
+    // the answer. A focus left in the choice moves onto the way back, or onto
+    // the status line when the way back is gone. The way back asks the server nothing: it brings the choice
     // back, takes the block of the spare start code away and forgets the tap,
     // so a return to the page offers nothing until the next tap.
     var CHOSEN = config.chosenChannel;
@@ -1075,10 +1360,18 @@
     // again, the way back to the channel choice included. The code of the
     // status and the lines come from the server.
     var CHANNEL_ANSWER = config.channelAnswer;
+    // The line of the answer of the bot of a channel; empty for a channel
+    // the server gave no line for.
+    function channelAnswerLine(channelType) {
+        return Object.prototype.hasOwnProperty.call(CHANNEL_ANSWER.lines, channelType)
+            ? CHANNEL_ANSWER.lines[channelType]
+            : "";
+    }
     function onChannelAnswered() {
         if (channelAnswered) return false;
         channelAnswered = true;
         dropHopChooseAnother();
+        dropRememberBack();
         dropChosenBack();
         hideHopChannelHints();
         hideSpareReturn();
@@ -1089,6 +1382,40 @@
         closeSpareCodes(channelsEl);
         closeSpareCodes(hopSpareScope);
         return true;
+    }
+
+    // The line of the answer of the bot is on the status line: the codes of
+    // the hop family leave that line alone from then on.
+    var answerLineShown = false;
+
+    // The answer of the bot of a channel, the one way the page acts on it —
+    // heard from the hub or known from the load. The first one closes the
+    // spare start codes and, for a channel the server gave a line for, puts
+    // that line on the status line; a repeated one changes nothing. The line
+    // takes the channel choice off the page with it: the question waits in
+    // that chat now. A page without the line keeps its screen, and so does a
+    // page already showing a line of a state. Tells whether the line was put.
+    function applyChannelAnswer(channelType) {
+        if (!onChannelAnswered()) return false;
+        if (stateLineShown) return false;
+        var answerLine = channelAnswerLine(channelType);
+        if (!answerLine) return false;
+        clearTimeout(hopOpenedTimer);
+        answerLineShown = true;
+        markAnswerElsewhere();
+        statusEl.textContent = answerLine;
+        // The class of the status line the renderer gives this line
+        // (DefaultAuthPageRenderer.AnsweredStatusClass): rename both together.
+        statusEl.className = "veriqa-status confirmed";
+        return true;
+    }
+
+    // A page rendered while the answer was already awaited in a channel comes
+    // in the state that answer puts it in, and the script acts on the answer
+    // from the load the same way, so its replay by the hub changes nothing on
+    // the page.
+    if (CHANNEL_ANSWER.answeredChannel && applyChannelAnswer(CHANNEL_ANSWER.answeredChannel)) {
+        initialStatusText = null;
     }
 
     // On a computer or a tablet the codes of the panels open by the delay from
@@ -1442,6 +1769,13 @@
                     config.pageStateAttribute, config.completedPageState);
             }
             countdownEl.style.display = "none";
+            // A page that leaves for its callback writes no page state, yet the
+            // sign-in is over all the same: the button with nothing left to
+            // cancel is taken away here, as on a failed sign-in. Left on screen
+            // through the pause and the trip to the callback, a press of it
+            // would call the navigation off and send the client a refusal of a
+            // sign-in the user has just confirmed.
+            if (cancelFormEl) { cancelFormEl.style.display = "none"; }
             // Terminal and final: the spinner covers the pause before the
             // navigation and has nothing to cover without one — on a page that
             // stays, the outcome is the last thing shown, and it is shown still.
@@ -1836,9 +2170,6 @@
     var HOP_OPENED_HOLD_MS = 1000;
     var hopOpenedTimer = null;
     var hopLaunchShown = false;
-    // The line of the answer of the bot is on the status line: the codes of
-    // the hop family leave that line alone from then on.
-    var answerLineShown = false;
 
     // Intermediate channel statuses of any channel — the Email statuses and
     // the hop codes alike. An additive channel: does not affect the lifecycle
@@ -1847,25 +2178,16 @@
     connection.on(config.hub.channelStatusMethod, function(message) {
         if (isTerminal || !message) return;
         var code = message.channelStatus;
-        // The answer of the bot is no step of the hop. The first one closes the
-        // spare start codes and, for a channel the server gave a line for, puts
-        // that line on the status line; a repeated one changes nothing. A page
-        // that is leaving ignores it. The line takes the channel choice off the
-        // page with it: the question waits in that chat now. A page without the
-        // line keeps its screen, and so does a page already showing a line of a
-        // state.
+        // A status telling the channel of the event works is the moment the
+        // page remembers that channel — whatever the status does to the page
+        // below. A repeated one writes the same value again.
+        if (REMEMBER_CHANNEL && REMEMBER_CHANNEL.answerStatusCodes.indexOf(code) !== -1) {
+            noteWorkingChannel(message.channelType);
+        }
+        // The answer of the bot is no step of the hop (applyChannelAnswer). A
+        // page that is leaving ignores it.
         if (code === CHANNEL_ANSWER.statusCode) {
-            if (isNavigating || !onChannelAnswered()) return;
-            if (stateLineShown) return;
-            var answerLine = Object.prototype.hasOwnProperty.call(CHANNEL_ANSWER.lines, message.channelType)
-                ? CHANNEL_ANSWER.lines[message.channelType]
-                : "";
-            if (!answerLine) return;
-            clearTimeout(hopOpenedTimer);
-            answerLineShown = true;
-            markAnswerElsewhere();
-            statusEl.textContent = answerLine;
-            statusEl.className = "veriqa-status confirmed";
+            if (!isNavigating) applyChannelAnswer(message.channelType);
             return;
         }
         // The first hop code switches the page to the instruction block; the
@@ -1877,7 +2199,10 @@
         // and only shows the code on the status line below. A page already
         // showing a line of a state is not switched by a late code.
         if (!config.hopInstructionDisabled && !stateLineShown && HOP_STATUS_CODES.indexOf(code) !== -1) {
-            var focusInChoice = !!channelsEl && channelsEl.contains(document.activeElement);
+            // The way back from the remembered channel leaves with the choice,
+            // so a focus standing on it moves on as a focus in the choice does.
+            var focusInChoice = (!!channelsEl && channelsEl.contains(document.activeElement))
+                || (!!rememberBackBlock && rememberBackBlock.contains(document.activeElement));
             document.documentElement.setAttribute(config.hopStartedAttribute, "");
             var hopInstructionEl = document.getElementById(config.hopInstructionElementId);
             if (focusInChoice && hopInstructionEl) hopInstructionEl.focus();

@@ -181,6 +181,13 @@ internal static class AuthPageStrings
     public const string ChannelTabWithQrCode = "{0} ▦";
 
     /// <summary>
+    /// Label of the channel the user went through last time on this device, put by the page script on its tab
+    /// next to the "Any channel" tab and on its button where the page lays the channels out as buttons. The
+    /// same label on a sign-in and on a confirmation: it names no action.
+    /// </summary>
+    public const string LastUsedChannel = "Last used";
+
+    /// <summary>
     /// The button that leads into a messenger on a sign-in page. The <c>{0}</c> slot takes the name of the
     /// channel in the language of the page — of a built-in channel (<see cref="ChannelNames.TelegramChannelName"/>
     /// and the rest) or the label its adapter declared. A phrase of one channel (<c>Sign in with WhatsApp</c>) is a
@@ -402,6 +409,34 @@ internal static class AuthPageStrings
     public const string HopChooseAnother = "Choose another way";
 
     /// <summary>
+    /// Label of the checkbox that remembers the channel on a page of the unified QR code, on a sign-in: the
+    /// page before a channel is remembered, and the page of every channel once the user went back to them.
+    /// </summary>
+    public const string RememberSignInChannel = "Remember how I sign in on this device";
+
+    /// <summary>
+    /// The same label on a confirmation — only the words of the action differ (<see cref="RememberSignInChannel"/>).
+    /// </summary>
+    public const string RememberConfirmChannel = "Remember how I confirm on this device";
+
+    /// <summary>
+    /// Label of the ticked checkbox on a page that shows the remembered channel alone, on a sign-in. The
+    /// <c>{0}</c> slot takes the name of the channel in the language of the page, put in by the page script.
+    /// </summary>
+    public const string AlwaysSignInWithChannel = "Always sign in with {0} on this device";
+
+    /// <summary>
+    /// The same label on a confirmation — only the words of the action differ (<see cref="AlwaysSignInWithChannel"/>).
+    /// </summary>
+    public const string AlwaysConfirmInChannel = "Always confirm in {0} on this device";
+
+    /// <summary>
+    /// The way back from the state of the remembered channel to every channel of the page, under the lead
+    /// instruction behind the "OR" divider.
+    /// </summary>
+    public const string ChooseAnotherChannel = "Choose another channel";
+
+    /// <summary>
     /// Button of the scanner page shown once a channel was chosen there: it brings the channel choice back on
     /// the page (SPEC-025 HOP-193).
     /// </summary>
@@ -552,6 +587,7 @@ internal static class AuthPageStrings
         QrCodeAlt,
         AnyChannelTab,
         ChannelTabWithQrCode,
+        LastUsedChannel,
         SignInWithChannel,
         ConfirmInChannel,
         .. ChannelNames.BuiltInChannelNames.Select(channel => channel.NameKey),
@@ -593,6 +629,11 @@ internal static class AuthPageStrings
         HopInterstitialOpened,
         HopInstruction,
         HopChooseAnother,
+        RememberSignInChannel,
+        RememberConfirmChannel,
+        AlwaysSignInWithChannel,
+        AlwaysConfirmInChannel,
+        ChooseAnotherChannel,
         BackToChannelSelection,
         ProblemSigningIn,
         ProblemConfirming,

@@ -147,8 +147,13 @@ internal static class LinkHandleRedeemEndpoint
             (oidcContext.Scope ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries),
             StringComparer.Ordinal);
 
+        // The avatar of the channel is asked for on the terms of every issuance: only for these scopes, and
+        // the supplemented identity goes to the mapping and is never stored.
+        var issuedIdentity = await httpContext.RequestServices.GetRequiredService<ChannelAvatarSupplement>()
+            .SupplementAsync(transaction, resolvedIdentity, completion, scopeSet, cancellationToken);
+
         var claimsResult = await claimsMapper.MapToClaimsAsync(
-            resolvedIdentity,
+            issuedIdentity,
             completion,
             new ClaimsMappingContext(
                 transaction.GetApplicationId(),

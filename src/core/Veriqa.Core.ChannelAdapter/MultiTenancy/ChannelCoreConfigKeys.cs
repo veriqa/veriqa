@@ -37,8 +37,9 @@ internal sealed class ChannelCoreConfigKeys : IRegisterConfigKeys
     /// <inheritdoc />
     /// <remarks>
     /// This registrar owns no key: it states HOW a level of somebody's key is read. The keys of the
-    /// contour are declared by its CATALOG (<see cref="ChannelConfigKeys.Catalog"/>), which
-    /// <c>AddVeriqaChannelAdapters</c> registers, and keeping the two steps apart is what lets a key
+    /// contour are declared by its CATALOG (<see cref="ChannelConfigKeys.Catalog"/>), which the
+    /// configuration half of the contour registers — taken by <c>AddVeriqaChannelAdapters</c> and
+    /// <c>AddVeriqaChannelConfiguration</c> alike — and keeping the two steps apart is what lets a key
     /// exist in the schema before anything binds it.
     /// </remarks>
     public void DeclareKeys(IConfigKeyDeclarations keys)

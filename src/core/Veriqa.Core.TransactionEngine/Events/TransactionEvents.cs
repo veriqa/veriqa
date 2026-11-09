@@ -24,9 +24,11 @@ public abstract record TransactionEvent
     public required DateTimeOffset OccurredAt { get; init; }
 
     /// <summary>
-    /// Attribution of the transaction captured at publication time; null when the publisher has no
-    /// transaction at hand. A subscriber reads the attributes from here instead of the store: the
-    /// transaction may already be gone by the time the event is handled.
+    /// Attribution of the transaction captured at publication time; null when the publisher attaches
+    /// none — it has no transaction at hand, or it attaches the tenant alone
+    /// (<see cref="TransactionEventContext.ForTenant"/>) and none is stated. A subscriber reads the
+    /// attributes from here instead of the store: the transaction may already be gone by the time the
+    /// event is handled.
     /// </summary>
     public TransactionEventContext? Context { get; init; }
 }

@@ -10,9 +10,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 
 using Veriqa.Core.ChannelAdapter.Constants;
+using Veriqa.Core.ChannelAdapter.Domain;
 using Veriqa.Core.ChannelAdapter.WebProviders.Constants;
+using Veriqa.Core.ChannelAdapter.WebProviders.Identity;
 using Veriqa.Core.ChannelAdapter.WebProviders.Providers;
 using Veriqa.Core.Configuration;
+using Veriqa.Core.Contracts;
 
 namespace Veriqa.Core.ChannelAdapter.WebProviders.Configuration;
 
@@ -226,9 +229,294 @@ internal static partial class WebProviderRegistrationReader
             PublicBaseUrl = publicBaseUrl,
             RedirectUri = WebProviderRoutes.CallbackUri(publicBaseUrl, channelType),
             DisplayName = ReadText(webProvider, WebProviderConfigKeys.DisplayNameMember),
-            IconSvgPath = ReadText(webProvider, WebProviderConfigKeys.IconSvgPathMember)
+            IconSvgPath = ReadText(webProvider, WebProviderConfigKeys.IconSvgPathMember),
+            ConfirmSlider = ReadConfirmSlider(webProvider),
+            PhoneNumber = ReadPhoneNumber(webProvider),
+            Claims = ReadClaims(webProvider, channelType)
         };
     }
+
+    /// <summary>
+    /// Reads where the page of the channel takes "Yes" by a slider: one of the names of
+    /// <see cref="WebProviderConfirmSlider"/>, without regard to case; unstated — on a touch screen.
+    /// </summary>
+    /// <param name="webProvider">The <c>WebProvider</c> subsection.</param>
+    /// <returns>The mode of the slider.</returns>
+    /// <exception cref="InvalidOperationException">The value is none of the names.</exception>
+    private static WebProviderConfirmSlider ReadConfirmSlider(IConfigurationSection webProvider)
+    {
+        var (value, path) = ReadValue(webProvider, WebProviderConfigKeys.ConfirmSliderMember);
+
+        if (value is null)
+        {
+            return WebProviderConfigKeys.DefaultConfirmSlider;
+        }
+
+        // The names are matched one by one rather than parsed as the enumeration: the parser would also
+        // admit a number.
+        foreach (var mode in Enum.GetValues<WebProviderConfirmSlider>())
+        {
+            if (IsName(value, mode.ToString()))
+            {
+                return mode;
+            }
+        }
+
+        throw Invalid(
+            path,
+            $"names '{value}', which is not a mode of the confirmation slider: expected "
+            + string.Join(", ", Enum.GetNames<WebProviderConfirmSlider>()));
+    }
+
+    /// <summary>
+    /// Reads where the phone number of the account comes from: the ways of obtaining it — only
+    /// <see cref="PhoneNumberAcquisition.Automatic"/>, since the page of the channel asks for no number —
+    /// the proof, the paths of the number and of the provider's statement that it is verified, and the
+    /// scopes the number takes. Without a way the channel gives no number and the rest is not used; a
+    /// proof stated then is refused, as for an HTTP channel: a channel that gives no number proves none.
+    /// The standard pair <c>phone_number</c> / <c>phone_number_verified</c> is the path when no path of
+    /// the number is stated; a stated path of the number takes the path of its statement only as stated.
+    /// </summary>
+    /// <param name="webProvider">The <c>WebProvider</c> subsection.</param>
+    /// <returns>The number of the channel; <c>null</c> — the channel gives none.</returns>
+    /// <exception cref="InvalidOperationException">A member is malformed, or the proof and the ways disagree.</exception>
+    private static WebProviderPhoneNumber? ReadPhoneNumber(IConfigurationSection webProvider)
+    {
+        var section = webProvider.GetSection(WebProviderConfigKeys.PhoneNumberSectionName);
+
+        if (!string.IsNullOrWhiteSpace(section.Value))
+        {
+            throw Invalid(
+                section.Path,
+                "is a single value, not a section: state the number by its members "
+                + $"'{WebProviderConfigKeys.PhoneAcquisitionMember}', '{WebProviderConfigKeys.PhoneProofMember}', "
+                + $"'{WebProviderConfigKeys.ClaimMember}', '{WebProviderConfigKeys.VerifiedClaimMember}' and "
+                + $"'{WebProviderConfigKeys.ScopesMember}'");
+        }
+
+        var acquisitionPath = SiblingPath(section, WebProviderConfigKeys.PhoneAcquisitionMember);
+        var acquisition = PhoneNumberAcquisition.None;
+
+        foreach (var way in ReadList(section, WebProviderConfigKeys.PhoneAcquisitionMember))
+        {
+            // The names are matched one by one rather than parsed as the enumeration: the parser would
+            // also admit a number, a comma-separated combination and the name of "no way at all".
+            if (IsName(way, nameof(PhoneNumberAcquisition.Automatic)))
+            {
+                acquisition |= PhoneNumberAcquisition.Automatic;
+            }
+            else if (IsName(way, nameof(PhoneNumberAcquisition.OnRequest)))
+            {
+                throw Invalid(
+                    acquisitionPath,
+                    $"names {nameof(PhoneNumberAcquisition.OnRequest)}, while the page of a web provider channel asks "
+                    + "for no number: the number is taken from the answer of the provider only. State "
+                    + nameof(PhoneNumberAcquisition.Automatic));
+            }
+            else
+            {
+                throw Invalid(
+                    acquisitionPath,
+                    $"names '{way}', which is not a way of obtaining the phone number: expected "
+                    + nameof(PhoneNumberAcquisition.Automatic));
+            }
+        }
+
+        var proof = ReadPhoneNumberProof(section, out var proofPath);
+
+        if (proof is PhoneNumberProof.Proven && acquisition is PhoneNumberAcquisition.None)
+        {
+            throw Invalid(
+                proofPath,
+                $"states a proven phone number while '{acquisitionPath}' names no way of obtaining one: a channel "
+                + "that gives no number proves none. State the way, or remove the key");
+        }
+
+        var claim = ReadClaimPath(section, WebProviderConfigKeys.ClaimMember);
+        var verifiedClaim = ReadClaimPath(section, WebProviderConfigKeys.VerifiedClaimMember);
+        var scopes = ReadList(section, WebProviderConfigKeys.ScopesMember);
+
+        if (acquisition is PhoneNumberAcquisition.None)
+        {
+            return null;
+        }
+
+        return new WebProviderPhoneNumber(
+            new PhoneNumberCapability { Acquisition = acquisition, Proof = proof },
+            claim ?? StandardPath(VeriqaClaimTypes.PhoneNumber),
+            claim is null ? verifiedClaim ?? StandardPath(VeriqaClaimTypes.PhoneNumberVerified) : verifiedClaim,
+            scopes);
+    }
+
+    /// <summary>
+    /// Reads the proof of the phone number: one of the two names of <see cref="PhoneNumberProof"/>, not
+    /// proven when unstated.
+    /// </summary>
+    /// <param name="phoneNumber">The <c>PhoneNumber</c> subsection.</param>
+    /// <param name="path">Full path of the key.</param>
+    /// <returns>The proof.</returns>
+    /// <exception cref="InvalidOperationException">The value is outside the two names.</exception>
+    private static PhoneNumberProof ReadPhoneNumberProof(IConfigurationSection phoneNumber, out string path)
+    {
+        (var value, path) = ReadValue(phoneNumber, WebProviderConfigKeys.PhoneProofMember);
+
+        if (value is null || IsName(value, nameof(PhoneNumberProof.NotProven)))
+        {
+            return PhoneNumberProof.NotProven;
+        }
+
+        if (IsName(value, nameof(PhoneNumberProof.Proven)))
+        {
+            return PhoneNumberProof.Proven;
+        }
+
+        throw Invalid(
+            path,
+            $"is not a proof of the phone number: expected {nameof(PhoneNumberProof.NotProven)} or "
+            + nameof(PhoneNumberProof.Proven));
+    }
+
+    /// <summary>
+    /// Reads the claims the channel takes from the answer of the provider. Every entry names the path of
+    /// the value and the claim Veriqa issues; the claim is checked here the way the core merges it
+    /// (SPEC-003 CA-240), so a name the core would drop at every sign-in stops the start instead. A
+    /// name is issuable when it is one of <see cref="VeriqaClaimTypes.StandardProfileClaims"/> or is
+    /// prefixed with the channel, in the exact spelling; a name the core issues, derives itself or keeps
+    /// for its vendor claims is refused in any spelling, and a name stated twice is refused too.
+    /// </summary>
+    /// <param name="webProvider">The <c>WebProvider</c> subsection.</param>
+    /// <param name="channelType">Channel type — the prefix of the names of the channel's own.</param>
+    /// <returns>The entries in index order; empty when unstated.</returns>
+    /// <exception cref="InvalidOperationException">The list or an entry is malformed.</exception>
+    private static IReadOnlyList<WebProviderClaimMapping> ReadClaims(IConfigurationSection webProvider, string channelType)
+    {
+        var list = webProvider.GetSection(WebProviderConfigKeys.ClaimsMember);
+
+        if (!string.IsNullOrWhiteSpace(list.Value))
+        {
+            throw Invalid(list.Path, "is a single value, not a list: state the entries by index (…:0, …:1)");
+        }
+
+        var channelPrefix = channelType + VeriqaClaimTypes.AdapterClaimPrefixSeparator;
+        var named = new HashSet<string>(VeriqaClaimTypes.NameComparer);
+        var mappings = new List<WebProviderClaimMapping>();
+
+        foreach (var entry in list.GetChildren())
+        {
+            if (!string.IsNullOrWhiteSpace(entry.Value))
+            {
+                throw Invalid(
+                    entry.Path,
+                    $"is a single value, not an entry: state its members '{WebProviderConfigKeys.SourceMember}', "
+                    + $"'{WebProviderConfigKeys.ClaimMember}' and, when the claim takes scopes, "
+                    + $"'{WebProviderConfigKeys.ScopesMember}'");
+            }
+
+            var source = ReadClaimPath(entry, WebProviderConfigKeys.SourceMember)
+                ?? throw Invalid(
+                    SiblingPath(entry, WebProviderConfigKeys.SourceMember),
+                    "is not set: every entry names the value it takes from the answer of the provider");
+
+            var (claim, claimPath) = ReadValue(entry, WebProviderConfigKeys.ClaimMember);
+
+            if (claim is null)
+            {
+                throw Invalid(claimPath, "is not set: every entry names the claim Veriqa issues");
+            }
+
+            CheckIssuableClaim(claim, claimPath, channelPrefix);
+
+            if (!named.Add(claim))
+            {
+                throw Invalid(
+                    claimPath,
+                    $"names '{claim}', which another entry of '{list.Path}' names already: a claim takes one value");
+            }
+
+            mappings.Add(new WebProviderClaimMapping(source, claim, ReadList(entry, WebProviderConfigKeys.ScopesMember)));
+        }
+
+        return mappings.AsReadOnly();
+    }
+
+    /// <summary>
+    /// Refuses a claim name the core would not merge from the channel.
+    /// </summary>
+    /// <param name="claim">The stated name.</param>
+    /// <param name="path">Full path of the key.</param>
+    /// <param name="channelPrefix">Prefix of the names of the channel's own.</param>
+    /// <exception cref="InvalidOperationException">The name is not issuable by the channel.</exception>
+    private static void CheckIssuableClaim(string claim, string path, string channelPrefix)
+    {
+        if (VeriqaClaimTypes.MandatoryClaims.Contains(claim)
+            || VeriqaClaimTypes.CoreReservedClaims.Contains(claim)
+            || VeriqaClaimTypes.VendorClaims.Contains(claim))
+        {
+            throw Invalid(
+                path,
+                $"names '{claim}', which the core issues itself or keeps for its own claims: the identifier, the "
+                + "names, the email, the phone number, the locale and the avatar of the account are taken from the "
+                + "answer of the provider without a mapping, and the number by "
+                + $"'{WebProviderConfigKeys.PhoneNumberSectionName}'");
+        }
+
+        var standard = VeriqaClaimTypes.StandardProfileClaims.Contains(claim, StringComparer.Ordinal);
+        var channelOwn = claim.Length > channelPrefix.Length && claim.StartsWith(channelPrefix, StringComparison.Ordinal);
+
+        if (!standard && !channelOwn)
+        {
+            throw Invalid(
+                path,
+                $"names '{claim}', which the channel does not issue: name one of the standard profile claims ("
+                + string.Join(", ", VeriqaClaimTypes.StandardProfileClaims.Order(StringComparer.Ordinal))
+                + $") or a claim prefixed with '{channelPrefix}', spelled exactly so — letter case is part of the "
+                + "name a relying party reads");
+        }
+    }
+
+    /// <summary>
+    /// Reads the path of a value in the answer of the provider.
+    /// </summary>
+    /// <param name="parent">Section the path lives in.</param>
+    /// <param name="member">Member carrying the path.</param>
+    /// <returns>The path; <c>null</c> — unstated.</returns>
+    /// <exception cref="InvalidOperationException">The value is not a path.</exception>
+    private static WebProviderClaimPath? ReadClaimPath(IConfigurationSection parent, string member)
+    {
+        var (value, path) = ReadValue(parent, member);
+
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (!WebProviderClaimPath.TryParse(value, out var claimPath))
+        {
+            throw Invalid(
+                path,
+                "is not a path of a value in the answer of the provider: a claim type, then the members of the JSON "
+                + $"object in its value, separated by '{WebProviderClaimPath.SegmentSeparator}', none of them empty "
+                + "or with spaces around it");
+        }
+
+        return claimPath;
+    }
+
+    /// <summary>
+    /// The path of a standard claim the provider states at the top of its answer.
+    /// </summary>
+    /// <param name="claimType">The claim type.</param>
+    /// <returns>The path.</returns>
+    private static WebProviderClaimPath StandardPath(string claimType) => new(claimType, []);
+
+    /// <summary>
+    /// Whether a stated value is the given name of an enumeration member, without regard to case.
+    /// </summary>
+    /// <param name="value">Stated value.</param>
+    /// <param name="name">Name of the member.</param>
+    /// <returns>Whether the value is the name.</returns>
+    private static bool IsName(string value, string name) =>
+        string.Equals(value, name, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Reads the provider: stated, and a provider of <c>OpenIddict.Client.WebIntegration</c>, compared
@@ -422,13 +710,13 @@ internal static partial class WebProviderRegistrationReader
     }
 
     /// <summary>
-    /// Path of a member of the <c>WebProvider</c> subsection, for a message pointing elsewhere.
+    /// Path of a member of a section, for a message naming it.
     /// </summary>
-    /// <param name="webProvider">The <c>WebProvider</c> subsection.</param>
-    /// <param name="member">Member of the subsection.</param>
+    /// <param name="section">The <c>WebProvider</c> subsection, or a section within it.</param>
+    /// <param name="member">Member of the section.</param>
     /// <returns>The full path.</returns>
-    private static string SiblingPath(IConfigurationSection webProvider, string member) =>
-        ConfigurationPath.Combine(webProvider.Path, member);
+    private static string SiblingPath(IConfigurationSection section, string member) =>
+        ConfigurationPath.Combine(section.Path, member);
 
     /// <summary>
     /// Reads one optional single value of a section.

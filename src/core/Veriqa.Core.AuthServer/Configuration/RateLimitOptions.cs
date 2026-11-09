@@ -158,6 +158,16 @@ public sealed class RateLimitOptions
     public int WebhookWindowSeconds { get; set; } = 60;
 
     /// <summary>
+    /// Maximum number of CONCURRENTLY ACTIVE tenant segments of the webhook routes, each counted apart
+    /// against <see cref="WebhookPermitLimit"/>. A segment not seen for a whole window leaves the registry
+    /// and frees its place; a new segment arriving while the registry is full of segments active within
+    /// the window shares one overflow partition with every other such segment. The route without a
+    /// segment always has a partition of its own.
+    /// Default: 1000.
+    /// </summary>
+    public int WebhookMaxPartitions { get; set; } = 1000;
+
+    /// <summary>
     /// Maximum Token Endpoint requests per period.
     /// Default: 20.
     /// </summary>

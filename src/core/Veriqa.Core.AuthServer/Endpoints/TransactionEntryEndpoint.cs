@@ -82,6 +82,13 @@ public static class TransactionEntryEndpoint
 
         var cancellationToken = httpContext.RequestAborted;
 
+        // No answer of this route is cached: the body of the page holds the way into the channel — the QR
+        // code and the links with their hop tokens, the spare start codes — which a stored copy would keep
+        // for whoever opens the browser next. Every answer gets the header, the neutral one too, so the
+        // headers tell the cases apart no more than the body does. The directive is the one of every page of
+        // the contour, which the anti-forgery tokens of the cancel form leave as it is.
+        CorePageCaching.Forbid(httpContext.Response);
+
         // The language of the REQUEST. It is what the neutral page uses in every one of its cases,
         // including the one where a transaction was found — see TransactionEntryUnavailablePage.
         var requestLanguage = AuthPageStrings.DetectLanguage(

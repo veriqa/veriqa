@@ -1,0 +1,80 @@
+{
+  // The settings of this stand that docker-compose.yml mounts at /app/config/veriqa.json. The secrets
+  // (the bot token, the client secret) are not here: docker-compose.yml passes them from .env.
+  "Veriqa": {
+    "Channels": {
+      // The receipt of the outcome arrives as a message of its own, under the question. The shipped
+      // value ReplacePrompt would put it in place of the question, and the conversation would keep
+      // the answer without what it answered.
+      "OutcomeNotice": {
+        "DisplayIntent": "NewMessage"
+      }
+    },
+    // The receipts name the application that asked: {app} is a server slot, filled with the
+    // ClientId for a confirmation. The last wording of each list uses no slot.
+    "MessageTemplates": {
+      "outcome-receipt-confirmed": {
+        "Contract": {
+          "Slots": [ { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext" } ]
+        },
+        "Templates": [ "{app}: confirmed ✅", "Confirmed ✅" ]
+      },
+      "outcome-receipt-declined": {
+        "Contract": {
+          "Slots": [ { "Name": "app", "Type": "string", "Source": "ServerInitiatorContext" } ]
+        },
+        "Templates": [ "{app}: declined ❌", "Declined ❌" ]
+      }
+    },
+    "OpenIddict": {
+      "Clients": [
+        {
+          // The backend of the sample application. It calls the confirmation API with its own token
+          // (client_credentials) and learns who confirmed through the confirmation grant with the
+          // openid scope.
+          "ClientId": "sample-app",
+          "DisplayName": "Sample application",
+          "AllowClientCredentials": true,
+          "AllowConfirmationTokenGrant": true,
+          "AllowedScopes": [ "openid", "channel" ],
+          // The identity a step-up names in expected_identities. Veriqa compares it with the
+          // channel_user_id claim of the person who confirmed and answers with matched_type. Without
+          // this declaration the request is refused with candidate_type_undeclared. It is a Telegram
+          // user id only because this stand enables Telegram alone; with several channels, compare an
+          // identity that does not depend on the channel.
+          "IdentityMatchComparableTypes": [
+            { "Name": "telegram_user_id", "ClaimName": "channel_user_id", "Normalization": "Exact" }
+          ],
+          // The two action types of the sample, declared in the client entry: an action type the
+          // client does not declare is refused with action_type_unknown.
+          "MessageTemplates": {
+            "approve-payment": {
+              "Contract": {
+                "Slots": [
+                  { "Name": "amount", "Type": "string", "MaxLength": 32, "Required": true },
+                  { "Name": "payee", "Type": "string", "MaxLength": 64 }
+                ]
+              },
+              "Templates": [
+                "Approve a payment of {amount} to {payee}?",
+                "Approve a payment of {amount}?"
+              ]
+            },
+            "delete-project": {
+              "Contract": {
+                "Slots": [
+                  { "Name": "project", "Type": "string", "MaxLength": 64, "Required": true },
+                  { "Name": "documents", "Type": "string", "MaxLength": 16, "Required": true }
+                ]
+              },
+              "Templates": [
+                "Delete the project {project} with its {documents} documents? This cannot be undone.",
+                "Delete the project {project}? This cannot be undone."
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

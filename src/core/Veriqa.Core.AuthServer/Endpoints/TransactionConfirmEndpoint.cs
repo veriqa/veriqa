@@ -931,7 +931,9 @@ public static class TransactionConfirmEndpoint
             // CancellationToken.None — the occurrence must reach the journal even if the browser goes
             // away; otherwise abandoning the request would suppress its own trace. No attribution is
             // attached: the visitor here is unauthenticated by definition, and the identity the
-            // transaction carries belongs to its owner, who did not act.
+            // transaction carries belongs to its owner, who did not act. The tenant alone goes with
+            // the event (SPEC-011 R44): it is not an attribution of the visitor but the layer the audit
+            // mode is resolved at and the journal the record is addressed to.
             await eventPublisher.PublishAsync(
                 new TransactionChannelAuditEvent
                 {
@@ -939,7 +941,8 @@ public static class TransactionConfirmEndpoint
                     OccurredAt = journal.TimeProvider.GetUtcNow(),
                     ChannelType = channelType,
                     EventCode = auditCode,
-                    Details = null
+                    Details = null,
+                    Context = TransactionEventContext.ForTenant(transaction.GetTenantId())
                 },
                 CancellationToken.None);
         }

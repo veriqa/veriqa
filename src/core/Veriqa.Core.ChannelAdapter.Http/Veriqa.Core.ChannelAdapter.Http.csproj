@@ -32,7 +32,7 @@
     <!-- Retries and timeouts of the outbound calls (Polly), and the removal of the resilience handler a
          host puts on every HttpClient: the calls to the external adapter retry by the wire rules alone.
          The version is the one Veriqa.ServiceDefaults references, so the standard host resolves one. -->
-    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
   </ItemGroup>
 
   <ItemGroup>

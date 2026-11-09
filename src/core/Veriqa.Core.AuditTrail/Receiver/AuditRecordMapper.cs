@@ -20,8 +20,10 @@ namespace Veriqa.Core.AuditTrail.Receiver;
 /// attribution the publisher attached to it while the transaction was still there. The mapper never
 /// reads the transaction store: delivery is asynchronous, the transaction may already be gone, and
 /// a record that reads it would carry a different attribution depending on who won that race.
-/// An event published without attribution (a channel event raised outside the transaction service)
-/// yields the closing rules — the system actor and empty attributes — deterministically.
+/// An attribute the publisher did not attach yields the closing rules — the system actor and an
+/// empty attribute — deterministically: a refusal of the interaction surface carries the tenant
+/// at most, and every other attribute of its record falls back to them; an admissibility refusal
+/// of the transaction service and a completion-behaviour clamp carry the whole attribution.
 /// </para>
 /// </remarks>
 internal static class AuditRecordMapper

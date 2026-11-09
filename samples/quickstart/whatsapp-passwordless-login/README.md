@@ -1,7 +1,7 @@
 # WhatsApp login for Python, Node.js, Go, PHP and ASP.NET Core — passwordless WhatsApp authentication over OpenID Connect (OIDC)
 
-Sign in with WhatsApp for a Python, Node.js, Go, PHP or ASP.NET Core app, with no password: QR code login instead of a password or an SMS
-code. Your users scan the QR code on the sign-in page (on a phone, they tap a button) and send the prepared message in WhatsApp.
+Sign in with WhatsApp for a Python, Node.js, Go, PHP or ASP.NET Core app, with no password: cross-device QR code login instead of a password or an SMS
+code. Your users scan the QR code on the sign-in page with their phone (on the phone itself, they tap a button) and send the prepared message in WhatsApp.
 
 The example is a standard OpenID Connect (OIDC) provider plus a minimal client app in each of these languages. Login with WhatsApp works the same way on any other stack with an OIDC library.
 

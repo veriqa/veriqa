@@ -42,6 +42,47 @@ public static class InfrastructureConfigConstants
     public const string DataProtectionKeysDirectoryKey = "Veriqa:DataProtection:KeysDirectory";
 
     /// <summary>
+    /// Key of the PFX certificate, Base64-encoded, that encrypts the new keys of the DataProtection key
+    /// ring at rest. Full path: Veriqa:DataProtection:CertificateBase64. Takes priority over
+    /// <see cref="DataProtectionCertificatePathKey"/>. Neither set — the keys are stored unencrypted.
+    /// </summary>
+    public const string DataProtectionCertificateBase64Key = "Veriqa:DataProtection:CertificateBase64";
+
+    /// <summary>
+    /// Key of the path to the PFX file that encrypts the new keys of the DataProtection key ring at rest.
+    /// Full path: Veriqa:DataProtection:CertificatePath. Read when
+    /// <see cref="DataProtectionCertificateBase64Key"/> is not set.
+    /// </summary>
+    public const string DataProtectionCertificatePathKey = "Veriqa:DataProtection:CertificatePath";
+
+    /// <summary>
+    /// Key of the password of the DataProtection certificate (either form).
+    /// Full path: Veriqa:DataProtection:CertificatePassword.
+    /// </summary>
+    public const string DataProtectionCertificatePasswordKey = "Veriqa:DataProtection:CertificatePassword";
+
+    /// <summary>
+    /// Key of the previous PFX certificate, Base64-encoded, of the DataProtection key ring: it only
+    /// decrypts the keys the previous certificate encrypted, while the certificate is being replaced.
+    /// Full path: Veriqa:DataProtection:PreviousCertificateBase64. Takes priority over
+    /// <see cref="DataProtectionPreviousCertificatePathKey"/>.
+    /// </summary>
+    public const string DataProtectionPreviousCertificateBase64Key = "Veriqa:DataProtection:PreviousCertificateBase64";
+
+    /// <summary>
+    /// Key of the path to the previous PFX file of the DataProtection key ring, used for decryption only.
+    /// Full path: Veriqa:DataProtection:PreviousCertificatePath. Read when
+    /// <see cref="DataProtectionPreviousCertificateBase64Key"/> is not set.
+    /// </summary>
+    public const string DataProtectionPreviousCertificatePathKey = "Veriqa:DataProtection:PreviousCertificatePath";
+
+    /// <summary>
+    /// Key of the password of the previous DataProtection certificate (either form).
+    /// Full path: Veriqa:DataProtection:PreviousCertificatePassword.
+    /// </summary>
+    public const string DataProtectionPreviousCertificatePasswordKey = "Veriqa:DataProtection:PreviousCertificatePassword";
+
+    /// <summary>
     /// Application name for DataProtection (key isolation between applications).
     /// </summary>
     public const string DataProtectionApplicationName = "veriqa-authserver";

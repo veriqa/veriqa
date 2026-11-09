@@ -153,7 +153,12 @@ internal sealed class EventReceiver(IChannelAdapter adapter, WireSchema schema, 
         // goes to the observer of such events, if one is open.
         var request = httpContext.Request;
         var cancellationToken = httpContext.RequestAborted;
+        // An empty or blank segment is the implicit tenant, as on the route of the core.
         var routeTenant = request.RouteValues.TryGetValue(TenantRouteKey, out var segment) ? segment as string : null;
+        if (string.IsNullOrWhiteSpace(routeTenant))
+        {
+            routeTenant = null;
+        }
 
         var body = await ReadBodyAsync(request.Body, cancellationToken);
         if (body is null)

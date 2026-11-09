@@ -28,12 +28,48 @@ public static class CorePageTextServiceCollectionExtensions
     /// </exception>
     public static IServiceCollection AddCorePageOverridableTexts(
         this IServiceCollection services,
-        IEnumerable<string> naturalKeys)
+        IEnumerable<string> naturalKeys) =>
+        services.AddCorePageOverridableTexts(naturalKeys, optionalSlots: []);
+
+    /// <summary>
+    /// Contributes texts of an owner's core pages to the set an entry of
+    /// <see cref="CorePageTextConfigKeys.Texts"/> may override, together with the slots that are optional in
+    /// them: the owner's page fills each of those slots in each of these texts whenever a text carries it,
+    /// so a replacement may carry any of them, all of them or none — and may name with one slot what the
+    /// built-in text names with another. The other slots of the texts have to match exactly, as for every
+    /// overridable text.
+    /// </summary>
+    /// <param name="services">Service collection.</param>
+    /// <param name="naturalKeys">Built-in Natural Keys of the owner's page elements.</param>
+    /// <param name="optionalSlots">Slots in their written form (<c>{app}</c>) the page fills in every one of
+    /// these texts.</param>
+    /// <returns>The service collection for chaining.</returns>
+    /// <exception cref="ArgumentException">
+    /// A text is blank or carries the path separator of the configuration: no level could address an
+    /// entry for it; or an optional slot is not one slot in its written form.
+    /// </exception>
+    public static IServiceCollection AddCorePageOverridableTexts(
+        this IServiceCollection services,
+        IEnumerable<string> naturalKeys,
+        IEnumerable<string> optionalSlots)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(naturalKeys);
+        ArgumentNullException.ThrowIfNull(optionalSlots);
 
         IReadOnlyList<string> contributed = [.. naturalKeys];
+        IReadOnlyList<string> optional = [.. optionalSlots];
+
+        foreach (var slot in optional)
+        {
+            if (slot is null || !CorePageTextSlots.IsSlot(slot))
+            {
+                throw new ArgumentException(
+                    $"'{slot}' cannot be an optional slot: it has to be one slot in its written form, such as "
+                    + "'{app}'.",
+                    nameof(optionalSlots));
+            }
+        }
 
         foreach (var naturalKey in contributed)
         {
@@ -46,7 +82,7 @@ public static class CorePageTextServiceCollectionExtensions
             }
         }
 
-        services.AddSingleton(new CorePageOverridableTextContribution(contributed));
+        services.AddSingleton(new CorePageOverridableTextContribution(contributed) { OptionalSlots = optional });
         services.TryAddSingleton<CorePageOverridableTexts>();
 
         return services;

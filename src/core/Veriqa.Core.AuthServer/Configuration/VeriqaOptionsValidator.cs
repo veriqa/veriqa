@@ -1,12 +1,9 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Globalization;
-
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
-using Veriqa.Core.AuthServer.Configuration.Enums;
 using Veriqa.Core.AuthServer.UI;
 using Veriqa.Core.TransactionEngine.Domain;
 
@@ -26,24 +23,10 @@ namespace Veriqa.Core.AuthServer.Configuration;
 internal sealed class VeriqaOptionsValidator : IValidateOptions<VeriqaOptions>
 {
     /// <summary>
-    /// Address of the declared scopes inside the host configuration.
-    /// </summary>
-    private static readonly string ScopesPath =
-        ScopesClaimsOptions.SectionName + ":" + nameof(ScopesClaimsOptions.Scopes);
-
-    /// <summary>
     /// Address of the client entries inside the host configuration.
     /// </summary>
     private static readonly string ClientsPath =
         OidcClientsOptions.SectionName + ":" + nameof(OidcClientsOptions.Clients);
-
-    /// <summary>
-    /// Member a scope or a claim row stated before the requirement levels existed: on a claim it was
-    /// replaced by <see cref="ClaimDefinition.Level"/>, on a scope it was removed. The binder ignores a
-    /// member the class does not have, so without a check of the text the requirement a deployment
-    /// wrote would silently not exist.
-    /// </summary>
-    private const string RemovedIsRequiredMember = "IsRequired";
 
     /// <summary>
     /// Process-wide registry of the auth-window languages.
@@ -79,14 +62,10 @@ internal sealed class VeriqaOptionsValidator : IValidateOptions<VeriqaOptions>
 
         var failures = new List<string>();
 
-        // The core catalog is judged by the same rules as the catalog of any level (SPEC-041 C31, L92)
-        failures.AddRange(
-            ScopesClaimsCatalogRules.Violations(options.ScopesClaims.Scopes)
-                .Select(violation => ScopesClaimsOptions.SectionName + ":" + violation));
-
         // What the binder cannot convert or silently ignores is judged on the TEXT the deployment
-        // wrote (SPEC-012 §8.2)
-        failures.AddRange(StatedCatalogFailures());
+        // wrote (SPEC-012 §8.2). The claims catalog itself — its rules and its text — is judged by the
+        // startup check of its own section (ScopesClaimsCatalogValidator); the levels the client entries
+        // state are judged here.
         failures.AddRange(StatedClientClaimLevelFailures());
 
         // Default language validation: must be in the supported languages registry
@@ -101,74 +80,9 @@ internal sealed class VeriqaOptionsValidator : IValidateOptions<VeriqaOptions>
     }
 
     /// <summary>
-    /// Failures of the catalog TEXT the deployment wrote that the bound catalog can no longer show.
-    /// </summary>
-    /// <remarks>
-    /// The question is asked of the configuration TEXT and not of the bound object on purpose: a claim
-    /// is an element of a collection, and the binder drops an element it cannot convert — an entry
-    /// saying <c>Source: Bogus</c> or <c>Level: Mandatory</c> takes the whole claim out of the scope
-    /// before anything of ours sees it, so the deployment silently loses a claim it declared. A raw
-    /// NUMBER is the other half of the same mistake: it converts into a member that does not exist,
-    /// which is why what the parse produced still has to BE a member. A member the class no longer has
-    /// (<c>IsRequired</c>) is the third case: the binder ignores it, and the requirement it stated
-    /// would silently not exist. A deployment that configures the options in code states no text here
-    /// and nothing is judged.
-    /// </remarks>
-    /// <returns>One message per failure of the stated catalog.</returns>
-    private IEnumerable<string> StatedCatalogFailures()
-    {
-        foreach (var scope in _configuration.GetSection(ScopesPath).GetChildren())
-        {
-            var scopeAddress = $"{ScopesPath}[{scope.Key}]";
-
-            if (scope.GetSection(RemovedIsRequiredMember).Exists())
-            {
-                yield return
-                    $"{scopeAddress}:{RemovedIsRequiredMember} was removed: a scope carries no requirement — "
-                    + $"state the requirement on its claims ({nameof(ClaimDefinition.Level)}).";
-            }
-
-            foreach (var claim in scope.GetSection(nameof(ScopeDefinition.Claims)).GetChildren())
-            {
-                var claimAddress = $"{scopeAddress}:{nameof(ScopeDefinition.Claims)}[{claim.Key}]";
-                var completion = claim.GetSection(nameof(ClaimDefinition.Completion));
-                var completionAddress = $"{claimAddress}:{nameof(ClaimDefinition.Completion)}";
-
-                if (claim.GetSection(RemovedIsRequiredMember).Exists())
-                {
-                    yield return
-                        $"{claimAddress}:{RemovedIsRequiredMember} was replaced by {nameof(ClaimDefinition.Level)}: "
-                        + $"state one of {string.Join(", ", Enum.GetNames<ClaimRequirementLevel>())} instead.";
-                }
-
-                string?[] failures =
-                [
-                    UnknownStatedMember<ClaimSource>(
-                        claim.GetSection(nameof(ClaimDefinition.Source)),
-                        $"{claimAddress}:{nameof(ClaimDefinition.Source)}"),
-                    UnknownStatedMember<ClaimRequirementLevel>(
-                        claim.GetSection(nameof(ClaimDefinition.Level)),
-                        $"{claimAddress}:{nameof(ClaimDefinition.Level)}"),
-                    UnknownStatedMember<ClaimFieldFormat>(
-                        completion.GetSection(nameof(ClaimCompletionDefinition.Format)),
-                        $"{completionAddress}:{nameof(ClaimCompletionDefinition.Format)}"),
-                    UnparsableStatedInteger(
-                        completion.GetSection(nameof(ClaimCompletionDefinition.MaxLength)),
-                        $"{completionAddress}:{nameof(ClaimCompletionDefinition.MaxLength)}")
-                ];
-
-                foreach (var failure in failures.OfType<string>())
-                {
-                    yield return failure;
-                }
-            }
-        }
-    }
-
-    /// <summary>
     /// Requirement levels the client entries STATE that the enumeration does not carry. An entry of the
     /// map the binder cannot convert is dropped from it, so the raise the application wrote would
-    /// silently not apply — the same reason the catalog text is judged.
+    /// silently not apply — the same reason the catalog text is judged by the check of its section.
     /// </summary>
     /// <returns>One message per stated level that is not a member of the closed set.</returns>
     private IEnumerable<string> StatedClientClaimLevelFailures()
@@ -179,55 +93,12 @@ internal sealed class VeriqaOptionsValidator : IValidateOptions<VeriqaOptions>
             {
                 var address = $"{ClientsPath}[{client.Key}]:{nameof(OidcClientOptions.ClaimLevels)}:{level.Key}";
 
-                if (UnknownStatedMember<ClaimRequirementLevel>(level, address) is { } failure)
+                if (StatedConfigurationText.UnknownStatedMember<ClaimRequirementLevel>(level, address) is { } failure)
                 {
                     yield return failure;
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// Failure of a stated value that names no member of a closed set; null when the member states no
-    /// value or names a member.
-    /// </summary>
-    /// <typeparam name="TEnum">Closed set the value must name a member of.</typeparam>
-    /// <param name="member">Configuration member holding the value.</param>
-    /// <param name="address">Address of the member for the message.</param>
-    /// <returns>Failure message, or null.</returns>
-    private static string? UnknownStatedMember<TEnum>(IConfigurationSection member, string address)
-        where TEnum : struct, Enum
-    {
-        var stated = member.Value;
-
-        if (string.IsNullOrWhiteSpace(stated)
-            || (Enum.TryParse<TEnum>(stated, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)))
-        {
-            return null;
-        }
-
-        return $"{address} is '{stated}', which is not a known value. "
-            + $"Allowed values: {string.Join(", ", Enum.GetNames<TEnum>())}.";
-    }
-
-    /// <summary>
-    /// Failure of a stated value that is not an integer; null when the member states no value or an
-    /// integer.
-    /// </summary>
-    /// <param name="member">Configuration member holding the value.</param>
-    /// <param name="address">Address of the member for the message.</param>
-    /// <returns>Failure message, or null.</returns>
-    private static string? UnparsableStatedInteger(IConfigurationSection member, string address)
-    {
-        var stated = member.Value;
-
-        if (string.IsNullOrWhiteSpace(stated)
-            || int.TryParse(stated, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
-        {
-            return null;
-        }
-
-        return $"{address} is '{stated}', which is not an integer.";
     }
 
     /// <summary>

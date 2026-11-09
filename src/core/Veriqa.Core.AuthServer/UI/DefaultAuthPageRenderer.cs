@@ -4,6 +4,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Veriqa.Core.AuthServer.Configuration;
 using Veriqa.Core.AuthServer.Configuration.Enums;
 using Veriqa.Core.AuthServer.Configuration.Resolution;
@@ -118,6 +119,15 @@ public sealed class AuthPageRenderContext
     /// channel of the event. Null — none.
     /// </summary>
     public string? FallbackChannelLaunchedLine { get; init; }
+
+    /// <summary>
+    /// The channel the sender entered the transaction by, when the page is rendered while the answer is
+    /// awaited in that channel — the fact the hub replays to a page that subscribes as the answer of the
+    /// bot (SPEC-025 HOP-180, SPEC-007 UI-119). The page is then rendered in the state that answer puts it
+    /// in, so a page reloaded at that moment does not show the channel choice first. Null (the default) —
+    /// the answer is not awaited in a channel.
+    /// </summary>
+    public string? AnsweredChannelType { get; init; }
 
     /// <summary>
     /// Language code (ru, en, zh).
@@ -237,6 +247,35 @@ public sealed class AuthPageRenderContext
     public ChannelLayout ChannelLayout { get; init; } = ChannelLayout.Tabs;
 
     /// <summary>
+    /// Whether the page hints at the channel the user went through last time on this device, resolved
+    /// by the caller for the reason <see cref="QrVisibility"/> is (key
+    /// <c>AuthPageDesign.RememberChannel.Hint</c>). <see langword="false"/> (the default) — the page is
+    /// rendered as without the setting.
+    /// <para>
+    /// The channel is remembered as its TYPE in a cookie of the Veriqa host that the script of the page
+    /// writes and reads; the server never reads it. The value therefore decides what the page hands its
+    /// script, and the script puts the remembered channel forward only where it is one of the channels
+    /// of this page.
+    /// </para>
+    /// </summary>
+    public bool RememberChannelHint { get; init; }
+
+    /// <summary>
+    /// Whether a page that shows the unified QR code (<see cref="UnifiedQrCodeBase64"/>) offers, on a
+    /// desktop, the checkbox that remembers the channel the user went through, resolved by the caller
+    /// for the reason <see cref="QrVisibility"/> is (key <c>AuthPageDesign.RememberChannel.Checkbox</c>).
+    /// <see langword="false"/> (the default) — the page is rendered as without the setting.
+    /// <para>
+    /// The channel is kept in a cookie of the Veriqa host that the script of the page writes, only once
+    /// the checkbox is checked, and reads; the server never reads it. A page without the unified QR code
+    /// is rendered the same whatever the value. A page of the unified QR code without the per-channel QR
+    /// codes (<see cref="UnifiedQrWithChannelQrCodes"/> off) carries them under the value, hidden until the
+    /// page shows the remembered channel alone, and replaces them as it replaces the unified one.
+    /// </para>
+    /// </summary>
+    public bool RememberChannelCheckbox { get; init; }
+
+    /// <summary>
     /// Whether the page is allowed to take the browser off itself when a status arrives that has a
     /// navigation target. <see langword="true"/> (the default) — the behaviour of the sign-in window:
     /// a completed transaction continues on the OIDC callback.
@@ -334,6 +373,8 @@ public sealed class AuthPageRenderContext
     /// tap — with a choice of channels in the state of the chosen channel, whose way back brings the
     /// buttons back (HOP-193), with one channel on its buttons — so a second tap is the fallback when the
     /// app did not open (HOP-186). <see langword="false"/> (the default) — every other page.
+    /// True only on the scanner page, which the built-in renderer always renders: a renderer of the host's own
+    /// (<c>UseAuthPageRenderer</c>) never receives it true.
     /// </summary>
     public bool IsScannerPage { get; init; }
 
@@ -343,6 +384,8 @@ public sealed class AuthPageRenderContext
     /// expiry), with the line "You can close this tab." for a browser that leaves the tab open. The scanner
     /// page of the unified hop QR code offers it: it reports an outcome the browser of the sign-in window
     /// goes on from. <see langword="false"/> (the default) — every other page.
+    /// True only on the scanner page, which the built-in renderer always renders: a renderer of the host's own
+    /// (<c>UseAuthPageRenderer</c>) never receives it true.
     /// </summary>
     public bool OffersOutcomeClose { get; init; }
 
@@ -351,6 +394,8 @@ public sealed class AuthPageRenderContext
     /// slot; null — the caption is "Close". The core states a name when the page is opened on the same type
     /// of device (desktop, mobile or tablet) as the one the sign-in started on and the application name is
     /// known. Ignored where <see cref="OffersOutcomeClose"/> is <see langword="false"/>.
+    /// Stated only on the scanner page, which the built-in renderer always renders: a renderer of the host's own
+    /// (<c>UseAuthPageRenderer</c>) never receives a name in it.
     /// </summary>
     public string? OutcomeCloseApplicationName { get; init; }
 
@@ -360,6 +405,8 @@ public sealed class AuthPageRenderContext
     /// caller states it from the effective acceptance of client signals for the transaction. Ignored
     /// outside the scanner page (<see cref="IsScannerPage"/>): on any other page the phone is the
     /// initiator, and there is no other device to tell which channel was chosen.
+    /// True only on the scanner page, which the built-in renderer always renders: a renderer of the host's own
+    /// (<c>UseAuthPageRenderer</c>) never receives it true.
     /// </summary>
     public bool SendsChannelLaunchedSignal { get; init; }
 
@@ -368,6 +415,8 @@ public sealed class AuthPageRenderContext
     /// signal of the opened page (SPEC-025 HOP-090); the caller states it from the effective collection of
     /// the fingerprint for the transaction. Ignored outside the scanner page
     /// (<see cref="IsScannerPage"/>): any other page is not opened by a hop URL and has no receiver for it.
+    /// True only on the scanner page, which the built-in renderer always renders: a renderer of the host's own
+    /// (<c>UseAuthPageRenderer</c>) never receives it true.
     /// </summary>
     public bool CollectsHopFingerprint { get; init; }
 
@@ -378,6 +427,8 @@ public sealed class AuthPageRenderContext
     /// transaction does not already wait for the person on a page of the core (HOP-179). Null (the
     /// default) — the page does not open the channel by itself; a tap on its button does. Ignored outside
     /// the scanner page (<see cref="IsScannerPage"/>).
+    /// Stated only on the scanner page, which the built-in renderer always renders: a renderer of the host's own
+    /// (<c>UseAuthPageRenderer</c>) never receives a target in it.
     /// </summary>
     public string? HopLaunchTarget { get; init; }
 
@@ -459,10 +510,24 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private const int FourTabGridThreshold = 4;
 
     /// <summary>
+    /// Channel-tab threshold at which the tab grid holds three tabs to a row instead of two (modifier
+    /// <see cref="ThreeColumnTabsClass"/>), so a strip of many channels takes fewer rows. It counts the
+    /// channel tabs alone: the "Any channel" tab keeps a row of its own and is not one of them.
+    /// </summary>
+    private const int ThreeColumnTabsThreshold = 5;
+
+    /// <summary>
+    /// Modifier of the tab grid next to <c>veriqa-tabs--grid</c>: three tabs to a row, and the tabs of an
+    /// incomplete last row share its whole width — one tab takes the row, two take half of it each — so the
+    /// grid never leaves an empty cell.
+    /// </summary>
+    private const string ThreeColumnTabsClass = "veriqa-tabs--three-columns";
+
+    /// <summary>
     /// Modifier of the tab strip of a page with the "Any channel" tab, next to <c>veriqa-tabs--grid</c>
     /// (SPEC-025 HOP-187): the "Any channel" tab takes a row of its own across the strip, the channel tabs
-    /// stand under it two to a row, and the last of an odd number of them takes its row whole — so the
-    /// grid never leaves an empty cell.
+    /// stand under it two to a row (three from <see cref="ThreeColumnTabsThreshold"/> on), and the last of an
+    /// odd number of them takes its row whole — so the grid never leaves an empty cell.
     /// </summary>
     private const string AnyChannelTabsClass = "veriqa-tabs--any-channel";
 
@@ -519,7 +584,8 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private const string PageStateAttributeName = "data-page-state";
 
     /// <summary>
-    /// State of a page whose transaction is still running — the value the markup carries.
+    /// State of a page whose transaction is still running — the value the markup carries unless the page is
+    /// rendered with the line of the answer of a channel's bot (<see cref="AnswerElsewherePageStateValue"/>).
     /// </summary>
     private const string WaitingPageStateValue = "waiting";
 
@@ -551,10 +617,12 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private const string CompletedPageStateValue = "completed";
 
     /// <summary>
-    /// State of a page set by the script once the answer is no longer given on it: the scanner page of a
-    /// sign-in on <c>AwaitingWebConfirmation</c>, where the core asks the question on the window that
-    /// started the sign-in (SPEC-025 HOP-186, HOP-179), and a sign-in page that put the line of the answer
-    /// of a channel's bot on its status line (SPEC-025 HOP-180, SPEC-007 UI-119). The transaction is bound
+    /// State of a page once the answer is no longer given on it: the scanner page of a sign-in on
+    /// <c>AwaitingWebConfirmation</c>, where the core asks the question on the window that started the sign-in
+    /// (SPEC-025 HOP-186, HOP-179), and a sign-in page that put the line of the answer of a channel's bot on its
+    /// status line (SPEC-025 HOP-180, SPEC-007 UI-119). The script sets it; a page rendered while the answer
+    /// is awaited in a channel is rendered in it, with that line already on its status line
+    /// (<see cref="AuthPageRenderContext.AnsweredChannelType"/>). The transaction is bound
     /// to a subject by then, so another channel could only lead into a refusal: the stylesheet takes the
     /// channel choice, the lead instruction, the block of the started hop and the spare code of a phone
     /// away, and the status line, the countdown and the cancel button stay. Still a waiting page — the
@@ -577,6 +645,24 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     /// <see cref="PageStateAttributeName"/> stay what they are.
     /// </summary>
     private const string HopStartedAttributeName = "data-hop-started";
+
+    /// <summary>
+    /// Name of the root attribute the script sets while the address form of Email is open — opened by the
+    /// link of the Push section or by the button of the Pull panel — and takes off when the form is closed.
+    /// Only its presence counts: the stylesheet then takes the rest of the channel choice away — the tab
+    /// strip, the unified QR code and the panels of the other channels — and puts the instruction of the
+    /// form (<see cref="EmailFormInstructionClass"/>) in place of the lead instruction. A display mode
+    /// inside the waiting state, as <see cref="HopStartedAttributeName"/> is.
+    /// </summary>
+    private const string EmailFormOpenAttributeName = "data-email-form-open";
+
+    /// <summary>
+    /// Modifier of the instruction of the open address form of Email, rendered hidden next to the lead
+    /// instruction it stands in for while <see cref="EmailFormOpenAttributeName"/> is set. It carries the
+    /// modifier of the lead instruction as well, so every state that takes the lead instruction away takes
+    /// this one with it.
+    /// </summary>
+    private const string EmailFormInstructionClass = "veriqa-instruction--email-form";
 
     /// <summary>
     /// Value of <see cref="DeviceAttributeName"/> for a phone — the only device class the window
@@ -690,8 +776,40 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private const string HopChooseAnotherElementId = "veriqa-hop-choose-another";
 
     /// <summary>
+    /// Identifier of the block of the checkbox that remembers the channel (SPEC-025 HOP-187): under
+    /// the channel choice, outside its container — the start of the hop takes that container away, and the
+    /// checkbox stays. Rendered hidden; the page script shows it on a desktop.
+    /// </summary>
+    private const string RememberElementId = "veriqa-remember";
+
+    /// <summary>
+    /// Identifier of the checkbox itself, the native control its label names by <c>for</c>.
+    /// </summary>
+    private const string RememberCheckboxElementId = "veriqa-remember-checkbox";
+
+    /// <summary>
+    /// Identifier of the label of the checkbox, whose text the script words by the state of the page.
+    /// </summary>
+    private const string RememberLabelElementId = "veriqa-remember-label";
+
+    /// <summary>
+    /// Identifier of the way back from the state of the remembered channel to the whole channel choice: the
+    /// button of the block under the lead instruction (<see cref="RememberBackClass"/>). The block is rendered
+    /// hidden; the script shows it in that state alone and takes it off the page once a channel has answered,
+    /// as it does the way back of the started hop.
+    /// </summary>
+    private const string RememberBackElementId = "veriqa-remember-back";
+
+    /// <summary>
+    /// Class of the block that holds the way back from the state of the remembered channel: the "OR" divider
+    /// and the button under it.
+    /// </summary>
+    private const string RememberBackClass = "veriqa-remember-back";
+
+    /// <summary>
     /// Name of the root attribute the script sets on the scanner page once a tap on a channel link sent the
-    /// person into that channel (SPEC-025 HOP-193). Only its presence counts: the stylesheet then takes the
+    /// person into that channel (SPEC-025 HOP-193), and the server renders on a page whose channel has already
+    /// answered (<see cref="ChosenChannelAtRender"/>). Only its presence counts: the stylesheet then takes the
     /// title of the page, the lead instruction and the channel choice away and shows the way back to the
     /// choice. A display mode inside the waiting state, as <see cref="HopStartedAttributeName"/> is — the
     /// values of <see cref="PageStateAttributeName"/> stay what they are.
@@ -701,14 +819,16 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     /// <summary>
     /// Name of the attribute naming the channel type on both halves of the chosen channel of the scanner
     /// page: on each link that leads into a channel, and on the heading of that channel the script shows on
-    /// a tap of it.
+    /// a tap of it — or the server renders shown on a page whose channel has already answered
+    /// (<see cref="ChosenChannelAtRender"/>).
     /// </summary>
     private const string ContinueChannelAttributeName = "data-continue-channel";
 
     /// <summary>
     /// Identifier of the block of the scanner page holding one heading per channel the page leads into
     /// (<see cref="HopLaunchPageHeading.ContinueText"/>), each hidden until the script shows the heading of the
-    /// channel tapped.
+    /// channel tapped — but the one of a channel that has already answered, which the server renders shown
+    /// (<see cref="ChosenChannelAtRender"/>).
     /// </summary>
     private const string ChosenHeadingsElementId = "veriqa-chosen-headings";
 
@@ -725,12 +845,34 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private const string ChosenBackClass = "veriqa-chosen-back";
 
     /// <summary>
+    /// Class of the status line of a page.
+    /// </summary>
+    private const string StatusClass = "veriqa-status";
+
+    /// <summary>
+    /// Classes of the status line showing a line of progress — the look the script gives the line of the
+    /// answer of a channel's bot, and the renderer gives it on a page rendered with that line. The script
+    /// writes the same classes as a literal (<c>applyChannelAnswer</c> in <c>veriqa-auth-page.js</c>):
+    /// rename both together.
+    /// </summary>
+    private const string AnsweredStatusClass = StatusClass + " confirmed";
+
+    /// <summary>
     /// Name of the root attribute a head script sets on a page that shows a spare start code. While it
     /// stands, the stylesheet keeps every spare start code out of sight until the page script opens it
     /// (<see cref="SpareCodeOpenClass"/>). A browser that runs no script leaves it unset, and the spare
     /// start codes are on screen from the load.
     /// </summary>
     private const string SpareCodeHeldAttributeName = "data-spare-code-held";
+
+    /// <summary>
+    /// Name of the root attribute a head script sets on a desktop page whose cookie of the checkbox names a
+    /// channel of the page. While it stands, the stylesheet keeps the lead instruction and the channels out of
+    /// sight, so the page is never painted showing every channel before the page script turns it to the state
+    /// of the remembered channel; the page script takes the attribute off once that state is applied, and the
+    /// load of the page takes it off in any case. A browser that runs no script leaves it unset.
+    /// </summary>
+    private const string RememberedChannelHeldAttributeName = "data-remembered-channel-held";
 
     /// <summary>
     /// Class of the element that wraps the spare start code of one channel — in the panel of the channel
@@ -750,10 +892,59 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private const string SpareCodeChannelAttributeName = "data-spare-code-channel";
 
     /// <summary>
+    /// Class of the channel button of a panel — the link into the channel, and the button of the Email Pull
+    /// form that reveals it in the buttons layout.
+    /// </summary>
+    private const string ChannelButtonClass = "veriqa-btn-channel";
+
+    /// <summary>
     /// Selector of the channel button of a panel, as the page script finds it next to the spare start
     /// code of the same panel.
     /// </summary>
-    private const string ChannelButtonSelector = "a.veriqa-btn-channel";
+    private const string ChannelButtonSelector = "a." + ChannelButtonClass;
+
+    /// <summary>
+    /// Attributes of a channel link that opens the channel in a new tab: the page that opened it stays
+    /// under it and follows the transaction.
+    /// </summary>
+    private const string NewTabLinkAttributes = " target=\"_blank\" rel=\"noopener noreferrer\"";
+
+    /// <summary>
+    /// Attributes of a channel link that opens the channel in the tab of the page itself. The address of
+    /// the scanner page carries the hop token, so it is still kept out of the Referer.
+    /// </summary>
+    private const string SameTabLinkAttributes = " rel=\"noreferrer\"";
+
+    /// <summary>
+    /// Prefix of the identifier of a channel panel, followed by the channel type
+    /// (<see cref="AuthPageScriptConfig.PanelElementIdPrefix"/>).
+    /// </summary>
+    private const string PanelElementIdPrefix = "veriqa-panel-";
+
+    /// <summary>
+    /// Modifier of the panel of Email. While <see cref="EmailFormOpenAttributeName"/> is set, the stylesheet
+    /// hides every panel without it, so the panel of Email stands alone with its address form.
+    /// </summary>
+    private const string EmailPanelClass = "veriqa-panel--email";
+
+    /// <summary>
+    /// Modifier of the label of the StatusBadge primitive (<see cref="HopReopenedWarning.BadgeClass"/>) that the
+    /// page script puts on the channel the user went through last time: neutral colors instead of the warning
+    /// ones, a pill inside a tab and on the corner of a button.
+    /// </summary>
+    private const string LastUsedBadgeClass = "veriqa-badge--last-used";
+
+    /// <summary>
+    /// The channel statuses that tell the channel of the event works, the moment the page remembers it outside
+    /// the scanner page: the answer of the bot, and for Email, which has no bot, the opened link and the mail
+    /// received.
+    /// </summary>
+    private static readonly string[] WorkingChannelStatusCodes =
+    [
+        ChannelAnswerStatuses.ChannelAnswered,
+        EmailChannelStatusKeys.PullOpened,
+        EmailChannelStatusKeys.PushMailReceived
+    ];
 
     /// <summary>
     /// Identifier of the block under the status line that offers the spare start code on a phone: the
@@ -962,7 +1153,8 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
 
     /// <summary>
     /// The condition "no hop QR code is visible on the page" as a selector matching the root element: the hop
-    /// has started, the answer is given elsewhere (<see cref="AnswerElsewherePageStateValue"/>), or the QR
+    /// has started, the answer is given elsewhere (<see cref="AnswerElsewherePageStateValue"/>), the address
+    /// form of Email is open (<see cref="EmailFormOpenAttributeName"/>), or the QR
     /// code is hidden on a phone when only the desktop shows it (SPEC-025 HOP-152 over
     /// the signs of HOP-146 and SPEC-007 UI-020). The page script asks the root at the moment of a
     /// replacement and replaces nothing while it matches. A page rendered with
@@ -972,6 +1164,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private static readonly string HopQrNotVisibleSelector =
         $"[{HopStartedAttributeName}], "
         + $"[{PageStateAttributeName}=\"{AnswerElsewherePageStateValue}\"], "
+        + $"[{EmailFormOpenAttributeName}], "
         + $"[{QrVisibilityAttributeName}=\"{DesktopOnlyVisibilityValue}\"][{DeviceAttributeName}=\"{MobileDeviceValue}\"]";
 
     /// <summary>
@@ -1138,8 +1331,13 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
             BuildNonceAttribute(context),
             withStartCodeRules: ShowsAnyStartCodeBlock(context),
             holdsSpareStartCode: ShowsAnySpareStartCodeBlock(context),
+            rememberedChannelTypes: OffersRememberCheckbox(context)
+                ? [.. context.Channels.Select(channel => channel.ChannelType)]
+                : null,
             withChannelHeadingRules: MarksChosenChannel(context),
-            withCloseRules: context.OffersOutcomeClose);
+            withCloseRules: context.OffersOutcomeClose,
+            pageState: AnswerLineAtRender(context) is null ? WaitingPageStateValue : AnswerElsewherePageStateValue,
+            channelChosen: ChosenChannelAtRender(context) is not null);
 
         // Page body
         AppendBodyOpen(sb);
@@ -1159,7 +1357,10 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     /// <summary>
     /// Builds the HTML head: the inline styles of the window and the integrator's stylesheet link. The
     /// title of the document arrives ready — the text of the page title without tags, or its encoded
-    /// form (<see cref="BuildInlineMarkup"/>) — which is why it is not encoded again here.
+    /// form (<see cref="BuildInlineMarkup"/>) — which is why it is not encoded again here. The root carries
+    /// the state the page is rendered in (<paramref name="pageState"/>): waiting, or the answer given
+    /// elsewhere on a page rendered with the line of the answer of a channel's bot; and, on the scanner page
+    /// whose answered channel has a heading, the mode of the chosen channel (<paramref name="channelChosen"/>).
     /// </summary>
     private static void AppendHtmlHead(
         StringBuilder sb,
@@ -1172,8 +1373,11 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
         string nonceAttr,
         bool withStartCodeRules,
         bool holdsSpareStartCode,
+        IReadOnlyList<string>? rememberedChannelTypes,
         bool withChannelHeadingRules,
-        bool withCloseRules)
+        bool withCloseRules,
+        string pageState,
+        bool channelChosen)
     {
         // The method builds the DOCTYPE, head, and the styling head of the window.
         // Static rules live in the contour stylesheets (token layer + window rules); C# generates
@@ -1207,9 +1411,12 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
             windowRules += CorePageCloseAction.Css;
         }
 
+        // The script sets the mode of the chosen channel with an empty value; the server renders it the same.
+        var chosenAttribute = channelChosen ? $" {ChannelChosenAttributeName}=\"\"" : string.Empty;
+
         sb.Append($$"""
             <!DOCTYPE html>
-            <html lang="{{htmlLang}}" data-theme="{{htmlTheme}}" data-preset="{{presetName}}" {{visibilityAttributes}} {{PageStateAttributeName}}="{{WaitingPageStateValue}}">
+            <html lang="{{htmlLang}}" data-theme="{{htmlTheme}}" data-preset="{{presetName}}" {{visibilityAttributes}} {{PageStateAttributeName}}="{{pageState}}"{{chosenAttribute}}>
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -1217,7 +1424,14 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
                 {{CorePageHead.BuildPageHead(branding, windowRules, generatedTokens)}}
             """);
 
-        AppendDeviceDetectionScript(sb, nonceAttr, alwaysDetects: holdsSpareStartCode);
+        AppendDeviceDetectionScript(sb, nonceAttr, alwaysDetects: holdsSpareStartCode || rememberedChannelTypes is not null);
+
+        // The page that offers the checkbox reads its cookie right after the device is known, ahead of the
+        // markup, so the state of the remembered channel is the first one painted.
+        if (rememberedChannelTypes is not null)
+        {
+            AppendRememberedChannelHoldScript(sb, nonceAttr, rememberedChannelTypes);
+        }
 
         // The spare start codes are kept out of sight by a mark the head sets, ahead of their markup,
         // so a code that is about to be hidden never flashes; the page script opens them. Without
@@ -1244,7 +1458,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     /// a QR shown where it is useless. The script is emitted for every value of the settings and
     /// returns immediately unless one of them asks for a device check — the QR code on a desktop only,
     /// or the channel buttons on a phone only — or the page holds a spare start code, whose rules of
-    /// showing differ on a phone. The second condition is what keeps the buttons on a phone whose page
+    /// showing differ on a phone, or the checkbox that remembers the channel, which a phone never shows. The second condition is what keeps the buttons on a phone whose page
     /// shows the QR code everywhere: without it the marker would never be set there.
     /// </para>
     /// <para>
@@ -1258,7 +1472,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     /// <param name="nonceAttr">Ready CSP nonce attribute of an inline script (may be empty).</param>
     /// <param name="alwaysDetects">
     /// Whether the page establishes the device whatever the two settings state — a page holding a spare
-    /// start code, whose script reads the marker.
+    /// start code or the checkbox that remembers the channel, whose script reads the marker.
     /// </param>
     private static void AppendDeviceDetectionScript(StringBuilder sb, string nonceAttr, bool alwaysDetects)
     {
@@ -1292,6 +1506,51 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
                             ? uaData.mobile
                             : /Mobi|iPhone|iPod/i.test(navigator.userAgent || "");
                         if (isPhone) root.setAttribute("{{DeviceAttributeName}}", "{{MobileDeviceValue}}");
+                    })();
+                </script>
+            """);
+    }
+
+    /// <summary>
+    /// Builds the head script that holds the channels of a page opening in the state of the remembered channel
+    /// (<see cref="RememberedChannelHeldAttributeName"/>). The page script applies that state only once the
+    /// document has been read up to it, and the browser may paint the page before then — every channel on
+    /// screen, then the one remembered. The script reads the cookie of the checkbox the way the page script
+    /// does: only a channel of the page counts, and a phone, which never shows the checkbox, is left as it is.
+    /// The load of the page releases the hold whatever happens, so a page script that never ran does not leave
+    /// the channels out of sight.
+    /// </summary>
+    /// <param name="sb">StringBuilder for HTML output.</param>
+    /// <param name="nonceAttr">Ready CSP nonce attribute of an inline script (may be empty).</param>
+    /// <param name="channelTypes">Channel types of the page.</param>
+    private static void AppendRememberedChannelHoldScript(
+        StringBuilder sb,
+        string nonceAttr,
+        IReadOnlyList<string> channelTypes)
+    {
+        sb.Append($$"""
+
+                <script{{nonceAttr}}>
+                    (function() {
+                        "use strict";
+                        var root = document.documentElement;
+                        if (root.getAttribute("{{DeviceAttributeName}}") === "{{MobileDeviceValue}}") return;
+                        var channelTypes = {{JsonSerializer.Serialize(channelTypes)}};
+                        var prefix = "{{RememberedChannelCookies.RememberedChannelName}}=";
+                        try {
+                            var pairs = document.cookie.split("; ");
+                            for (var i = 0; i < pairs.length; i++) {
+                                if (pairs[i].indexOf(prefix) !== 0) continue;
+                                if (channelTypes.indexOf(decodeURIComponent(pairs[i].substring(prefix.length))) === -1) return;
+                                root.setAttribute("{{RememberedChannelHeldAttributeName}}", "");
+                                window.addEventListener("load", function() {
+                                    root.removeAttribute("{{RememberedChannelHeldAttributeName}}");
+                                });
+                                return;
+                            }
+                        } catch (e) {
+                            // No cookie can be read: the page opens with every channel, as the page script will.
+                        }
                     })();
                 </script>
             """);
@@ -1486,7 +1745,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
         var serverButtonsLayout = ServerChoosesButtonsLayout(context);
         var gridLayout = ShowsChannelGrid(context);
         var hasTabs = ShowsTabs(context);
-        var anyChannelTab = ShowsAnyChannelTab(context);
+        var anyChannelTab = HasAnyChannelState(context);
 
         // The split card of the unified QR code: the unified QR code and the stack of the channel panels as
         // two columns, and — on a page with the "Any channel" tab — each channel panel as its own QR code
@@ -1515,26 +1774,49 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
         // The scanner page with a choice of channels says where the person went once they tapped a channel
         // (SPEC-025 HOP-193): the headings are rendered ready, one per channel the page leads into, hidden;
         // the script shows the one of the channel tapped, and the stylesheet takes the title above away
-        // meanwhile, so one heading is on screen at a time.
+        // meanwhile, so one heading is on screen at a time. A page whose channel has already answered comes
+        // with the heading of that channel shown and the root in that mode (ChosenChannelAtRender).
         var marksChosenChannel = MarksChosenChannel(context);
         if (marksChosenChannel)
         {
             AppendChosenChannelHeadings(sb, context, lang);
         }
 
-        // The lead instruction carries a modifier of its own: it describes the channel choice, so it
-        // leaves together with it once the hop has started, while the subject below — the same text
-        // primitive — stays.
-        sb.AppendLine($"        <p class=\"veriqa-instruction veriqa-instruction--lead\">{instructionMarkup}</p>");
-
-        // What is being confirmed, when the deployment asked this surface to show it (SPEC-039 R38).
-        // The same text primitive of the card the instruction above uses — the subject is a sentence
-        // addressed to the user, not a control of its own. It is worded in the requested language and
-        // does not fall back with the page, so its line states its own lang when the two differ.
+        // What is being confirmed, when the deployment asked this surface to show it (SPEC-039 R38): right
+        // under the title, ahead of the instruction, as on the launch pages of the hop — the page names the
+        // action first and says what to do with it next. The text primitive of the card the instruction
+        // uses, set larger than it — the subject is a sentence addressed to the user, not a control of its
+        // own. It is worded in the requested language and does not fall back with the page, so its line
+        // states its own lang when the two differ.
         var subjectLine = ConfirmationSubjectText.Markup(context.SubjectText, context.Language, lang);
         if (subjectLine.Length > 0)
         {
             sb.AppendLine($"        {subjectLine}");
+        }
+
+        // The lead instruction carries a modifier of its own: it describes the channel choice, so it
+        // leaves together with it once the hop has started, while the subject above stays.
+        sb.AppendLine($"        <p class=\"veriqa-instruction veriqa-instruction--lead\">{instructionMarkup}</p>");
+
+        // The instruction of the address form of Email, where a tap opens that form: rendered ready and
+        // hidden, it stands in for the lead instruction while the form is open, since the lead instruction
+        // describes the channel choice that leaves meanwhile. One text for a sign-in and a confirmation, the
+        // one the panel of Email Pull with no QR code is worded by.
+        if (EmailChannelWithFormOnTap(context, hasMultipleChannels) is { } emailFormChannel)
+        {
+            sb.AppendLine(
+                $"        <p class=\"veriqa-instruction veriqa-instruction--lead {EmailFormInstructionClass}\">{EmailFormInstructionMarkup(context.Texts, emailFormChannel, lang)}</p>");
+        }
+
+        // The way back from the state of the remembered channel stands right under the instruction that names
+        // the channel, behind the "OR" divider, so the other channels are offered before the remembered one is
+        // used. Rendered hidden: the script shows it in that state alone.
+        if (OffersRememberCheckbox(context))
+        {
+            var orText = LocalizeOwn(context.Texts, AuthPageStrings.OrDivider, lang);
+            var backText = LocalizeOwn(context.Texts, AuthPageStrings.ChooseAnotherChannel, lang);
+            sb.AppendLine(
+                $"        <div class=\"{RememberBackClass}\" hidden><div class=\"veriqa-divider\">{HtmlEncode(orText)}</div><button class=\"veriqa-text-link\" id=\"{RememberBackElementId}\" type=\"button\">{HtmlEncode(backText)}</button></div>");
         }
 
         // Everything that leads into a channel — the tab strip with its tooltip host and every channel
@@ -1543,7 +1825,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
         var channelsClass = serverButtonsLayout
             ? $"{ChannelsClass} {ButtonsLayoutClass}"
             : anyChannelTab
-                ? context.AnyChannelTabShowsChannelButtons
+                ? AnyChannelStateShowsChannelButtons(context)
                     ? $"{ChannelsClass} {AnyChannelStateClass}"
                     : $"{ChannelsClass} {AnyChannelStateClass} {AnyChannelQrOnlyClass}"
                 : ChannelsClass;
@@ -1559,11 +1841,14 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
         {
             // 4+ tabs are laid out as a 2×2 grid (modifier --grid), 2–3 — in a single row. A strip with
             // the "Any channel" tab is a grid whatever their number: that tab on a row of its own, the
-            // channel tabs two to a row under it.
+            // channel tabs two to a row under it. From five channel tabs on, either grid holds three to a row.
+            var threeColumnsClass = context.Channels.Count >= ThreeColumnTabsThreshold
+                ? $" {ThreeColumnTabsClass}"
+                : string.Empty;
             var tabsGridClass = anyChannelTab
-                ? $" veriqa-tabs--grid {AnyChannelTabsClass}"
+                ? $" veriqa-tabs--grid {AnyChannelTabsClass}{threeColumnsClass}"
                 : context.Channels.Count >= FourTabGridThreshold
-                    ? " veriqa-tabs--grid"
+                    ? $" veriqa-tabs--grid{threeColumnsClass}"
                     : string.Empty;
             // A clipped label gets the contour's tooltip instead of a native title. The strip clips its own
             // content, so the bubble lives in a host around the strip and is shared by its tabs — only the
@@ -1585,7 +1870,11 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
                 sb.AppendLine("        <div class=\"veriqa-tooltip-host\">");
             }
 
-            sb.AppendLine($"        <div class=\"veriqa-tabs{tabsGridClass}\" role=\"tablist\">");
+            // The strip of a page that keeps the per-channel QR codes for the remembering checkbox alone is
+            // rendered hidden: the page looks as the page of the unified QR code, and the script selects a
+            // channel tab of it only as the state of the remembered channel.
+            var stripHidden = HidesTabStrip(context) ? " hidden" : string.Empty;
+            sb.AppendLine($"        <div class=\"veriqa-tabs{tabsGridClass}\" role=\"tablist\"{stripHidden}>");
 
             // The "Any channel" tab stands first and is the active tab on initial render. It names no
             // channel, so it carries neither a channel type nor a brand icon; what it controls is the
@@ -1631,7 +1920,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
                 // is correct from the markup alone — no init script call is needed.
                 var tabIndex = isActive ? "0" : "-1";
                 var tabId = ChannelTabElementId(i);
-                var panelId = $"veriqa-panel-{HtmlEncode(channel.ChannelType)}";
+                var panelId = $"{PanelElementIdPrefix}{HtmlEncode(channel.ChannelType)}";
                 // Channel brand icon in the tab (decorative; empty for an unknown channel)
                 var tabIcon = ChannelNameIcon(channel);
                 sb.AppendLine($"            <button class=\"veriqa-tab{activeClass}\" id=\"{tabId}\" data-channel=\"{HtmlEncode(channel.ChannelType)}\" role=\"tab\" aria-selected=\"{ariaSelected}\" aria-controls=\"{panelId}\" tabindex=\"{tabIndex}\"{tabTooltip}>{tabIcon}{tabLabel}</button>");
@@ -1682,7 +1971,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
             // panel carries the class, and the state of the container shows them all.
             var inactiveClass = hasTabs && (anyChannelTab || i is not 0) ? " veriqa-panel--inactive" : string.Empty;
             var tabId = ChannelTabElementId(i);
-            var panelId = $"veriqa-panel-{HtmlEncode(channel.ChannelType)}";
+            var panelId = $"{PanelElementIdPrefix}{HtmlEncode(channel.ChannelType)}";
 
             var channelNameId = $"veriqa-channel-name-{i}";
 
@@ -1711,7 +2000,9 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
                     ? $" {SplitSingleClass}"
                     : string.Empty;
 
-            sb.AppendLine($"        <div class=\"veriqa-panel{inactiveClass}{splitClass}\" id=\"{panelId}\"{panelAriaAttributes}>");
+            var emailClass = channel.ChannelType is ChannelTypes.Email ? $" {EmailPanelClass}" : string.Empty;
+
+            sb.AppendLine($"        <div class=\"veriqa-panel{inactiveClass}{splitClass}{emailClass}\" id=\"{panelId}\"{panelAriaAttributes}>");
 
             // The name of the channel over its panel: with no tab to carry it, the grid states it here,
             // by the rule the tabs are named with and under the same brand icon. A heading, so the
@@ -1821,7 +2112,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
                         sb.AppendLine("            <span class=\"veriqa-tooltip-host\">");
                     }
 
-                    sb.AppendLine($"            <a href=\"{HtmlEncode(channel.DeepLinkUrl)}\" class=\"veriqa-btn veriqa-btn-channel {btnClass}\" target=\"_blank\" rel=\"noopener noreferrer\"{btnTooltip}{linkAttributes}>");
+                    sb.AppendLine($"            <a href=\"{HtmlEncode(channel.DeepLinkUrl)}\" class=\"veriqa-btn veriqa-btn-channel {btnClass}\"{ChannelLinkTargetAttributes(channel, context)}{btnTooltip}{linkAttributes}>");
                     sb.AppendLine($"                {btnIcon}{btnLabelMarkup}");
                     sb.AppendLine("            </a>");
                     if (clipsBtnLabel)
@@ -1846,7 +2137,9 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
             // The channel hint closes its own panel — one insertion point for every channel type,
             // including both Email sections. Living inside the panel is what makes "the active tab
             // only" fall out of the composition: the hidden panel hides its hint with it, so the
-            // multi-channel screen needs neither a script nor a state of its own. Absent hint —
+            // multi-channel screen needs neither a script nor a state of its own. Where every panel is on
+            // screen as a button no channel is open, and the stylesheet takes the hints away there; a page
+            // of one channel keeps its hint. Absent hint —
             // absent element, so a deployment that sets none renders exactly today's markup. The text
             // is the operator's and may carry inline markup, so it goes through the same check as the
             // title and the lead instruction; it is not localized.
@@ -1923,8 +2216,14 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
         // every page once the answer is given elsewhere (AnswerElsewherePageStateValue), so a focus standing
         // in the part that leaves moves here instead of dropping to the body. The cancel button is no such
         // target: Enter on it would cancel the transaction.
-        var waitingText = LocalizeOwn(context.Texts, AuthPageStrings.WaitingForScan, lang);
-        sb.AppendLine($"        <div class=\"veriqa-status\" id=\"veriqa-status\" role=\"status\" aria-live=\"polite\" tabindex=\"-1\">{HtmlEncode(waitingText)}</div>");
+        // A page rendered while the answer is awaited in a channel carries the line of that answer from the
+        // start, in the look the script gives it when the answer arrives, and the root carries the state that
+        // takes the channel choice away (AppendHtmlHead): the page — without its script as well — shows what
+        // the replay of the answer would turn it into, and the replay finds nothing left to change.
+        var answerLine = AnswerLineAtRender(context);
+        var statusText = answerLine ?? LocalizeOwn(context.Texts, AuthPageStrings.WaitingForScan, lang);
+        var statusClass = answerLine is null ? StatusClass : AnsweredStatusClass;
+        sb.AppendLine($"        <div class=\"{statusClass}\" id=\"veriqa-status\" role=\"status\" aria-live=\"polite\" tabindex=\"-1\">{HtmlEncode(statusText)}</div>");
 
         // The spare start code on a phone (SPEC-007 UI-119): under the status line, hidden, a link and a
         // copy of the spare start code of each channel that has one — on the scanner page the block that
@@ -1965,6 +2264,23 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
         // The way back to the application, where the caller states one: under the channels and the
         // status, above the integrator's footer.
         AppendCancelForm(sb, context, lang);
+
+        // The checkbox that remembers the channel, under the way back to the application and out of the
+        // channel container, so neither the start of the hop nor the answer of a channel takes it away
+        // (SPEC-025 HOP-187); without the way back it stands under the status line. The server renders it
+        // ready and hidden, worded for the first visit; the script shows it on a desktop and words it by the
+        // state of the page; the way back from the remembered channel stands under the lead instruction.
+        // Without a script the page has no checkbox on screen. The browser does not
+        // restore its state on a reload: the cookie alone decides whether it is ticked on the load.
+        if (OffersRememberCheckbox(context))
+        {
+            var rememberText = LocalizeOwn(
+                context.Texts,
+                IsSignIn(context) ? AuthPageStrings.RememberSignInChannel : AuthPageStrings.RememberConfirmChannel,
+                lang);
+            sb.AppendLine(
+                $"        <div class=\"veriqa-remember\" id=\"{RememberElementId}\" hidden><div class=\"veriqa-remember-option\"><input type=\"checkbox\" id=\"{RememberCheckboxElementId}\" autocomplete=\"off\"><label for=\"{RememberCheckboxElementId}\" id=\"{RememberLabelElementId}\">{HtmlEncode(rememberText)}</label></div></div>");
+        }
 
         // The integrator's footer block closes the card, in every preset.
         AppendFooter(sb, design, lang);
@@ -2208,23 +2524,28 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
             return ChannelInstructionMarkup(context, context.Channels[0], wording, lang);
         }
 
-        if (ShowsUnifiedQrCode(context) && !ShowsAnyChannelTab(context))
+        if (ShowsUnifiedQrCode(context) && !HasAnyChannelState(context))
         {
             return UnifiedInstructionMarkup(context.Texts, wording, isSignIn, lang);
         }
 
         if (!WordsTabs(context) || wording is InstructionWording.ButtonOnly)
         {
-            return ShowsAnyChannelTab(context)
+            return HasAnyChannelState(context)
                 ? UnifiedInstructionMarkup(context.Texts, wording, isSignIn, lang)
                 : MultiChannelInstructionMarkup(context.Texts, wording, isSignIn, lang);
         }
 
         // One variant per tab, the one of the tab selected on the load on screen: "Any channel" where the page
         // has it, the first channel otherwise. Under "Any channel" the QR code and the buttons of every channel
-        // stand together — or the unified QR code alone, where that tab shows no button.
+        // stand together — or the unified QR code alone, where that tab shows no button. A page whose strip is
+        // hidden words that state as the page of the unified QR code does: no tab is named there.
         var variants = new List<(string TabElementId, string Markup)>(context.Channels.Count + 1);
-        if (ShowsAnyChannelTab(context))
+        if (HidesTabStrip(context))
+        {
+            variants.Add((AnyChannelTabElementId, UnifiedInstructionMarkup(context.Texts, wording, isSignIn, lang)));
+        }
+        else if (HasAnyChannelState(context))
         {
             variants.Add((
                 AnyChannelTabElementId,
@@ -2291,17 +2612,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
 
         if (!showsQrCode && !LeadsIntoChannel(channel))
         {
-            var instruction = LocalizeOwn(
-                context.Texts,
-                EmailPullForm.MailOf(channel) switch
-                {
-                    EmailPullForm.Mail.Code => AuthPageStrings.EmailFormInstructionCode,
-                    EmailPullForm.Mail.LinkAndCode => AuthPageStrings.EmailFormInstructionLinkAndCode,
-                    _ => AuthPageStrings.EmailFormInstruction
-                },
-                lang);
-
-            return BuildInstructionText(instruction, null, lang);
+            return EmailFormInstructionMarkup(context.Texts, channel, lang);
         }
 
         var localized = LocalizeOwn(
@@ -2322,6 +2633,42 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
 
         return BuildInstructionText(localized, BuildInstructionChannelMarkup(context.Texts, channel, lang), lang);
     }
+
+    /// <summary>
+    /// Builds the instruction of the address form of Email: it asks for the address and names what the mail
+    /// carries, in one text for a sign-in and a confirmation.
+    /// </summary>
+    /// <param name="texts">Text overrides of the page.</param>
+    /// <param name="channel">The channel of Email.</param>
+    /// <param name="lang">Content language of the page.</param>
+    /// <returns>Ready markup of the text.</returns>
+    private string EmailFormInstructionMarkup(CorePageTexts texts, ChannelDisplayInfo channel, string lang)
+    {
+        var instruction = LocalizeOwn(
+            texts,
+            EmailPullForm.MailOf(channel) switch
+            {
+                EmailPullForm.Mail.Code => AuthPageStrings.EmailFormInstructionCode,
+                EmailPullForm.Mail.LinkAndCode => AuthPageStrings.EmailFormInstructionLinkAndCode,
+                _ => AuthPageStrings.EmailFormInstruction
+            },
+            lang);
+
+        return BuildInstructionText(instruction, null, lang);
+    }
+
+    /// <summary>
+    /// The channel of Email whose address form a tap opens: the link under the button of the Push section,
+    /// where the channel accepts a typed address, and the button of the Pull panel, which a page renders
+    /// where there is a choice of channels. Null — the page has no such form: a page without Email, a Push
+    /// panel without Pull, a page whose only channel is Email Pull and shows the form straight away.
+    /// </summary>
+    /// <param name="context">Page rendering context.</param>
+    /// <param name="hasMultipleChannels">Whether the page offers more than one channel.</param>
+    /// <returns>The channel, or null.</returns>
+    private static ChannelDisplayInfo? EmailChannelWithFormOnTap(AuthPageRenderContext context, bool hasMultipleChannels) =>
+        context.Channels.FirstOrDefault(channel => channel.ChannelType is ChannelTypes.Email
+            && (IsEmailPushLink(channel.DeepLinkUrl) ? channel.EmailPullAvailable : hasMultipleChannels));
 
     /// <summary>
     /// Builds a wording of the unified QR code — one QR code for every channel, beside a button per channel.
@@ -2872,7 +3219,9 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
             FailedPageState = FailedPageStateValue,
             ButtonsLayoutSelector = ButtonsLayoutSelector,
             ChannelsElementId = ChannelsElementId,
-            AnyChannelTab = ShowsAnyChannelTab(context)
+            PanelElementIdPrefix = PanelElementIdPrefix,
+            RememberChannel = RememberChannelOf(context, lang),
+            AnyChannelTab = HasAnyChannelState(context)
                 ? new AuthPageScriptAnyChannelTab(
                     TabElementId: AnyChannelTabElementId,
                     StateClass: AnyChannelStateClass)
@@ -2884,6 +3233,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
                     TabAttribute: TabWordingAttributeName)
                 : null,
             HopStartedAttribute = HopStartedAttributeName,
+            EmailFormOpenAttribute = EmailFormOpenAttributeName,
             HopInstructionElementId = HopInstructionElementId,
             HopChooseAnotherElementId = HopChooseAnotherElementId,
             HopInstructionDisabled = context.IsScannerPage,
@@ -2949,7 +3299,8 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
             HopChannelHints = HopChannelHintIds(context),
             ChannelAnswer = new AuthPageScriptChannelAnswer(
                 StatusCode: ChannelAnswerStatuses.ChannelAnswered,
-                Lines: channelAnswerLines),
+                Lines: channelAnswerLines,
+                AnsweredChannel: context.AnsweredChannelType),
             DeclinedReasonCode = TransactionErrorCodes.DeclinedByUser,
             SupersededReasonCode = TransactionErrorCodes.SupersededByNewSignIn,
             // Named arguments: these carry same-typed values whose ORDER is the only thing telling
@@ -3233,7 +3584,8 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
 
     /// <summary>
     /// Appends the headings of the scanner page with a choice of channels, one per channel a link of the page
-    /// leads into, each hidden until the script shows the one of the channel tapped (SPEC-025 HOP-193). The
+    /// leads into, each hidden until the script shows the one of the channel tapped (SPEC-025 HOP-193) — but
+    /// the one of a channel that has already answered, which comes shown (<see cref="ChosenChannelAtRender"/>). The
     /// heading is the one of the launch pages of the hop (<see cref="HopLaunchPageHeading"/>), worded
     /// "Continue in" whatever the transaction: it says where the person went. The Email Pull panel leads into
     /// no channel — its button reveals the form — and has no heading.
@@ -3245,12 +3597,16 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     {
         sb.AppendLine($"        <div id=\"{ChosenHeadingsElementId}\">");
 
+        // The heading of a channel that has already answered is rendered shown, as the tap on its link left it.
+        var chosen = ChosenChannelAtRender(context);
+
         foreach (var channel in context.Channels.Where(LeadsIntoChannel))
         {
             var text = HopLaunchPageHeading.ContinueText(
                 channel.ChannelType, channel.DisplayName, _promptLocalizer, context.Texts, lang);
+            var hidden = string.Equals(channel.ChannelType, chosen, StringComparison.Ordinal) ? string.Empty : " hidden";
             sb.AppendLine(
-                $"            <div {ContinueChannelAttributeName}=\"{HtmlEncode(channel.ChannelType)}\" hidden>{HopLaunchPageHeading.Markup(channel.ChannelType, channel.IconSvgPath, text)}</div>");
+                $"            <div {ContinueChannelAttributeName}=\"{HtmlEncode(channel.ChannelType)}\"{hidden}>{HopLaunchPageHeading.Markup(channel.ChannelType, channel.IconSvgPath, text)}</div>");
         }
 
         sb.AppendLine("        </div>");
@@ -3325,7 +3681,9 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     /// The channels of the page whose QR code is a hop QR code: every channel under the unified QR code,
     /// otherwise each channel whose own QR code carries a hop token. A page that keeps the per-channel QR
     /// codes under its "Any channel" tab is the second case: a channel tab shows the channel's own QR code,
-    /// which is a hop QR code only when the channel's own token is one. On a computer the spare start code
+    /// which is a hop QR code only when the channel's own token is one. A page that keeps them for the
+    /// remembering checkbox alone (<see cref="HidesTabStrip"/>) is the first case: it has no channel tab to
+    /// show, and the state of the remembered channel is its exception. On a computer the spare start code
     /// of such a channel is offered once the phone went into it (SPEC-025 HOP-172), never by the delay from
     /// the load.
     /// </summary>
@@ -3334,7 +3692,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private static IReadOnlyList<string> HopQrChannelsOf(AuthPageRenderContext context)
     {
         return context.Channels
-            .Where(channel => (ShowsUnifiedQrCode(context) && !ShowsAnyChannelTab(context))
+            .Where(channel => (ShowsUnifiedQrCode(context) && (!HasAnyChannelState(context) || HidesTabStrip(context)))
                 || (ShowsQrCodeOf(channel, context) && channel.QrContentExpiresAt is not null))
             .Select(channel => channel.ChannelType)
             .Distinct(StringComparer.Ordinal)
@@ -3481,7 +3839,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     /// device check and works without a script; the scanner page is such a page by its effective QR
     /// visibility. A page with the unified QR code lays the buttons out under it, or beside it on the split
     /// card (<see cref="ShowsSplitLayout"/>), on every device (HOP-187) — unless it keeps the per-channel QR
-    /// codes (<see cref="ShowsAnyChannelTab"/>), which is a page with tabs. <see cref="QrCodeVisibility.DesktopOnly"/> on a phone gives the same layout, but only
+    /// codes (<see cref="HasAnyChannelState"/>), which is a page with tabs. <see cref="QrCodeVisibility.DesktopOnly"/> on a phone gives the same layout, but only
     /// the browser knows the device: the page is rendered with tabs and the stylesheet decides.
     /// </summary>
     /// <param name="context">Page rendering context.</param>
@@ -3489,7 +3847,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     private static bool ServerChoosesButtonsLayout(AuthPageRenderContext context)
     {
         return EffectiveQrVisibility(context) is QrCodeVisibility.Never
-            || (ShowsUnifiedQrCode(context) && !ShowsAnyChannelTab(context));
+            || (ShowsUnifiedQrCode(context) && !HasAnyChannelState(context));
     }
 
     /// <summary>
@@ -3509,7 +3867,7 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
         return context.ChannelLayout is ChannelLayout.Grid
             && context.Channels.Count > 1
             && !ServerChoosesButtonsLayout(context)
-            && !ShowsAnyChannelTab(context);
+            && !HasAnyChannelState(context);
     }
 
     /// <summary>
@@ -3567,21 +3925,67 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     }
 
     /// <summary>
-    /// Tells whether the page of the unified QR code keeps the per-channel QR codes as well
-    /// (<see cref="AuthPageRenderContext.UnifiedQrWithChannelQrCodes"/>): tabs, the first of them "Any
-    /// channel" with the unified QR code and the buttons of every channel, then a tab per channel with its
-    /// own QR code. A page of one channel has no choice to make between the two, and a page that shows no
-    /// QR code (<see cref="QrCodeVisibility.Never"/>) has no channel QR code to keep: both stay the page of
-    /// the unified QR code.
+    /// Tells whether the page of the unified QR code keeps the per-channel QR codes as well: tabs, the first
+    /// of them "Any channel" with the unified QR code and the buttons of every channel, then a tab per channel
+    /// with its own QR code. The page opens in the state of the "Any channel" tab. Two settings give it: the
+    /// QR mode of hop (<see cref="AuthPageRenderContext.UnifiedQrWithChannelQrCodes"/>), and the checkbox that
+    /// remembers the channel (<see cref="AuthPageRenderContext.RememberChannelCheckbox"/>), whose state of the
+    /// remembered channel is the state of a channel tab. Under the checkbox alone the strip of the tabs is
+    /// hidden (<see cref="HidesTabStrip"/>), so the page looks as the page of the unified QR code does. A page
+    /// of one channel has no choice to make between the two, and a page that shows no QR code
+    /// (<see cref="QrCodeVisibility.Never"/>) has no channel QR code to keep: both stay the page of the
+    /// unified QR code.
     /// </summary>
     /// <param name="context">Page rendering context.</param>
-    /// <returns>true when the page opens on the "Any channel" tab.</returns>
-    private static bool ShowsAnyChannelTab(AuthPageRenderContext context)
+    /// <returns>true when the page opens in the state of the "Any channel" tab.</returns>
+    private static bool HasAnyChannelState(AuthPageRenderContext context)
     {
         return ShowsUnifiedQrCode(context)
-            && context.UnifiedQrWithChannelQrCodes
+            && (context.UnifiedQrWithChannelQrCodes || context.RememberChannelCheckbox)
             && context.Channels.Count > 1
             && EffectiveQrVisibility(context) is not QrCodeVisibility.Never;
+    }
+
+    /// <summary>
+    /// Tells whether the page keeps the per-channel QR codes for the checkbox that remembers the channel alone
+    /// (SPEC-025 HOP-187): a page whose QR mode of hop shows the unified QR code without them. Its strip of
+    /// tabs is rendered hidden — the page looks as it does without the checkbox, with the panels of the
+    /// channels as the buttons under the unified QR code — and the script shows a channel tab only as the
+    /// state of the remembered channel. Its "Any channel" state therefore keeps the instruction and the
+    /// buttons of the page of the unified QR code.
+    /// </summary>
+    /// <param name="context">Page rendering context.</param>
+    /// <returns>true when the strip of the tabs is rendered hidden.</returns>
+    private static bool HidesTabStrip(AuthPageRenderContext context)
+    {
+        return HasAnyChannelState(context) && !context.UnifiedQrWithChannelQrCodes;
+    }
+
+    /// <summary>
+    /// Tells whether the state of the "Any channel" tab shows the buttons of the channels beside the unified QR
+    /// code: as the setting of the tab states (<see cref="AuthPageRenderContext.AnyChannelTabShowsChannelButtons"/>),
+    /// and always where the strip is hidden (<see cref="HidesTabStrip"/>) — that page is the page of the
+    /// unified QR code, which the setting of the tab does not touch.
+    /// </summary>
+    /// <param name="context">Page rendering context.</param>
+    /// <returns>true when the channel buttons stand beside the unified QR code.</returns>
+    private static bool AnyChannelStateShowsChannelButtons(AuthPageRenderContext context)
+    {
+        return context.AnyChannelTabShowsChannelButtons || HidesTabStrip(context);
+    }
+
+    /// <summary>
+    /// Tells whether the page offers the checkbox that remembers the channel the user went through (SPEC-025
+    /// HOP-187): its setting is on and the page keeps the per-channel QR codes, whose state of a channel tab
+    /// is the state of the remembered channel (<see cref="HasAnyChannelState"/>). That is a page of the
+    /// unified QR code with two channels or more in the window or on the entry page of a confirmation — never
+    /// the scanner page. The server renders the checkbox hidden; the script shows it on a desktop alone.
+    /// </summary>
+    /// <param name="context">Page rendering context.</param>
+    /// <returns>true when the page carries the checkbox.</returns>
+    private static bool OffersRememberCheckbox(AuthPageRenderContext context)
+    {
+        return context.RememberChannelCheckbox && HasAnyChannelState(context);
     }
 
     /// <summary>
@@ -3617,14 +4021,14 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     /// page (SPEC-025 HOP-145, HOP-146), and the scanner page is such a page by its effective
     /// visibility. A page with the unified QR code carries none either: that one code is the QR code of
     /// every channel (HOP-187) — unless the page keeps the per-channel QR codes behind its channel tabs
-    /// (<see cref="ShowsAnyChannelTab"/>).
+    /// (<see cref="HasAnyChannelState"/>).
     /// </summary>
     /// <param name="context">Page rendering context.</param>
     /// <returns>true when every channel with an addressable entry shows its QR code.</returns>
     private static bool ShowsChannelQrCodes(AuthPageRenderContext context)
     {
         return EffectiveQrVisibility(context) is not QrCodeVisibility.Never
-            && (!ShowsUnifiedQrCode(context) || ShowsAnyChannelTab(context));
+            && (!ShowsUnifiedQrCode(context) || HasAnyChannelState(context));
     }
 
     /// <summary>
@@ -3849,6 +4253,23 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     }
 
     /// <summary>
+    /// The attributes that say in which tab the button of a channel opens it. The scanner page of the
+    /// unified hop QR code opens a channel whose chat is a page of the core in its own tab: that page shows
+    /// the outcome itself, and a tab a link opened is one a browser refuses to close by script, so a new
+    /// tab would leave the phone with two (SPEC-025 HOP-186). Every other page and every other channel keep
+    /// the new tab: leaving the sign-in window or the entry page of a confirmation in the same tab ends the
+    /// live transaction on it, and under a messenger or a mail client the scanner page stays to show the
+    /// outcome.
+    /// </summary>
+    /// <param name="channel">The channel of the button.</param>
+    /// <param name="context">Page rendering context.</param>
+    /// <returns>The attributes, each preceded by a space.</returns>
+    private static string ChannelLinkTargetAttributes(ChannelDisplayInfo channel, AuthPageRenderContext context)
+    {
+        return context.IsScannerPage && channel.ChatIsCorePage ? SameTabLinkAttributes : NewTabLinkAttributes;
+    }
+
+    /// <summary>
     /// Tells whether a tap on a channel link sends the client signal of the chosen channel: only on the
     /// scanner page, and only when its caller states that the signal is accepted (SPEC-025 HOP-156).
     /// </summary>
@@ -3858,6 +4279,92 @@ internal sealed class DefaultAuthPageRenderer : IAuthPageRenderer
     {
         return context.IsScannerPage && context.SendsChannelLaunchedSignal;
     }
+
+    /// <summary>
+    /// What the page script remembers of the channel the user went through, and when
+    /// (<see cref="AuthPageScriptRememberChannel"/>). The window and the entry page of a confirmation remember a
+    /// channel once it has shown it works; the scanner page, which hears no answer meant for it, on a tap on a
+    /// link into the channel. A sign-in and a confirmation are given the same, the label included; the checkbox
+    /// differs by the words that name the action alone.
+    /// </summary>
+    /// <param name="context">Page rendering context.</param>
+    /// <param name="lang">Content language of the page.</param>
+    /// <returns>The settings; null — the page remembers nothing.</returns>
+    private AuthPageScriptRememberChannel? RememberChannelOf(AuthPageRenderContext context, string lang)
+    {
+        var offersCheckbox = OffersRememberCheckbox(context);
+        if (!context.RememberChannelHint && !offersCheckbox)
+        {
+            return null;
+        }
+
+        var isSignIn = IsSignIn(context);
+        return new AuthPageScriptRememberChannel(
+            ChannelTypes: [.. context.Channels.Select(channel => channel.ChannelType)],
+            AnswerStatusCodes: context.IsScannerPage ? [] : WorkingChannelStatusCodes,
+            TapSelector: context.IsScannerPage ? ChannelButtonSelector : null,
+            Hint: context.RememberChannelHint
+                ? new AuthPageScriptLastChannelHint(
+                    Cookie: RememberedChannelCookies.LastChannel,
+                    ButtonSelector: "." + ChannelButtonClass,
+                    LabelClass: $"{HopReopenedWarning.BadgeClass} {LastUsedBadgeClass}",
+                    LabelText: LocalizeOwn(context.Texts, AuthPageStrings.LastUsedChannel, lang))
+                : null,
+            Checkbox: offersCheckbox
+                ? new AuthPageScriptRememberCheckbox(
+                    Cookie: RememberedChannelCookies.RememberedChannel,
+                    ElementId: RememberElementId,
+                    InputElementId: RememberCheckboxElementId,
+                    LabelElementId: RememberLabelElementId,
+                    BackElementId: RememberBackElementId,
+                    RememberText: LocalizeOwn(
+                        context.Texts,
+                        isSignIn ? AuthPageStrings.RememberSignInChannel : AuthPageStrings.RememberConfirmChannel,
+                        lang),
+                    AlwaysText: LocalizeOwn(
+                        context.Texts,
+                        isSignIn ? AuthPageStrings.AlwaysSignInWithChannel : AuthPageStrings.AlwaysConfirmInChannel,
+                        lang),
+                    DeviceAttribute: DeviceAttributeName,
+                    PhoneDeviceValue: MobileDeviceValue,
+                    HeldAttribute: RememberedChannelHeldAttributeName)
+                : null);
+    }
+
+    /// <summary>
+    /// The line of the answer of the bot the page is rendered with: the line of
+    /// <see cref="AuthPageRenderContext.AnsweredChannelType"/> when the answer is awaited in a channel of the
+    /// page that has one — the line the script would put on the status line once the answer is replayed to it
+    /// (<see cref="AuthPageScriptChannelAnswer"/>), looked up by the same rule as its map of lines. A channel
+    /// outside the page or without a line leaves the page as it is rendered otherwise, as the replay does.
+    /// </summary>
+    /// <param name="context">Page rendering context.</param>
+    /// <returns>The line, not encoded; null — the page is rendered waiting.</returns>
+    private static string? AnswerLineAtRender(AuthPageRenderContext context) =>
+        context.AnsweredChannelType is { } channelType
+        && context.Channels.Any(channel => string.Equals(channel.ChannelType, channelType, StringComparison.Ordinal))
+        && context.ChannelLines.TryGetValue(channelType, out var lines)
+        && !string.IsNullOrEmpty(lines.Answer)
+            ? lines.Answer
+            : null;
+
+    /// <summary>
+    /// The channel whose heading the scanner page is rendered with (SPEC-025 HOP-193): the channel that has
+    /// already answered, when the page renders its line (<see cref="AnswerLineAtRender"/>) and carries a
+    /// heading for it — the page a tap on that channel's link and its answer would have left, minus the way
+    /// back the answer takes away. The tap itself is not kept, so before the answer the page is rendered as
+    /// loaded.
+    /// </summary>
+    /// <param name="context">Page rendering context.</param>
+    /// <returns>The channel type; null — the page is rendered without a chosen channel.</returns>
+    private static string? ChosenChannelAtRender(AuthPageRenderContext context) =>
+        MarksChosenChannel(context)
+        && AnswerLineAtRender(context) is not null
+        && context.AnsweredChannelType is { } channelType
+        && context.Channels.Any(channel =>
+            string.Equals(channel.ChannelType, channelType, StringComparison.Ordinal) && LeadsIntoChannel(channel))
+            ? channelType
+            : null;
 
     /// <summary>
     /// Tells whether a tap on a channel link turns the page into the state of the chosen channel — its

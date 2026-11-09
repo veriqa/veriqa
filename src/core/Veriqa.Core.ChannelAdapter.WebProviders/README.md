@@ -1,12 +1,15 @@
 # Veriqa.Core.ChannelAdapter.WebProviders
 
-**Let your users sign in on their own phone with a Google, Apple, Huawei, Yandex or VK ID account, or
-with another provider: [80+ in all](https://documentation.openiddict.com/integrations/web-providers).**
-The sign-in device shows a QR code, the user signs in to the provider on the phone and
-confirms there, and the sign-in completes on the device. No password is typed on the sign-in device,
-and your application receives the same standard OpenID Connect tokens as from any other channel.
+**Let your users sign in on their own phone with a Google, Apple, Huawei, Yandex or VK ID account,
+or with another provider: [80+ in
+all](https://documentation.openiddict.com/integrations/web-providers).**
 
-![Signing in on a computer with Google: the phone camera scans the QR code, the user picks a Google account, taps Yes on the confirmation page, and sees "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-google-cross-device.webp)
+- The sign-in device shows a QR code, the user signs in to the provider on the phone and confirms
+  there, and the sign-in completes on the device.
+- No password is typed on the sign-in device, and your application receives the same standard OpenID
+  Connect tokens as from any other channel.
+
+![Signing in on a computer with Google: the phone camera scans the QR code, the user picks a Google account, slides to answer Yes on the confirmation page, and sees "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-google-cross-device.webp)
 
 Part of [Veriqa](https://veriqa.app), an open-source project for passwordless
 authentication through popular messaging apps and email, over standard OpenID Connect.
@@ -94,13 +97,19 @@ letter, up to 64 characters. It cannot be the name of a channel shipped with Ver
 | `WebProvider:PublicBaseUrl` | yes | The absolute `https` address of the host, path base included: the base of the channel link and of the return address |
 | `WebProvider:DisplayName` | no | The name of the channel on the sign-in page and in the header of the phone page; by default the provider's display name in OpenIddict |
 | `WebProvider:IconSvgPath` | no | The channel glyph, by the rules of `IconSvgPath` of the HTTP channel |
+| `WebProvider:ConfirmSlider` | no, `Mobile` by default | How the user answers Yes on the phone page: `Mobile` shows a slider the user drags to the end on a touch screen and two buttons in other browsers, `Everywhere` shows the slider in every browser, `Off` shows two buttons. In every mode, No is a button and has the focus when the page opens; without JavaScript the page shows two buttons |
+| `WebProvider:PhoneNumber:…` | no | Where the phone number is in the provider's answer: `Acquisition` (`Automatic`), `Proof` (`Proven` or `NotProven`), `Claim` (the path of the number, `phone_number` by default), `VerifiedClaim` and `Scopes` — see [Phone number and other claims](#phone-number-and-other-claims) |
+| `WebProvider:Claims` | no | Further claims from the provider's answer: a list of `Source` (the path of the value), `Claim` (the claim Veriqa issues) and `Scopes` |
 
 The host does not start, and the message names the key, when an enabled channel has no `Provider`,
 `ClientId` or `PublicBaseUrl`; when the provider name is unknown; when `PublicBaseUrl` is not an
 absolute `https` address or carries a query; when a `Settings` name is unknown to the provider or is
 refused; when OpenIddict refuses the registration (Apple without `TeamId`); when Apple has no
-`SigningKey` or `SigningKeyId`, or another provider has either; when the channel name breaks the rule
-above; and when one section carries both `Http` and `WebProvider`.
+`SigningKey` or `SigningKeyId`, or another provider has either; when `PhoneNumber:Acquisition` names anything but
+`Automatic`, or `Proof` is `Proven` without it; when `ConfirmSlider` is not `Off`, `Mobile` or `Everywhere`; when a path in `PhoneNumber` or `Claims` is malformed;
+when a `Claims` entry has no `Source` or `Claim`, names a claim the channel may not issue, or names one
+another entry names; when the channel name breaks the rule above; and when one section carries both
+`Http` and `WebProvider`.
 
 A disabled channel has no OpenIddict registration, no routes and no adapter.
 
@@ -127,10 +136,30 @@ starts the sign-in at the provider, is `{PublicBaseUrl}/auth/web-provider/{chann
 
 Without added scopes OpenIddict requests only `openid` from an OpenID Connect provider, so Google
 returns no email and no name. `email_verified` is `true` or `false` only when the provider says so
-next to the email; otherwise the claim stays unknown and is never assumed `true`. The phone number is
-never taken from the provider, and the claims completion form does not ask for it either. This
-channel is not offered to a sign-in that requires a phone number; a sign-in where the number is
-optional completes without it.
+next to the email; otherwise the claim stays unknown and is never assumed `true`. Without the
+`PhoneNumber` block the phone number is not taken from the provider, and the claims completion form
+does not ask for it either. Such a channel is not offered to a sign-in that requires a phone number;
+a sign-in where the number is optional completes without it.
+
+## Phone number and other claims
+
+None of the five providers has a built-in mapping: the phone number and further claims are taken only
+where the section points.
+
+- `PhoneNumber` states the path of the number in the provider's answer: the field name, then the
+  fields of the JSON object in it, separated by dots (`default_phone.number` for Yandex). With
+  `Acquisition: [ "Automatic" ]` the channel declares that it provides the number and is offered to a
+  sign-in that requires one. The number is converted to E.164; `Proof: Proven` makes it verified unless
+  the provider states `false` at `VerifiedClaim`. The scopes of the block are requested from the
+  provider only when the sign-in requires the number or asks for it as optional.
+- `Claims` maps a value of the answer to a claim Veriqa issues: one of the standard profile claims
+  `birthdate`, `gender`, `middle_name`, `nickname`, `profile`, `website`, or a name prefixed with
+  `{channel}_`. The scopes of an entry are requested when the sign-in has a requirement to its claim:
+  the claim is declared by a row of `Veriqa:ScopesClaims` under a scope the relying party receives
+  (`nickname` belongs to `profile` without a row).
+
+An example for Yandex ID with the phone number and the date of birth is in
+[Channel setup](https://veriqa.app/docs/guides/channels#phone-number-and-other-claims-from-the-provider).
 
 The adapter keeps no provider token. `AccessType` set to `offline` (Google, Huawei) gets a refresh
 token that nothing uses.

@@ -1,0 +1,12 @@
+<!--
+  Samples stay outside Central Package Management: each one builds alone from its own directory
+  (Dockerfile, download archive, sample repository), so its projects state their package versions.
+  This file is the nearest Directory.Packages.props for the tree, so the root one does not apply.
+-->
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>

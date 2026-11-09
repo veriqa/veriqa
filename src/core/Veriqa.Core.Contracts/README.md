@@ -11,7 +11,9 @@ Documentation: [Custom channel adapter](https://veriqa.app/docs/guides/custom-ch
 
 MIT-licensed contracts package of Veriqa — the **free SPI** a channel adapter is written
 against. An adapter that references this package and nothing else from Veriqa is a complete
-adapter: the MPL-2.0 server core is a dependency of the *host*, never of the adapter.
+adapter. The server core package `Veriqa.Core.ChannelAdapter` (MPL-2.0) is needed only if the
+adapter uses the core's message templates or its inbound processing for a polling channel, or works
+per tenant.
 
 ## Where the boundary is declared
 
@@ -32,6 +34,13 @@ license.
 The package is also a **leaf**: it references no other Veriqa assembly. The edge between it and
 the settings mechanism points the other way — `Veriqa.Core.Configuration` references this package
 for the ownership-context types below — so referencing the free SPI never drags the core in.
+
+## Assurance level
+
+The adapter contract declares no assurance level for a sign-in: the core and an installation's
+settings determine it. RFC 10027 (BCP 247) describes the threat model for cross-device sign-in. For
+which of the 17 mitigations in its Section 6.1 the core covers, which it does not, and what to do about
+the rest, see [Veriqa, BCP 247 and the threat model](https://veriqa.app/docs/concepts/cross-device-security).
 
 ## Free SPI
 
@@ -69,8 +78,11 @@ for the ownership-context types below — so referencing the free SPI never drag
   `Ownership` — see "Resolution context" below.
 - Identity: `ChannelIdentitySnapshot` — the identity an adapter hands to the core, including the
   typed `EmailVerified` flag (a security-significant fact belongs in the contract, not in a
-  free-form claim) and `TenantId`, the tenant the adapter states for the identity. Free-form
-  adapter claims travel in `AdditionalClaims` and are subject to the claim-name groups below.
+  free-form claim) and `TenantId`, the tenant of the identity. The core sets `TenantId` on every
+  inbound path and ignores the value the adapter wrote: in the current release it takes the tenant of
+  the event (the owner of the channel registration, otherwise the tenant of the webhook route or of the
+  polling loop), otherwise the tenant of the transaction the event addresses. Free-form adapter claims
+  travel in `AdditionalClaims` and are subject to the claim-name groups below.
 - Tenancy: `TenantKey` — the single spelling of a tenant inside a composite key (`TenantKey.Default`
   for an unstated one), so a rate-limiter counter and an identity record of the same user never end
   up under two different names for the default tenant.
@@ -99,10 +111,12 @@ for the ownership-context types below — so referencing the free SPI never drag
   returns through `IChannelAdapter`, and the ones the core branches on in behavior observable
   from outside. Return these instead of inventing your own strings — a code outside the registry
   reaches neither the core's branches nor its telemetry tags and stays a line in a log.
-- `VeriqaClaimTypes` — OIDC claim names issued by the core and by channel adapters, plus the three
+- `VeriqaClaimTypes` — OIDC claim names issued by the core and by channel adapters, plus the four
   declared groups the core enforces when it merges `AdditionalClaims`: `MandatoryClaims` (names the
   core always issues), `CoreReservedClaims` (names derived from typed snapshot fields — among them
-  `EmailVerified`), and `VendorClaims` (the closed list of vendor names accepted as an exception).
+  `EmailVerified`), `StandardProfileClaims` (the closed list of standard OIDC profile claims —
+  `birthdate`, `gender`, `middle_name`, `nickname`, `profile`, `website` — accepted under their
+  standard names), and `VendorClaims` (the closed list of vendor names accepted as an exception).
   Anything else must start with `{ChannelType}_` — your own namespace, collision-free by
   construction. A key that breaks the rule is dropped with a warning; authentication does not fail.
   Claim names are compared with `NameComparer` / `NameComparison` (case-insensitive, published by
@@ -119,9 +133,9 @@ for the ownership-context types below — so referencing the free SPI never drag
   the userinfo endpoint, never in the identity token.
 - `AvatarDataUri` — the format of `ChannelIdentitySnapshot.AvatarUrl` when the adapter delivers the
   image itself: `data:<mime>;base64,<payload>`, JPEG, PNG, WebP or GIF detected by byte signature,
-  at most `MaxImageBytes` (64 KiB) decoded bytes. The limit follows from the 128 KB limit of a
-  transaction snapshot, which carries the image: a larger photo is left out rather than failing the
-  sign-in. Build the value with `TryCreate` from the downloaded bytes;
+  at most `MaxImageBytes` (64 KiB) decoded bytes. The limit bounds every token that carries the
+  avatar, and it keeps the image within the 128 KB limit of a transaction snapshot when an adapter
+  puts it there. A larger photo is left out rather than failing the sign-in. Build the value with `TryCreate` from the downloaded bytes;
   `TryParse` decodes and validates it into an `AvatarImage`. The other accepted value is an absolute
   https URL; `IsAcceptedAvatar` checks both. `ChannelIdentitySnapshot.AvatarUrl` stores any other
   value as null, so an adapter that hands over a malformed or oversized avatar signs the user in

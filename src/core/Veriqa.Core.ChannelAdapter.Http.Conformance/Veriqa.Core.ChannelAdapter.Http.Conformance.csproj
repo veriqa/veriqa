@@ -30,7 +30,7 @@
 
   <ItemGroup>
     <!-- JSON Schema validator with draft 2020-12 support, built on System.Text.Json. BSD-3-Clause. -->
-    <PackageReference Include="LateApexEarlySpeed.Json.Schema" Version="4.2.0" />
+    <PackageReference Include="LateApexEarlySpeed.Json.Schema" />
   </ItemGroup>
 
   <ItemGroup>

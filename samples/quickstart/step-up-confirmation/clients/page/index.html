@@ -1,0 +1,183 @@
+<!doctype html>
+<!-- Copyright (c) Dmitrii Erusov. SPDX-License-Identifier: MIT -->
+<!-- The page every client of this repository serves: the same page in every language, so only the
+     backend differs. It talks to the backend of the client it came from, never to Veriqa. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Confirmation and step-up in Telegram</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1b1f24; }
+    section { border: 1px solid #d0d7de; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+    label { display: block; margin: .5rem 0 .2rem; }
+    input { width: 100%; padding: .4rem; box-sizing: border-box; }
+    button { margin-top: .5rem; padding: .4rem .9rem; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: .4rem 0; border-bottom: 1px solid #eaeef2; }
+    .waiting { margin-top: 1rem; padding: 1rem; border: 2px solid #bf8700; border-radius: 8px; }
+    .waiting img { width: 220px; height: 220px; image-rendering: pixelated; }
+    .outcome { font-weight: 600; }
+    pre { background: #f6f8fa; padding: .6rem; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>Confirmation and step-up in Telegram</h1>
+
+  <section>
+    <h2>1. Approve a payment</h2>
+    <p>Server-to-server confirmation: the backend asks a person to approve an action, with no sign-in
+      and no redirect. Once confirmed, it learns who confirmed from an <code>id_token</code>.</p>
+    <form id="payment">
+      <label for="amount">Amount</label>
+      <input id="amount" maxlength="32" value="42.00 EUR" />
+      <label for="payee">Payee</label>
+      <input id="payee" maxlength="64" value="ACME Ltd" />
+      <button type="submit">Ask for approval</button>
+    </form>
+    <div id="payment-waiting" class="waiting" hidden>
+      <p>Scan the code with the phone that has Telegram, press <b>Start</b> in the bot and answer.</p>
+      <img id="payment-qr" alt="QR code of the payment approval" />
+      <p><a id="payment-link" target="_blank" rel="noopener">Open in Telegram</a></p>
+    </div>
+    <p id="payment-outcome" class="outcome"></p>
+    <pre id="payment-claims" hidden></pre>
+  </section>
+
+  <section>
+    <h2>2. Step-up before deleting a project</h2>
+    <p>Deleting a project cannot be undone, so the backend asks the <b>owner of the account</b> to
+      confirm and deletes only when the person who confirmed is that owner. The first person to
+      confirm a deletion becomes the owner.</p>
+    <p>Owner: <code id="owner">none yet</code> <button id="forget" type="button">Forget the owner</button></p>
+    <table id="projects"></table>
+    <div id="deletion-waiting" class="waiting" hidden>
+      <p id="deletion-asks"></p>
+      <img id="deletion-qr" alt="QR code of the deletion confirmation" />
+      <p><a id="deletion-link" target="_blank" rel="noopener">Open in Telegram</a></p>
+    </div>
+    <p id="deletion-outcome" class="outcome"></p>
+  </section>
+
+  <script>
+    const verdicts = {
+      deleted: 'Deleted — confirmed by the owner.',
+      deleted_owner_bound: 'Deleted — and the account that confirmed is now the owner.',
+      confirmed_by_another_person: 'Not deleted — confirmed, but not by the owner.',
+      not_deleted: 'Not deleted.'
+    };
+
+    // Shows the QR code a confirmation answered with. channel_entry.qr is a PNG data URI; without one
+    // the link alone is shown.
+    function showWaiting(prefix, created) {
+      document.getElementById(prefix + '-waiting').hidden = false;
+      document.getElementById(prefix + '-link').href = created.url;
+      const qr = document.getElementById(prefix + '-qr');
+      qr.hidden = !created.qr;
+      if (created.qr) { qr.src = created.qr; }
+    }
+
+    async function postJson(path, body) {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body ?? {})
+      });
+      const text = await response.text();
+      if (!response.ok) { throw new Error('The backend answered ' + response.status + ': ' + text); }
+      return JSON.parse(text);
+    }
+
+    // --- 1. payment ---
+    document.getElementById('payment').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      document.getElementById('payment-outcome').textContent = '';
+      document.getElementById('payment-claims').hidden = true;
+      try {
+        const created = await postJson('/payments', {
+          amount: document.getElementById('amount').value,
+          payee: document.getElementById('payee').value
+        });
+        showWaiting('payment', created);
+        pollPayment(created.transaction_id);
+      } catch (failure) {
+        document.getElementById('payment-outcome').textContent = failure.message;
+      }
+    });
+
+    async function pollPayment(transactionId) {
+      const response = await fetch('/payments/' + encodeURIComponent(transactionId));
+      if (!response.ok) {
+        document.getElementById('payment-outcome').textContent = 'The backend answered ' + response.status + ': ' + await response.text();
+        return;
+      }
+      const body = await response.json();
+      if (body.outcome === 'pending') { setTimeout(() => pollPayment(transactionId), 2000); return; }
+      document.getElementById('payment-waiting').hidden = true;
+      document.getElementById('payment-outcome').textContent = 'Outcome: ' + body.outcome;
+      if (body.claims) {
+        const claims = document.getElementById('payment-claims');
+        claims.textContent = JSON.stringify(body.claims, null, 2);
+        claims.hidden = false;
+      }
+    }
+
+    // --- 2. step-up ---
+    function renderWorkspace(workspace) {
+      document.getElementById('owner').textContent = workspace.owner ?? 'none yet';
+      const table = document.getElementById('projects');
+      table.replaceChildren(...workspace.projects.map((project) => {
+        const row = document.createElement('tr');
+        const name = document.createElement('td');
+        name.textContent = project.name + ' · ' + project.documents + ' documents';
+        const action = document.createElement('td');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Delete';
+        button.addEventListener('click', () => askToDelete(project));
+        action.append(button);
+        row.append(name, action);
+        return row;
+      }));
+    }
+
+    async function refreshWorkspace() {
+      renderWorkspace(await (await fetch('/workspace')).json());
+    }
+
+    document.getElementById('forget').addEventListener('click', async () => {
+      renderWorkspace(await postJson('/workspace/owner/reset'));
+    });
+
+    async function askToDelete(project) {
+      document.getElementById('deletion-outcome').textContent = '';
+      try {
+        const created = await postJson('/projects/' + encodeURIComponent(project.id) + '/deletion');
+        document.getElementById('deletion-asks').textContent = created.expects_owner
+          ? 'The confirmation is addressed to the owner. Scan the code and answer in Telegram.'
+          : 'No owner yet: whoever confirms becomes the owner. Scan the code and answer in Telegram.';
+        showWaiting('deletion', created);
+        pollDeletion(created.transaction_id);
+      } catch (failure) {
+        document.getElementById('deletion-outcome').textContent = failure.message;
+      }
+    }
+
+    async function pollDeletion(transactionId) {
+      const response = await fetch('/deletions/' + encodeURIComponent(transactionId));
+      if (!response.ok) {
+        document.getElementById('deletion-outcome').textContent = 'The backend answered ' + response.status + ': ' + await response.text();
+        return;
+      }
+      const deletion = await response.json();
+      if (deletion.verdict === null) { setTimeout(() => pollDeletion(transactionId), 2000); return; }
+      document.getElementById('deletion-waiting').hidden = true;
+      document.getElementById('deletion-outcome').textContent =
+        verdicts[deletion.verdict] + ' (outcome: ' + deletion.outcome + ')';
+      refreshWorkspace();
+    }
+
+    refreshWorkspace();
+  </script>
+</body>
+</html>

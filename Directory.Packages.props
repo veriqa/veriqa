@@ -1,0 +1,119 @@
+<!--
+  Directory.Packages.props: the versions of the NuGet packages of the repository.
+
+  A project states only <PackageReference Include="..." />; its version lives here. With transitive pinning
+  a PackageVersion also holds the package when a project gets it through a dependency, so a security
+  advisory against a transitive package is one line below for hosts, tests and the sandbox. A published
+  package is the exception: pinning is off for it (Directory.Build.targets), so a fix its consumers
+  need is also a PackageReference without a version in the project that brings the package.
+
+  Two trees stay out, each through a Directory.Packages.props of its own (the nearest file wins): samples/
+  (a sample builds alone, from its own directory) and external/ (subtrees published as repositories of
+  their own). Their projects keep Version on PackageReference.
+-->
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <!-- The patch of the .NET 10 packages that ship together: Microsoft.AspNetCore.*,
+         Microsoft.EntityFrameworkCore.* and Microsoft.Extensions.*. One value, so a security patch of
+         the line reaches all of them. The Microsoft.Extensions.* packages on their own version
+         lines (10.4.x, 10.7.x) are not part of it. -->
+    <DotNetPatchVersion>10.0.13</DotNetPatchVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Analyzers of every project. Projects outside central management get them from the root
+         Directory.Build.props, which keeps the same versions. -->
+    <GlobalPackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="4.14.0" />
+    <GlobalPackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.14.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.4.6" />
+    <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageVersion Include="AspNetCore.HealthChecks.Rabbitmq" Version="9.0.0" />
+    <PackageVersion Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
+    <PackageVersion Include="AspNetCore.HealthChecks.SqlServer" Version="9.0.0" />
+    <PackageVersion Include="Bogus" Version="35.6.3" />
+    <PackageVersion Include="FluentAssertions" Version="7.2.0" />
+    <PackageVersion Include="LateApexEarlySpeed.Json.Schema" Version="4.2.0" />
+    <PackageVersion Include="MailKit" Version="4.16.0" />
+    <PackageVersion Include="Max.BotClient" Version="1.1.3" />
+    <PackageVersion Include="MaxMind.GeoIP2" Version="6.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyModel" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Systemd" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.4.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Primitives" Version="$(DotNetPatchVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.4.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="OpenIddict.AspNetCore" Version="7.4.0" />
+    <PackageVersion Include="OpenIddict.Client.AspNetCore" Version="7.4.0" />
+    <PackageVersion Include="OpenIddict.Client.SystemNetHttp" Version="7.4.0" />
+    <PackageVersion Include="OpenIddict.Client.WebIntegration" Version="7.4.0" />
+    <PackageVersion Include="OpenIddict.EntityFrameworkCore" Version="7.4.0" />
+    <PackageVersion Include="OpenIddict.Server" Version="7.4.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
+    <PackageVersion Include="QRCoder" Version="1.8.0" />
+    <PackageVersion Include="RabbitMQ.Client" Version="7.1.2" />
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.8.41" />
+    <PackageVersion Include="Telegram.Bot" Version="22.9.5.3" />
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.14.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageVersion Include="Testcontainers.RabbitMq" Version="4.14.0" />
+    <PackageVersion Include="Testcontainers.Redis" Version="4.14.0" />
+    <PackageVersion Include="UAParser" Version="3.1.47" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="ZXing.Net" Version="0.16.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Security pins, above the versions that dependencies bring. -->
+    <!-- Microsoft.Data.SqlClient 7.0.x and MimeKit 4.16.x resolve 9.0.x/10.0.0, under advisories
+         GHSA-846f-f764-76mx and GHSA-2fmv-rv2c-59x7 (fixed in 10.0.13). Referenced by the published
+         packages that bring it. Drop once both depend on a fixed version. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <!-- Aspire.Hosting brings 2.5.302 through StreamJsonRpc, under advisory GHSA-qhrr-8q5h-9q3h
+         (fixed in 2.5.303). Drop once Aspire depends on a fixed version. -->
+    <PackageVersion Include="MessagePack" Version="2.5.303" />
+  </ItemGroup>
+
+</Project>

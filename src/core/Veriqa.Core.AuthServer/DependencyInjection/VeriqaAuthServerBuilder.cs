@@ -175,6 +175,12 @@ public sealed class VeriqaAuthServerBuilder
     /// either way the container resolves <typeparamref name="TRenderer"/>, because the shipped
     /// default is registered with <c>TryAddSingleton</c>. Calling it more than once is allowed —
     /// the last call wins.
+    /// <para>
+    /// The custom renderer receives the sign-in window and the entry page of a confirmation. The scanner
+    /// page of hop mode — the page a phone opens by a hop QR code — stays with the built-in renderer: its
+    /// page script sends the hop signals, so the design and the CSS variables apply there, the custom
+    /// markup does not.
+    /// </para>
     /// </summary>
     /// <typeparam name="TRenderer">Type of the custom renderer.</typeparam>
     /// <returns>The current builder for call chaining.</returns>

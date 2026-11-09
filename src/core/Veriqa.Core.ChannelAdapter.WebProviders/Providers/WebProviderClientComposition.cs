@@ -34,6 +34,12 @@ internal static class WebProviderClientComposition
     private const int CallbackErrorPassthroughOrderOffset = 500;
 
     /// <summary>
+    /// How far after the step of OpenIddict that builds the scopes of a challenge the scopes a sign-in
+    /// demands are added — before the next step of OpenIddict, which comes a thousand later.
+    /// </summary>
+    private const int DemandedScopesOrderOffset = 500;
+
+    /// <summary>
     /// <see cref="Typed{TBuilder}"/>, closed over the builder of each provider at composition.
     /// </summary>
     private static readonly MethodInfo TypedConfigure = typeof(WebProviderClientComposition)
@@ -50,6 +56,8 @@ internal static class WebProviderClientComposition
     /// user, a state that did not pass — passed on to the route of the channel as well, which answers it
     /// with the page of the channel. This handler acts on those addresses alone: the error answer of every
     /// other endpoint of the client stays as the host has it;</item>
+    /// <item>the scopes a sign-in demands for the phone number and the claims of its channel
+    /// (<see cref="WebProviderDemandedScopes"/>), added to the scopes of a challenge;</item>
     /// <item>the HTTP transport and the provider definitions of the package;</item>
     /// <item>the signing and encryption keys of the server of the same host: the client protects the
     /// state of a sign-in with them, and no key material of its own is introduced.</item>
@@ -80,6 +88,7 @@ internal static class WebProviderClientComposition
                       .EnableRedirectionEndpointPassthrough();
 
                 AddCallbackErrorPassthrough(client, registrations);
+                AddDemandedScopes(client);
 
                 client.UseSystemNetHttp();
 
@@ -132,6 +141,25 @@ internal static class WebProviderClientComposition
             .SetOrder(OpenIddictClientHandlers.Authentication.ApplyRedirectionResponse<OpenIddictClientEvents.ProcessErrorContext>.Descriptor.Order - CallbackErrorPassthroughOrderOffset)
             .SetType(OpenIddictClientHandlerType.Custom));
     }
+
+    /// <summary>
+    /// Adds the scopes the link of a channel left on the request to the scopes of the challenge. It runs
+    /// after the step of OpenIddict that builds them — <c>openid</c> where the server of the provider
+    /// supports it, then the scopes of the registration — since a challenge stating its own scopes would
+    /// make that step add neither. A challenge of any other client of the host finds nothing on its
+    /// request and is left as it is.
+    /// </summary>
+    /// <param name="client">Builder of the client.</param>
+    private static void AddDemandedScopes(OpenIddictClientBuilder client) =>
+        client.AddEventHandler<OpenIddictClientEvents.ProcessChallengeContext>(handler => handler
+            .UseInlineHandler(static context =>
+            {
+                context.Scopes.UnionWith(WebProviderDemandedScopes.Of(context.Transaction.GetHttpRequest()?.HttpContext));
+
+                return ValueTask.CompletedTask;
+            })
+            .SetOrder(OpenIddictClientHandlers.AttachScopes.Descriptor.Order + DemandedScopesOrderOffset)
+            .SetType(OpenIddictClientHandlerType.Custom));
 
     /// <summary>
     /// Adds the registration of one channel through the add method of its provider. The method takes a

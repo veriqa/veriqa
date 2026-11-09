@@ -29,7 +29,11 @@
          build. Critical rules are raised to error one by one in .editorconfig. -->
   </PropertyGroup>
 
-  <ItemGroup>
+  <!-- Only for projects outside Central Package Management (samples/): a PackageReference with a Version
+       is an error (NU1008) under it, and the projects inside get the same analyzers as
+       GlobalPackageReference from Directory.Packages.props. The condition is on the item group because
+       Directory.Packages.props is imported after this file: items are evaluated after all properties. -->
+  <ItemGroup Condition=" '$(ManagePackageVersionsCentrally)' != 'true' ">
     <!-- Banned APIs (MediatR, DateTime.Now/UtcNow/Today, etc.) -->
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="4.14.0">
       <PrivateAssets>all</PrivateAssets>

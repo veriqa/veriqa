@@ -51,6 +51,9 @@
                       LogicalName="Veriqa.Core.ChannelAdapter.UI.Styles.veriqa-close-tab.css" />
     <EmbeddedResource Include="UI\Scripts\veriqa-close-tab.js"
                       LogicalName="Veriqa.Core.ChannelAdapter.UI.Scripts.veriqa-close-tab.js" />
+    <!-- The focus of the default answer of a question page (CorePageDefaultAnswerFocus). -->
+    <EmbeddedResource Include="UI\Scripts\veriqa-default-answer-focus.js"
+                      LogicalName="Veriqa.Core.ChannelAdapter.UI.Scripts.veriqa-default-answer-focus.js" />
   </ItemGroup>
 
   <ItemGroup>

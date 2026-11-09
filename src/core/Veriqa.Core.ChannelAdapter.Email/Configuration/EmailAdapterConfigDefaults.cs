@@ -31,6 +31,19 @@ internal static class EmailAdapterConfigDefaults
     public const int DefaultSignInCodeAttempts = 5;
 
     /// <summary>
+    /// Default number of sign-in mails to one recipient address within the window of the address counter
+    /// (one hour) — the number the mails of the claims completion ship with (SPEC-041 E61).
+    /// </summary>
+    public const int DefaultSignInMailsPerAddress = 5;
+
+    /// <summary>
+    /// Default number of sign-in mails to one recipient domain within the window of the domain counter (one
+    /// hour): <c>0</c> — the limit is off, as for the mails of the claims completion (SPEC-041 E61). One
+    /// counter per domain would block the mass domains of mailbox providers, so an operator switches it on.
+    /// </summary>
+    public const int DefaultSignInMailsPerDomain = 0;
+
+    /// <summary>
     /// Default client application name in the email — used when the transaction has no
     /// initiator context (SPEC-017) (capture is disabled or the transaction was created
     /// before it was enabled) and the client's DisplayName cannot be determined.

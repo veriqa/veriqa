@@ -103,26 +103,26 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="OpenIddict.AspNetCore" Version="7.4.0" />
-    <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="7.4.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
+    <PackageReference Include="OpenIddict.AspNetCore" />
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <!-- Relational EF Core: the startup migration service calls Database.IsRelational() and
          Database.MigrateAsync(), both of which live in this package. The reference used to ride in
          transitively through the transaction engine; once the ORM left the engine's package, the
          dependency this assembly actually compiles against is declared where it is used. The
          version is the one the rest of the repository pins, so a consumer of the OpenIddict
          integration resolves a single Relational assembly instead of unifying two. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
-    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="QRCoder" />
     <!-- Initiator Context Check (SPEC-017): User-Agent normalization (a port of the official
          ua-parser). Offline GeoIP is NOT here — its library travels in the
          Veriqa.Core.AuthServer.MaxMind satellite, because the .mmdb database it reads is supplied
          by the deployment and not by this product. -->
-    <PackageReference Include="UAParser" Version="3.1.47" />
+    <PackageReference Include="UAParser" />
   </ItemGroup>
 
   <ItemGroup>

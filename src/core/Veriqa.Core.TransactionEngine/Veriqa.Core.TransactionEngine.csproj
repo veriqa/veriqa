@@ -44,11 +44,11 @@
          Microsoft.Extensions.Hosting.Abstractions.
          The version is pinned to the floor of the net10.0 band, so a host always runs on the shared
          framework's own (never older) assemblies and the package can never drag a newer one in. -->
-    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <!-- IMeterFactory in DI: AddMetrics() lives here, and the engine's composition root calls it so
          that a deployment consuming this package without ServiceDefaults still resolves a factory.
          Pinned to the floor of the net10.0 band for the same reason as the reference above. -->
-    <PackageReference Include="Microsoft.Extensions.Diagnostics" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics" />
   </ItemGroup>
 
   <ItemGroup>

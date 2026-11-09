@@ -1,13 +1,17 @@
 # Veriqa.Core.ChannelAdapter.WhatsApp
 
-**WhatsApp login and authentication by QR code for your website or app.** Your users scan a QR code on the
-sign-in page (on a phone, they tap a button) and confirm the sign-in in WhatsApp: no password, no
-SMS code and no sign-up form. Your application receives standard OpenID Connect tokens and, when
-WhatsApp sends it with the message, the user's phone number. Your users can sign in this way on a
-computer, a TV, a kiosk or any other device that can show a QR code. Veriqa replies to the user's
-own message without a template. WhatsApp charges beyond a free tier: 1,000 service messages a month
-per business phone number are free, and since October 1, 2026 each one after that is charged at
-[Meta's rates](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing).
+**WhatsApp login and authentication by QR code for your website or app.**
+
+- Your users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm the
+  sign-in in WhatsApp: no password, no SMS code and no sign-up form.
+- Your application receives standard OpenID Connect tokens and, when WhatsApp sends it with the
+  message, the user's phone number.
+- Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a
+  QR code.
+- Veriqa replies to the user's own message without a template.
+- WhatsApp charges beyond a free tier: 1,000 service messages a month per business phone number are
+  free, and since October 1, 2026 each one after that is charged at [Meta's
+  rates](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing).
 
 ![Signing in on a computer with WhatsApp: the phone camera scans the QR code, WhatsApp opens a ready-made message, the user sends it, taps Confirm, and the chat replies "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-whatsapp-cross-device.webp)
 

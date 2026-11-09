@@ -23,7 +23,7 @@ namespace Veriqa.Core.AuthServer.HopMode;
 /// <para>
 /// A confirmed transaction is not an outcome yet: it still has to be completed, and may fail on the way.
 /// The page is told once and the watch goes on, but not without end: the lifetime of a transaction no
-/// longer bounds a confirmed one, and not every store of this delivery ends a stalled one by a sweep.
+/// longer bounds a confirmed one, and what ends a stalled one is a background sweep the page does not see.
 /// After the limit the page is handed (<see cref="ConfirmedWatchLimit"/>) it stops asking and keeps the
 /// line it shows; the limit is judged after an answer, so a page back in view past it asks once more. The watch ends on a completed transaction, on one that failed or ran out, and on that
 /// limit.

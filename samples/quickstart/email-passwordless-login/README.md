@@ -3,8 +3,8 @@
 Email sign-in with no password, for a Python, Node.js, Go, PHP or ASP.NET Core app, over standard OpenID
 Connect (OIDC). The provider is [Veriqa](https://veriqa.app), open source, and you run it yourself. A sign-in can go three ways: a one-tap email, a code from an email or a magic link.
 
-**We recommend trying [one-tap email](#try-one-tap-email) first.** Your users scan the QR code on the sign-in page (on a
-phone, they tap a button) and send a ready-made email.
+**We recommend trying [one-tap email](#try-one-tap-email) first.** On a computer, it is a cross-device sign-in: your users
+scan the QR code on the sign-in page with their phone and send a ready-made email. On the phone itself, they tap a button.
 
 - **Better for your users:** they don't wait for anything to arrive. The email travels from them to you, so a spam
   folder or a slow delivery can't stop the sign-in, and it works the way messaging apps do.

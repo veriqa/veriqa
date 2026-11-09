@@ -18,7 +18,6 @@ using Veriqa.Core.AuthServer.Infrastructure;
 using Veriqa.Core.ChannelAdapter.Abstractions;
 using Veriqa.Core.ChannelAdapter.DependencyInjection;
 using Veriqa.Core.ChannelAdapter.Pipeline;
-using Veriqa.Core.AuthServer.UiConfig;
 using Veriqa.Core.Configuration;
 using Veriqa.Core.TransactionEngine.CollectedClaims;
 using Veriqa.Core.TransactionEngine.DependencyInjection;
@@ -181,21 +180,23 @@ public static class OpenIddictIntegrationExtensions
     {
         // The method performs the full registration of the OpenIddict integration via the specialized classes
 
+        // The configuration resolution of the auth server — the resolver with its levels, their readers
+        // and walkers, the client entries and the key catalogs. It is the one copy of these registrations
+        // for both entry points and for a host that takes the resolution alone; idempotent, so a host
+        // that composed it before this call keeps what it composed.
+        services.AddVeriqaAuthServerConfigResolution(configuration);
+
         services.AddVeriqaConfiguration(configuration);
 
         // Tenant of the calling client: the TenantId of the client's own configuration entry.
         // Registered HERE rather than in AddVeriqaAuthServer because this call is the one point BOTH
         // entry points pass through — the facade, and a host wiring the OIDC integration itself, which
         // is what the shipped Veriqa.Core.AuthServer.Host does AFTER the Transaction Engine. It also
-        // sits next to AddVeriqaConfiguration, where the OidcClientsOptionsAccessor it reads through
-        // comes from. The registration displaces the engine's shipped null answer instead of queueing
-        // behind it, so the auth server answers wherever it is present and no matter when the engine
-        // was wired; a resolver of the host is left untouched and still wins over both.
+        // sits next to the composition of the resolution, where the OidcClientsOptionsAccessor it reads
+        // through comes from. The registration displaces the engine's shipped null answer instead of
+        // queueing behind it, so the auth server answers wherever it is present and no matter when the
+        // engine was wired; a resolver of the host is left untouched and still wins over both.
         services.ReplaceShippedClientTenantResolver<OidcClientTenantResolver>();
-
-        // The ui_config record + self-hosted store (SPEC-012 CFG-203, SPEC-002 §4.6).
-        // Cloud/Demo stores are registered opt-in on top within their own contours.
-        services.AddVeriqaUiConfig(configuration);
 
         services.AddVeriqaDbContext(configureDatabase);
         services.AddVeriqaOpenIddictServer(configuration, environment);
@@ -216,7 +217,13 @@ public static class OpenIddictIntegrationExtensions
         // UI-123, CFG-045) and the cancel form of the sign-in window and of the entry page of a confirmation.
         // The token is validated manually in the endpoint (IAntiforgery.ValidateRequestAsync) — without depending
         // on the UseAntiforgery middleware in the host pipeline.
-        services.AddAntiforgery();
+        // The cookie of the token goes out SameSite=Lax rather than the framework's Strict. A page of the core
+        // a user reaches by a navigation started on another site — the page of a web provider channel back
+        // from the provider, a page opened from a webmail — issues tokens; a Strict cookie is not sent with
+        // that navigation, so a fresh one replaces it and every form of the core already open in another tab
+        // of the same browser fails as out of date. A cross-site POST still carries no Lax cookie, and the
+        // token is checked as before. A host that states the options after this call keeps its own value.
+        services.AddAntiforgery(options => options.Cookie.SameSite = SameSiteMode.Lax);
 
         services.AddVeriqaUiServices();
 
@@ -301,7 +308,7 @@ public static class OpenIddictIntegrationExtensions
 
         // Endpoint-level policies are configured via AddOptions.Configure for a single source of truth
         services.AddOptions<RateLimiterOptions>()
-            .Configure<IOptions<RateLimitOptions>>((limiterOptions, rateLimitOpts) =>
+            .Configure<IOptions<RateLimitOptions>, TimeProvider>((limiterOptions, rateLimitOpts, timeProvider) =>
             {
                 var config = rateLimitOpts.Value;
 
@@ -333,13 +340,27 @@ public static class OpenIddictIntegrationExtensions
                     o.QueueLimit = 0;
                 });
 
-                // Limit on webhook endpoints
-                limiterOptions.AddFixedWindowLimiter(RateLimitOptions.WebhookPolicyName, o =>
-                {
-                    o.PermitLimit = rateLimitCore.Read(RateLimitConfigKeys.WebhookPermitLimit);
-                    o.Window = TimeSpan.FromSeconds(rateLimitCore.Read(RateLimitConfigKeys.WebhookWindowSeconds));
-                    o.QueueLimit = 0;
-                });
+                // Limit on webhook endpoints, partitioned by the tenant segment of the route (SPEC-003
+                // CA-133): the inbound traffic of one tenant does not spend the budget of another, nor that
+                // of the route without a segment, which is one partition of its own. A segment is whatever
+                // the caller wrote — the demux refuses an unknown tenant only after the limiter — so the
+                // number of partitions is bounded by WebhookMaxPartitions (read directly, like
+                // UserAuthMaxPartitions, CFG-230): new segments beyond it share one overflow partition.
+                var webhookPermitLimit = rateLimitCore.Read(RateLimitConfigKeys.WebhookPermitLimit);
+                var webhookWindow =
+                    TimeSpan.FromSeconds(rateLimitCore.Read(RateLimitConfigKeys.WebhookWindowSeconds));
+                var webhookPartitions = new PartitionKeyRegistry(config.WebhookMaxPartitions, timeProvider);
+
+                limiterOptions.AddPolicy(
+                    RateLimitOptions.WebhookPolicyName,
+                    httpContext => RateLimitPartition.GetFixedWindowLimiter(
+                        WebhookPartitionKeyOf(httpContext, webhookPartitions, webhookWindow),
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = webhookPermitLimit,
+                            Window = webhookWindow,
+                            QueueLimit = 0
+                        }));
 
                 // Limit on the Token Endpoint (POST /connect/token)
                 limiterOptions.AddFixedWindowLimiter(RateLimitOptions.TokenPolicyName, o =>
@@ -543,4 +564,25 @@ public static class OpenIddictIntegrationExtensions
 
         return endpoints;
     }
+
+    /// <summary>
+    /// The partition of the webhook policy a request falls into: its tenant segment of the route, bounded by
+    /// the registry of partitions, or — for the route without a segment — the one partition of that route,
+    /// which the registry does not hold, so segments written by callers never push it into the overflow.
+    /// A blank segment counts as none, as in <see cref="ChannelTenantDemux"/>, which serves it as the default
+    /// tenant.
+    /// </summary>
+    /// <param name="httpContext">The request.</param>
+    /// <param name="partitions">Registry of the partitions of the tenant segments.</param>
+    /// <param name="window">Window of the policy — the idle time after which a segment leaves the registry.</param>
+    /// <returns>The partition key; empty — the route without a segment.</returns>
+    private static string WebhookPartitionKeyOf(
+        HttpContext httpContext,
+        PartitionKeyRegistry partitions,
+        TimeSpan window) =>
+        httpContext.Request.RouteValues.TryGetValue(ChannelTenantDemux.TenantRouteKey, out var segment)
+            && segment is string tenant
+            && !string.IsNullOrWhiteSpace(tenant)
+                ? partitions.Resolve(tenant, window)
+                : string.Empty;
 }

@@ -143,11 +143,14 @@
 }
 .veriqa-btn:hover { transform: translateY(-1px); opacity: 0.88; }
 .veriqa-btn:focus-visible { outline: 2px solid var(--veriqa-primary); outline-offset: 2px; }
+/* The default answer the page focuses itself keeps no ring until a key is pressed: the ring around a
+   filled button reads as a second outline of it. The page script sets the mark and takes it off. */
+[data-veriqa-focus-quiet] .veriqa-btn[autofocus]:focus-visible { outline: none; }
 .veriqa-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 /* A button the page script hides keeps hidden: the display of the button would otherwise win over
    the hidden attribute. */
 .veriqa-btn[hidden] { display: none; }
-/* Secondary, outlined variant of the button - "No" of a confirmation question, "Cancel sign-in"
+/* Secondary, outlined variant of the button - "Yes" of a confirmation question, "Cancel sign-in"
    and the actions of the email block of the claims completion that are not the main one. It is declared in this shared layer for the reason the base is: both page
    families use it, and neither loads the other's rules. */
 .veriqa-btn-decline {

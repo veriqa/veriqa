@@ -15,9 +15,11 @@ namespace Veriqa.Core.ChannelAdapter.Abstractions;
 /// each addressing the exact messages
 /// that need it: replacing the prompt, taking away what the phone number request offered.
 ///
-/// The core writes a record for every channel that reports outcomes or can update its own message,
-/// whether the question was asked in the chat or not; a channel that does neither leaves none. A
-/// missing entry means "nobody to tell in a channel" and the reader is a graceful no-op.
+/// The core writes a record for every channel that reports outcomes, can update its own message or can
+/// ask its user for the phone number, whether the question was asked in the chat or not; a channel that
+/// does none of these leaves none. The tenant of the record also tells the route the answer to a phone
+/// number request arrives on. A missing entry means "nobody to tell in a channel" and the reader is a
+/// graceful no-op.
 ///
 /// The default implementation is in-process (single instance / self-hosted / demo). In a
 /// multi-instance deployment the expiry event may be handled on an instance other than the one

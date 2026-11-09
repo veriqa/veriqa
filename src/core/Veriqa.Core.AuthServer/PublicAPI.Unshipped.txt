@@ -285,6 +285,8 @@ Veriqa.Core.AuthServer.Configuration.RateLimitOptions.UserAuthQueueLimit.get -> 
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.UserAuthQueueLimit.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.UserAuthWindowSeconds.get -> int
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.UserAuthWindowSeconds.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebhookMaxPartitions.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebhookMaxPartitions.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebhookPermitLimit.get -> int
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebhookPermitLimit.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebhookWindowSeconds.get -> int
@@ -341,6 +343,7 @@ Veriqa.Core.AuthServer.Constants.SignalRConstants
 Veriqa.Core.AuthServer.Constants.TransactionStatusNames
 Veriqa.Core.AuthServer.Data.OpenIddictDbContext
 Veriqa.Core.AuthServer.Data.OpenIddictDbContext.OpenIddictDbContext(Microsoft.EntityFrameworkCore.DbContextOptions<Veriqa.Core.AuthServer.Data.OpenIddictDbContext!>! options) -> void
+Veriqa.Core.AuthServer.DependencyInjection.AuthServerConfigResolutionExtensions
 Veriqa.Core.AuthServer.DependencyInjection.OpenIddictIntegrationExtensions
 Veriqa.Core.AuthServer.DependencyInjection.VeriqaAuthServerBuilder
 Veriqa.Core.AuthServer.DependencyInjection.VeriqaAuthServerBuilder.AddChannelAdapters(System.Action<Veriqa.Core.ChannelAdapter.DependencyInjection.ChannelAdapterBuilder!>! configure) -> Veriqa.Core.AuthServer.DependencyInjection.VeriqaAuthServerBuilder!
@@ -476,6 +479,8 @@ Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Launched.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Scanned.get -> string!
 Veriqa.Core.AuthServer.UI.AuthPageChannelLines.Scanned.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.AnsweredChannelType.get -> string?
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.AnsweredChannelType.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.AnyChannelTabShowsChannelButtons.get -> bool
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.AnyChannelTabShowsChannelButtons.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.AuthPageRenderContext() -> void
@@ -525,6 +530,10 @@ Veriqa.Core.AuthServer.UI.AuthPageRenderContext.QrVisibility.get -> Veriqa.Core.
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.QrVisibility.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RemainingSeconds.get -> double
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RemainingSeconds.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RememberChannelCheckbox.get -> bool
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RememberChannelCheckbox.init -> void
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RememberChannelHint.get -> bool
+Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RememberChannelHint.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RestartUrl.get -> string?
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.RestartUrl.init -> void
 Veriqa.Core.AuthServer.UI.AuthPageRenderContext.CollectsHopFingerprint.get -> bool
@@ -748,7 +757,13 @@ const Veriqa.Core.AuthServer.Constants.ConfirmationTokenGrant.TransactionIdParam
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.AuditStoreConnectionStringKey = "Veriqa:Logging:Store:ConnectionString" -> string!
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.AuditStoreProviderKey = "Veriqa:Logging:Store:Provider" -> string!
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionApplicationName = "veriqa-authserver" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionCertificateBase64Key = "Veriqa:DataProtection:CertificateBase64" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionCertificatePasswordKey = "Veriqa:DataProtection:CertificatePassword" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionCertificatePathKey = "Veriqa:DataProtection:CertificatePath" -> string!
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionKeysDirectoryKey = "Veriqa:DataProtection:KeysDirectory" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionPreviousCertificateBase64Key = "Veriqa:DataProtection:PreviousCertificateBase64" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionPreviousCertificatePasswordKey = "Veriqa:DataProtection:PreviousCertificatePassword" -> string!
+const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionPreviousCertificatePathKey = "Veriqa:DataProtection:PreviousCertificatePath" -> string!
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionRedisConnectionStringKey = "Veriqa:DataProtection:RedisConnectionString" -> string!
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionRedisKey = "veriqa:dataprotection:keys" -> string!
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.DataProtectionSectionName = "Veriqa:DataProtection" -> string!
@@ -881,6 +896,8 @@ static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.Page
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.QrCodePixelsPerModule.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.QrCodeShowQrCode.get -> Veriqa.Core.Configuration.ConfigKey<Veriqa.Core.AuthServer.Configuration.Enums.QrCodeVisibility>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.RefreshTokenLifetimeSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.RememberChannelCheckbox.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.RememberChannelHint.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.TransactionTtlSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.AuthServerConfigKeys.UiConfigSelectorAssigned.get -> Veriqa.Core.Configuration.ConfigKey<bool>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.ConfirmationSubjectDisplayConfigKeys.Catalog.get -> Veriqa.Core.Configuration.ConfigKeyCatalog!
@@ -935,6 +952,7 @@ static Veriqa.Core.AuthServer.Configuration.Resolution.VeriqaConfigKeyCatalogs.A
 static Veriqa.Core.AuthServer.Constants.ClientCompatibilityProfiles.Expand(string! name) -> System.Collections.Generic.IReadOnlySet<string!>!
 static Veriqa.Core.AuthServer.Constants.ClientCompatibilityProfiles.KnownNames.get -> System.Collections.Generic.IReadOnlySet<string!>!
 static Veriqa.Core.AuthServer.Constants.ClientCompatibilityQuirks.KnownKeys.get -> System.Collections.Generic.IReadOnlySet<string!>!
+static Veriqa.Core.AuthServer.DependencyInjection.AuthServerConfigResolutionExtensions.AddVeriqaAuthServerConfigResolution(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.Extensions.Configuration.IConfiguration! configuration) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Veriqa.Core.AuthServer.DependencyInjection.OpenIddictIntegrationExtensions.AddVeriqaAuthServer(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.Extensions.Configuration.IConfiguration! configuration, Microsoft.AspNetCore.Hosting.IWebHostEnvironment! environment, System.Action<Veriqa.Core.AuthServer.DependencyInjection.VeriqaAuthServerBuilder!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Veriqa.Core.AuthServer.DependencyInjection.OpenIddictIntegrationExtensions.AddVeriqaOpenIddict(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.Extensions.Configuration.IConfiguration! configuration, Microsoft.AspNetCore.Hosting.IWebHostEnvironment! environment, System.Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!>? configureDatabase = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Veriqa.Core.AuthServer.DependencyInjection.OpenIddictIntegrationExtensions.AddVeriqaRateLimiting(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

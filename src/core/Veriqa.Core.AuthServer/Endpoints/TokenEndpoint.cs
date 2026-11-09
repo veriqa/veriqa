@@ -205,11 +205,16 @@ public static class TokenEndpoint
         var scopes = request.GetScopes();
         var scopeSet = new HashSet<string>(scopes, StringComparer.Ordinal);
 
+        // The avatar of the channel is asked for as /connect/authorize asks for it when it issues the code of
+        // a sign-in: only for the scopes of this request, and the supplemented identity is never stored.
+        var issuedIdentity = await httpContext.RequestServices.GetRequiredService<ChannelAvatarSupplement>()
+            .SupplementAsync(transaction, resolvedIdentity, completion, scopeSet, httpContext.RequestAborted);
+
         // The claims are built in the attribution context of the transaction, exactly as /connect/authorize
         // builds them when it issues the code of a sign-in, and bounded by the scope of this request.
         var claimsMapper = httpContext.RequestServices.GetRequiredService<IClaimsMapper>();
         var claimsResult = await claimsMapper.MapToClaimsAsync(
-            resolvedIdentity,
+            issuedIdentity,
             completion,
             new ClaimsMappingContext(
                 transaction.GetApplicationId(),

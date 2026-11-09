@@ -154,15 +154,15 @@ The last frame of the animation shows test values from a real ID token.
 ### Signing in on a computer
 
 <p align="center">
-  <img src="./media/readme/en-google-cross-device.webp" width="800" alt="Signing in on a computer with Google: the phone camera scans the QR code, the user picks a Google account, taps Yes on the confirmation page, and sees &quot;Sign-in confirmed&quot;." /><br />
-  <sub>The user scans the QR code with their phone camera, picks a Google account and taps Yes on the confirmation page.</sub>
+  <img src="./media/readme/en-google-cross-device.webp" width="800" alt="Signing in on a computer with Google: the phone camera scans the QR code, the user picks a Google account, slides to answer Yes on the confirmation page, and sees &quot;Sign-in confirmed&quot;." /><br />
+  <sub>The user scans the QR code with their phone camera, picks a Google account and slides to answer Yes on the confirmation page.</sub>
 </p>
 
 ### Signing in on a phone
 
 <p align="center">
-  <img src="./media/readme/en-google-phone.webp" width="800" alt="Signing in on a phone with Google: the user taps &quot;Sign in with Google&quot;, picks an account, allows access on the first sign-in, taps Yes, and sees &quot;Sign-in confirmed&quot;." /><br />
-  <sub>The user taps "Sign in with Google", picks an account and taps Yes on the confirmation page. Google asks for consent only on the first sign-in.</sub>
+  <img src="./media/readme/en-google-phone.webp" width="800" alt="Signing in on a phone with Google: the user taps &quot;Sign in with Google&quot;, picks an account, allows access on the first sign-in, slides to answer Yes, and sees &quot;Sign-in successful!&quot;." /><br />
+  <sub>The user taps "Sign in with Google", picks an account and slides to answer Yes on the confirmation page. Google asks for consent only on the first sign-in.</sub>
 </p>
 
 ### Claims your app can get

@@ -1,13 +1,17 @@
 # Veriqa.Core.ChannelAdapter
 
-**One way to plug in every messaging app.** Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber,
-MAX and Email are switched on by configuration, and a channel of your own plugs in the same way,
-without changes to the core. Your users scan a QR code on the sign-in page (on a phone, they tap a
-button) and confirm the sign-in with no password and no SMS code. Your users can also sign in with a
-QR code or a button through a Google or Apple account and 80+ other services, with the
-[`Veriqa.Core.ChannelAdapter.WebProviders`](https://www.nuget.org/packages/Veriqa.Core.ChannelAdapter.WebProviders)
-package. Your users can sign in this way on a computer, a TV, a kiosk or any other device that can
-show a QR code.
+**One way to plug in every messaging app.**
+
+- Telegram, WhatsApp, Instagram, Messenger, WeChat, Viber, MAX and Email are switched on by
+  configuration, and a channel of your own plugs in the same way, without changes to the core.
+- Your users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm the
+  sign-in with no password and no SMS code.
+- Your users can also sign in with a QR code or a button through a Google or Apple account and 80+
+  other services, with the
+  [`Veriqa.Core.ChannelAdapter.WebProviders`](https://www.nuget.org/packages/Veriqa.Core.ChannelAdapter.WebProviders)
+  package.
+- Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a
+  QR code.
 
 ![Signing in on a computer with Telegram: the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in the Telegram chat, and the chat replies "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-telegram-cross-device.webp)
 
@@ -32,7 +36,7 @@ Documentation: [Channels](https://veriqa.app/docs/guides/channels).
 - **A direct channel to the user.** The same sign-in gives your product a channel for notifications.
   [Sign-in and channel linking](https://veriqa.app/docs/scenarios/channel-linking)
 - **Leads and feedback without CAPTCHA.** Your site gets a confirmed contact instead of an address
-  typed into a field. This use case has been tested with Telegram.
+  typed into a field.
   [Leads and feedback without CAPTCHA](https://veriqa.app/docs/scenarios/lead-capture)
 - **Surfaces with no keyboard.** A smart TV, a set-top box or a kiosk shows a QR code, and the user
   types nothing. [Sign-in surfaces](https://veriqa.app/docs/scenarios/surfaces)
@@ -96,6 +100,33 @@ authServer.AddChannelAdapters(adapters =>
     adapters.AddEmail();     // Email channel (magic-link)
 });
 ```
+
+A host that needs only the settings of the channels — an admin API reading their values through the
+configuration resolver, with no channel running in it — registers their configuration half instead:
+
+```csharp
+builder.Services.AddVeriqaChannelConfiguration(builder.Configuration, adapters =>
+{
+    adapters.AddTelegram();
+    adapters.AddEmail();
+});
+```
+
+It registers, for every channel added, the binding and the start-up validation of its section, the
+catalog of its keys, the core level of those keys and its core-level declaration, plus the catalogs of
+the channel contour and the canonical resolver. It registers no hosted service (polling, webhook
+set-up), no client, adapter or webhook route, whatever `Enabled` says — a channel enabled in its
+section is still reported enabled in `Channels.Enabled`. In a host that also runs
+`AddVeriqaChannelAdapters` (directly or through `AddVeriqaAuthServer`), such a channel added only here
+has no adapter behind it: the start-up diagnostics warn about it, and the host refuses to start unless
+its `InboundVerification` level is declared, as for any enabled channel. The call is idempotent and combines with
+`AddVeriqaChannelAdapters` in one host in either order and with overlapping channel sets: nothing is
+registered twice, and a channel added to `AddVeriqaChannelAdapters` still runs. Only the `Add*` methods
+of the eight built-in channels are supported there: `AddHttpChannels`, `AddWebProviders` and
+`AddChannel` throw `InvalidOperationException`, and the `Use*` replacements (`UseWhatsAppProvider`,
+`UseRedisChannelStores`) are not meant for it. A Generic or Web Host is expected. Known limitation: the
+overridable texts of the Email pages and of the channels' buttons come with the working half of their
+channel, so such a host does not recognize an `AuthPage.Texts` override of them.
 
 ## Replacing a shipped implementation
 

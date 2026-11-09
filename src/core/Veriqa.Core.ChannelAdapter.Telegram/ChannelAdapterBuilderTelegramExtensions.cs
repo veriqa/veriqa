@@ -59,6 +59,26 @@ public static class ChannelAdapterBuilderTelegramExtensions
             return adapters;
         }
 
+        // Named IHttpClientFactory client every Bot API request goes through. Explicit timeout instead of
+        // the default 100s, so a stuck request fails instead of holding the bot; it stays above the
+        // long-poll timeout of getUpdates (TelegramAdapterConstants.BotApiTimeoutSeconds). The request
+        // loggers of the factory are removed: the Bot API takes the bot token in the request path
+        // (/bot<token>/..., /file/bot<token>/...), and those loggers write the request address.
+        var botApiClient = adapters.Services
+            .AddHttpClient(
+                TelegramAdapterConstants.HttpClientName,
+                static client => client.Timeout = TimeSpan.FromSeconds(TelegramAdapterConstants.BotApiTimeoutSeconds))
+            .RemoveAllLoggers();
+
+        // A host may put a resilience handler on every client (the standard host does, through
+        // ConfigureHttpClientDefaults). Its attempt and total timeouts are shorter than the long poll of
+        // getUpdates, and it re-sends a request — a sendMessage retried is a second message to the user —
+        // so any inherited handler is removed: this client keeps only its own timeout. The package offers
+        // the removal as an experimental API; its diagnostic is suppressed around this call only.
+#pragma warning disable EXTEXP0001
+        botApiClient.RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
+
         // Multi-tenancy seam: per-tenant client factory + default credential provider
         adapters.Services.AddChannelMultiTenancy();
 

@@ -1,0 +1,7 @@
+.env
+certs/
+bin/
+obj/
+.venv/
+__pycache__/
+node_modules/

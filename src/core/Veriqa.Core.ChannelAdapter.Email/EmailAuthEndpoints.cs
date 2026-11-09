@@ -161,6 +161,131 @@ public static partial class EmailAuthEndpoints
     private const string SignInIntervalCounterKind = "signin-interval";
 
     /// <summary>
+    /// Kind of the mail counter of the sign-in mails to one recipient address. A kind of its own: the mails of
+    /// the claims completion to the same address are counted apart, so neither holds the other back.
+    /// </summary>
+    private const string SignInAddressCounterKind = "signin-addr";
+
+    /// <summary>
+    /// Kind of the mail counter of the sign-in mails to one recipient domain, apart from the mails of the
+    /// claims completion for the reason <see cref="SignInAddressCounterKind"/> is.
+    /// </summary>
+    private const string SignInDomainCounterKind = "signin-dom";
+
+    /// <summary>
+    /// Resolves the limits of a sign-in mail over the ownership levels of the transaction, in one scope of
+    /// resolution: the records of the levels are read once for all of them.
+    /// </summary>
+    /// <param name="configurationResolver">Canonical layer resolver.</param>
+    /// <param name="transaction">The transaction of the sign-in.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The limits.</returns>
+    private static async Task<SignInMailLimits> ResolveSignInMailLimitsAsync(
+        IConfigurationResolver configurationResolver,
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        using var scope = new ConfigResolutionScope(TransactionResolutionContext.For(transaction));
+
+        var perAddress = await configurationResolver.ResolveAsync(
+            EmailConfigKeys.SignInMailsPerAddress, scope, ConfigDimensionValues.None, cancellationToken);
+        var perDomain = await configurationResolver.ResolveAsync(
+            EmailConfigKeys.SignInMailsPerDomain, scope, ConfigDimensionValues.None, cancellationToken);
+        var codeAttempts = await configurationResolver.ResolveAsync(
+            EmailConfigKeys.SignInCodeAttempts, scope, ConfigDimensionValues.None, cancellationToken);
+
+        return new SignInMailLimits(perAddress.Value, perDomain.Value, codeAttempts.Value);
+    }
+
+    /// <summary>
+    /// The counters one sign-in mail is reserved against, in the order a refusal is judged by: the recipient
+    /// address, the recipient domain while its limit is on, the interval while it is on. The recipient counters
+    /// are scoped by the tenant of the transaction and live across its transactions, so a script typing many
+    /// addresses of one domain is held back once the domain limit runs out, while the addresses of another
+    /// domain are not.
+    /// </summary>
+    /// <param name="transaction">The transaction of the sign-in.</param>
+    /// <param name="address">The bare address typed into the page.</param>
+    /// <param name="normalization">Normalization the address is compared by.</param>
+    /// <param name="limits">Limits of the mails to one recipient.</param>
+    /// <param name="resendInterval">Interval between two mails of one transaction; zero — off.</param>
+    /// <returns>The counters, each with the limit it stands for.</returns>
+    private static List<(EmailClaimMailCounter Counter, SignInMailLimit Limit)> SignInMailCounters(
+        Transaction transaction,
+        string address,
+        EmailNormalizationOptions? normalization,
+        SignInMailLimits limits,
+        TimeSpan resendInterval)
+    {
+        var tenantId = transaction.GetTenantId();
+
+        var counters = new List<(EmailClaimMailCounter Counter, SignInMailLimit Limit)>
+        {
+            (EmailClaimMailCounter.OfRecipientAddress(SignInAddressCounterKind, tenantId, address, normalization, limits.PerAddress),
+                SignInMailLimit.Address),
+        };
+
+        // Zero switches the limit of the domain off: no counter, nothing to refuse by.
+        if (EmailClaimMailCounter.OfRecipientDomain(SignInDomainCounterKind, tenantId, address, limits.PerDomain) is { } domainCounter)
+        {
+            counters.Add((domainCounter, SignInMailLimit.Domain));
+        }
+
+        // The key of the interval is the transaction, not the address, so another address typed within the
+        // interval is refused the same way.
+        if (EmailClaimMailCounter.OfResendInterval(SignInIntervalCounterKind, transaction.Id, resendInterval) is { } intervalCounter)
+        {
+            counters.Add((intervalCounter, SignInMailLimit.Interval));
+        }
+
+        return counters;
+    }
+
+    /// <summary>
+    /// The <c>429</c> answer to a sign-in mail a limit refused. A refusal by the interval tells the client how
+    /// long to wait — the whole interval: the store does not tell what is left of the window, and the interval
+    /// is the least number that is never short of it. A refusal by the address or the domain tells no wait:
+    /// the store does not tell what is left of the hour either, and another address may be entered at once.
+    /// </summary>
+    /// <param name="httpContext">Context of the request.</param>
+    /// <param name="pageLocalizer">Localizer of the error text.</param>
+    /// <param name="servedLocale">Language of the request.</param>
+    /// <param name="limit">The limit the mail was refused by.</param>
+    /// <param name="resendInterval">Interval between two mails of one transaction.</param>
+    /// <returns>The answer.</returns>
+    private static IResult RefuseSignInMail(
+        HttpContext httpContext,
+        IConfirmationPromptLocalizer pageLocalizer,
+        string? servedLocale,
+        SignInMailLimit limit,
+        TimeSpan resendInterval)
+    {
+        if (limit is not SignInMailLimit.Interval)
+        {
+            var naturalKey = limit is SignInMailLimit.Address
+                ? EmailAdapterMailStrings.ApiErrorAddressMailLimit
+                : EmailAdapterMailStrings.ApiErrorDomainMailLimit;
+
+            return Results.Json(
+                new { success = false, error = ResolveServedText(pageLocalizer, naturalKey, servedLocale) },
+                statusCode: StatusCodes.Status429TooManyRequests);
+        }
+
+        var retryAfterSeconds = ResendIntervalSeconds(resendInterval);
+        httpContext.Response.Headers.RetryAfter =
+            retryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        return Results.Json(
+            new
+            {
+                success = false,
+                error = ResolveServedText(pageLocalizer, EmailAdapterMailStrings.ApiErrorResendTooSoon, servedLocale),
+                retryAfterSeconds
+            },
+            statusCode: StatusCodes.Status429TooManyRequests);
+    }
+
+    /// <summary>
     /// The interval between two mails as the whole seconds a client is told to wait: rounded up, so the
     /// figure is never shorter than what is left of the interval and is the interval itself whenever that
     /// is a whole number of seconds. Zero — the interval is switched off.
@@ -177,7 +302,10 @@ public static partial class EmailAuthEndpoints
     /// accepts email and session_id, generates an action token and sends one sign-in mail — the magic link,
     /// a code, or both, as the pull methods of the transaction say (<see cref="EmailConfigKeys.PullMethods"/>).
     /// A second mail for the same transaction is not sent sooner than
-    /// <see cref="EmailOptions.MailResendInterval"/> after the first: the request is refused with 429.
+    /// <see cref="EmailOptions.MailResendInterval"/> after the first: the request is refused with 429 and
+    /// <c>retryAfterSeconds</c>. A mail past the hourly limit of the recipient address or domain
+    /// (<see cref="EmailConfigKeys.SignInMailsPerAddress"/>, <see cref="EmailConfigKeys.SignInMailsPerDomain"/>)
+    /// is refused with 429 without <c>retryAfterSeconds</c>.
     /// </summary>
     private static async Task<IResult> HandleEmailStartAsync(HttpContext httpContext)
     {
@@ -382,35 +510,19 @@ public static partial class EmailAuthEndpoints
 
         var credentials = credentialsResult.Value;
 
-        // The interval between two sign-in mails of one transaction. The mail is reserved before a token
-        // is issued and before anything is sent — a refused request leaves no token behind — by the
-        // mechanism that counts the mails of the claims completion: a counter of one mail whose window
-        // is the interval itself. The key is the transaction, not the address, so another address typed
-        // within the interval is refused the same way. The figure handed to the client is the whole
-        // interval: the store does not tell what is left of the window, and the interval is the least
-        // number that is never short of it.
+        // The sign-in mail is reserved before a token is issued and before anything is sent — a refused
+        // request leaves no token behind — by the mechanism that counts the mails of the claims completion,
+        // in one atomic reservation: a refusal by any counter counts none of them. The counters are those of
+        // the recipient address and domain (SPEC-016 EM-064), which hold back a script typing many
+        // addresses, and the interval between two mails of one transaction.
         var resendInterval = emailOptions.MailResendInterval;
-        var retryAfterSeconds = ResendIntervalSeconds(resendInterval);
+        var mailLimits = await ResolveSignInMailLimitsAsync(configurationResolver, transaction, cancellationToken);
+        var mailCounters = SignInMailCounters(transaction, bareEmail, normalization, mailLimits, resendInterval);
 
-        if (EmailClaimMailCounter.OfResendInterval(SignInIntervalCounterKind, transaction.Id, resendInterval) is { } intervalCounter)
+        if (await services.GetRequiredService<IEmailClaimCompletionStore>().TryReserveMailAsync(
+                [.. mailCounters.Select(counter => counter.Counter)], cancellationToken) is { } refusedBy)
         {
-            var mailCounters = services.GetRequiredService<IEmailClaimCompletionStore>();
-            var refusedBy = await mailCounters.TryReserveMailAsync([intervalCounter], cancellationToken);
-
-            if (refusedBy is not null)
-            {
-                httpContext.Response.Headers.RetryAfter =
-                    retryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-                return Results.Json(
-                    new
-                    {
-                        success = false,
-                        error = ResolveServedText(pageLocalizer, EmailAdapterMailStrings.ApiErrorResendTooSoon, servedLocale),
-                        retryAfterSeconds
-                    },
-                    statusCode: StatusCodes.Status429TooManyRequests);
-            }
+            return RefuseSignInMail(httpContext, pageLocalizer, servedLocale, mailCounters[refusedBy].Limit, resendInterval);
         }
 
         // Generate an action token (the adapter's shared URL-safe token generator). Every sign-in mail has
@@ -432,13 +544,7 @@ public static partial class EmailAuthEndpoints
         if (code is not null)
         {
             tokenExpiresAt = EmailClaimCompletion.EarlierOf(tokenExpiresAt, transaction.ExpiresAt);
-
-            using var attemptsScope = new ConfigResolutionScope(TransactionResolutionContext.For(transaction));
-            codeAttempts = (await configurationResolver.ResolveAsync(
-                EmailConfigKeys.SignInCodeAttempts,
-                attemptsScope,
-                ConfigDimensionValues.None,
-                cancellationToken)).Value;
+            codeAttempts = mailLimits.CodeAttempts;
         }
 
         // Store the token in the store
@@ -560,7 +666,7 @@ public static partial class EmailAuthEndpoints
         return Results.Json(new EmailStartAccepted(
             Success: true,
             MaskedEmail: maskedEmail,
-            RetryAfterSeconds: retryAfterSeconds,
+            RetryAfterSeconds: ResendIntervalSeconds(resendInterval),
             CodeExpected: code is not null));
     }
 
@@ -852,6 +958,7 @@ public static partial class EmailAuthEndpoints
             token: token,
             isConfirmationRequest: letter.IsConfirmation,
             appName: ApplicationNameOf(letter.Transaction),
+            brandName: letter.Transaction?.GetBrandName(),
             continuesInSameBrowser: EmailLinkSameBrowser.IsOffered(live),
             cspNonce: httpContext.Items[HttpContextItemKeys.CspNonce] as string);
 
@@ -1158,6 +1265,7 @@ public static partial class EmailAuthEndpoints
             token: token,
             isConfirmationRequest: letter.IsConfirmation,
             appName: ApplicationNameOf(letter.Transaction),
+            brandName: letter.Transaction?.GetBrandName(),
             cspNonce: httpContext.Items[HttpContextItemKeys.CspNonce] as string);
         return Results.Content(html, "text/html", Encoding.UTF8);
     }
@@ -1390,7 +1498,7 @@ public static partial class EmailAuthEndpoints
         }
 
         await ChannelWebhookPipeline.RecordLetterRefusalAsync(
-            processor, transaction.Id, attachResult.Error.Code, adapter);
+            processor, transaction, attachResult.Error.Code, adapter);
 
         return attachResult;
     }
@@ -1839,6 +1947,11 @@ public static partial class EmailAuthEndpoints
     /// Name of the application the transaction is requested in — the request page only, which is the page
     /// no flag but <paramref name="isConfirmationRequest"/> names: a live link of a transaction.
     /// </param>
+    /// <param name="brandName">
+    /// Brand name the levels of the transaction state, untranslated — the request page only, as
+    /// <paramref name="appName"/>; null — none is stated, and <c>{brand_name}</c> takes the name of the
+    /// application (<see cref="EmailLinkPageNameSlots.Fill"/>).
+    /// </param>
     /// <param name="continuesInSameBrowser">
     /// Flag of the request page whose transaction holds what the browser of the transaction is recognised
     /// by: the page carries the script that hides the button and sends the form by itself
@@ -1864,6 +1977,7 @@ public static partial class EmailAuthEndpoints
         bool isConfirmationLetter = false,
         bool isSignInContinued = false,
         string? appName = null,
+        string? brandName = null,
         bool continuesInSameBrowser = false,
         string? cspNonce = null)
     {
@@ -1932,10 +2046,11 @@ public static partial class EmailAuthEndpoints
         {
             // The request of a transaction, one page for a sign-in and a confirmation: the page asks
             // nothing — the one question is the sign-in window's, or the core page's for a confirmation. The
-            // line of a sign-in names the application, so that a recipient who did not request it knows the
-            // page is to be closed; the line of a confirmation names none — the relying party words it for
-            // its application through AuthPage.Texts (SPEC-016 EM-206). Otherwise only the words naming the
-            // action differ by type. The continue button posts
+            // line of a sign-in names the application by its brand, so that a recipient who did not request
+            // it knows the page is to be closed; the built-in line of a confirmation names none — the relying
+            // party words it for its application through AuthPage.Texts (SPEC-016 EM-206), by either slot of
+            // the name, which both lines fill alike (EmailLinkPageNameSlots). Otherwise only the words naming
+            // the action differ by type. The continue button posts
             // to the current URL (GET and POST are mapped to a single path) — no action attribute, which
             // also works when the application is hosted under a sub-path (PathBase), where a root-relative
             // action would send the POST past the application. It is a POST, never a GET link, so a mail
@@ -1947,8 +2062,12 @@ public static partial class EmailAuthEndpoints
             var continueKey = isConfirmationRequest
                 ? EmailAdapterMailStrings.ConfirmationRequestContinue
                 : EmailAdapterMailStrings.SignInRequestContinue;
-            var requestText = texts.Localize(localizer, requestTextKey, htmlLang)
-                .Replace(ClaimLinkAppSlot, appName ?? EmailAdapterConfigDefaults.DefaultClientName, StringComparison.Ordinal);
+            var requestText = EmailLinkPageNameSlots.Fill(
+                texts.Localize(localizer, requestTextKey, htmlLang),
+                localizer,
+                htmlLang,
+                appName ?? EmailAdapterConfigDefaults.DefaultClientName,
+                brandName);
             statusBlock = $"""
                 <p class="veriqa-instruction">{System.Net.WebUtility.HtmlEncode(requestText)}</p>
                 """;
@@ -2043,6 +2162,29 @@ public static partial class EmailAuthEndpoints
 
         return System.Text.Json.JsonSerializer.SerializeToElement(metadata);
     }
+
+    /// <summary>
+    /// Which limit a sign-in mail was refused by — what decides the answer to the client.
+    /// </summary>
+    private enum SignInMailLimit
+    {
+        /// <summary>The mails to the recipient address within the hour.</summary>
+        Address,
+
+        /// <summary>The mails to the recipient domain within the hour.</summary>
+        Domain,
+
+        /// <summary>The interval between two mails of one transaction.</summary>
+        Interval
+    }
+
+    /// <summary>
+    /// The limits of a sign-in mail, as the ownership levels of the transaction state them.
+    /// </summary>
+    /// <param name="PerAddress">Mails to one address within the hour; at least 1.</param>
+    /// <param name="PerDomain">Mails to one domain within the hour; <c>0</c> — no limit.</param>
+    /// <param name="CodeAttempts">Attempts at entering the code of the mail.</param>
+    private sealed record SignInMailLimits(int PerAddress, int PerDomain, int CodeAttempts);
 
     /// <summary>
     /// The answer of an accepted Pull start.

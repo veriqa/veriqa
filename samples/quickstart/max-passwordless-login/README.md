@@ -1,7 +1,7 @@
 # MAX passwordless login for Python, Node.js, Go, PHP and ASP.NET Core — OpenID Connect (OIDC)
 
-Sign in with MAX for a Python, Node.js, Go, PHP or ASP.NET Core app, with no password: QR code login instead of a password or an SMS
-code. Your users scan the QR code on the sign-in page (on a phone, they tap a button) and confirm in MAX.
+Sign in with MAX for a Python, Node.js, Go, PHP or ASP.NET Core app, with no password: cross-device QR code login instead of a password or an SMS
+code. Your users scan the QR code on the sign-in page with their phone (on the phone itself, they tap a button) and confirm in MAX.
 
 The example is a standard OpenID Connect (OIDC) provider plus a minimal client app in each of these languages.
 

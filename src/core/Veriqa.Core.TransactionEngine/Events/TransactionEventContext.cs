@@ -144,9 +144,10 @@ public sealed record TransactionEventContext
         {
             TransactionType = transaction.Type,
 
-            // The three values below are normalized here and nowhere else: a blank string states no
-            // tenant, no locale and no time zone, and letting one through would put a phantom owner
-            // on the event, on the audit record and in the resolution context built from it.
+            // The three values below are normalized in this type and nowhere else: a blank string
+            // states no tenant, no locale and no time zone, and letting one through would put a
+            // phantom owner on the event, on the audit record and in the resolution context built
+            // from it.
             TenantId = Stated(transaction.GetTenantId()),
             ClientId = transaction.GetApplicationId(),
             ApplicationName = transaction.GetApplicationName(),
@@ -159,6 +160,22 @@ public sealed record TransactionEventContext
             ConfirmationParameters = transaction.ConfirmationSnapshot
         };
     }
+
+    /// <summary>
+    /// Captures the tenant alone, for an event whose publisher attaches no other attribution — the
+    /// refusals the channels and the core pages write down (SPEC-011 R44).
+    /// </summary>
+    /// <remarks>
+    /// The tenant is not an attribution of who acted: it is the layer the audit mode is resolved at
+    /// and the journal the record is addressed to. So such a publisher carries it even where it
+    /// withholds the application, the correlation and the identity of the transaction. The value is
+    /// normalized as in <see cref="FromTransaction"/>.
+    /// </remarks>
+    /// <param name="tenantId">Tenant of the transaction the event is about; null when none is known.</param>
+    /// <returns>Attribution carrying the tenant alone, or null when no tenant is stated — the event
+    /// then carries no attribution at all.</returns>
+    public static TransactionEventContext? ForTenant(string? tenantId) =>
+        Stated(tenantId) is { } stated ? new TransactionEventContext { TenantId = stated } : null;
 
     /// <summary>
     /// Normalizes a captured value: an empty or whitespace value states nothing.

@@ -32,7 +32,7 @@
   <ItemGroup>
     <!-- The standard OIDC handler does three jobs here: the sign-in at Google, the sign-in at Apple
          and the desktop relying party that signs in against the issuer this host embeds. -->
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.13" />
   </ItemGroup>
 
 </Project>

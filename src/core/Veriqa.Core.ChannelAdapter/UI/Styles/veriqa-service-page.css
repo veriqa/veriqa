@@ -49,6 +49,15 @@ body {
     line-height: 1.6;
     margin-bottom: var(--veriqa-spacing-20);
 }
+/* The subject of a confirmation: the instruction primitive set as the first sentence of the card, under
+   the title - the action the person is asked about reads larger than the instruction and in the text
+   color, while the title stays the largest line. */
+.veriqa-instruction--subject {
+    color: var(--veriqa-text);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
 .veriqa-hint {
     color: var(--veriqa-soft);
     font-size: 0.6875rem;

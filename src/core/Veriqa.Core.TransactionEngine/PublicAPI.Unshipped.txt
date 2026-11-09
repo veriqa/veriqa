@@ -988,6 +988,7 @@ static Veriqa.Core.TransactionEngine.Events.TransactionCreatedEvent.operator ==(
 static Veriqa.Core.TransactionEngine.Events.TransactionEvent.operator !=(Veriqa.Core.TransactionEngine.Events.TransactionEvent? left, Veriqa.Core.TransactionEngine.Events.TransactionEvent? right) -> bool
 static Veriqa.Core.TransactionEngine.Events.TransactionEvent.operator ==(Veriqa.Core.TransactionEngine.Events.TransactionEvent? left, Veriqa.Core.TransactionEngine.Events.TransactionEvent? right) -> bool
 static Veriqa.Core.TransactionEngine.Events.TransactionEventContext.FromTransaction(Veriqa.Core.TransactionEngine.Domain.Transaction! transaction) -> Veriqa.Core.TransactionEngine.Events.TransactionEventContext!
+static Veriqa.Core.TransactionEngine.Events.TransactionEventContext.ForTenant(string? tenantId) -> Veriqa.Core.TransactionEngine.Events.TransactionEventContext?
 static Veriqa.Core.TransactionEngine.Events.TransactionEventContext.operator !=(Veriqa.Core.TransactionEngine.Events.TransactionEventContext? left, Veriqa.Core.TransactionEngine.Events.TransactionEventContext? right) -> bool
 static Veriqa.Core.TransactionEngine.Events.TransactionEventContext.operator ==(Veriqa.Core.TransactionEngine.Events.TransactionEventContext? left, Veriqa.Core.TransactionEngine.Events.TransactionEventContext? right) -> bool
 static Veriqa.Core.TransactionEngine.Events.TransactionExpiredEvent.operator !=(Veriqa.Core.TransactionEngine.Events.TransactionExpiredEvent? left, Veriqa.Core.TransactionEngine.Events.TransactionExpiredEvent? right) -> bool
@@ -1182,6 +1183,8 @@ Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ChannelType.init -> v
 Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ChannelUserId.get -> string!
 Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.ChannelUserId.init -> void
 Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.Equals(Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding? other) -> bool
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.StartIdentity.get -> Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot?
+Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding.StartIdentity.init -> void
 Veriqa.Core.TransactionEngine.Domain.Transaction.SubjectBinding.get -> Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding?
 Veriqa.Core.TransactionEngine.Domain.Transaction.IsBoundToAnotherSubject(Veriqa.Core.TransactionEngine.Domain.ChannelIdentitySnapshot! sender) -> bool
 Veriqa.Core.TransactionEngine.Domain.TransactionSnapshot.SubjectBinding.get -> Veriqa.Core.TransactionEngine.Domain.ChannelSubjectBinding?

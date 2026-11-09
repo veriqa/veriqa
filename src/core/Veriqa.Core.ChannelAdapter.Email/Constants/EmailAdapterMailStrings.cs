@@ -30,9 +30,11 @@ internal static class EmailAdapterMailStrings
 
     /// <summary>
     /// The line of that page: which application the sign-in is requested to, and what to do when the
-    /// recipient did not request it. <c>{app}</c> — the application being signed in to.
+    /// recipient did not request it. <c>{brand_name}</c> — the brand of the application being signed in to,
+    /// as the letter names it, or the name of the application when no level states a brand; a replacement
+    /// may name it by <c>{app}</c> instead (<see cref="EmailLinkPageNameSlots"/>).
     /// </summary>
-    public const string SignInRequestText = "A sign-in to {app} was requested. If it was not you, close this page.";
+    public const string SignInRequestText = "A sign-in to {brand_name} was requested. If it was not you, close this page.";
 
     /// <summary>
     /// The button of that page; it posts the action token and passes the sign-in on to the sign-in window.
@@ -69,7 +71,9 @@ internal static class EmailAdapterMailStrings
     /// <see cref="SignInRequestText"/> for a confirmation: what to do when the recipient did not request it;
     /// what is being confirmed is shown on the next page only. Unlike the sign-in line it names no
     /// application: the relying party that created the confirmation server-to-server words this line for its
-    /// application through <c>AuthPage.Texts</c> when it wants it named (SPEC-016 EM-206).
+    /// application through <c>AuthPage.Texts</c> when it wants it named (SPEC-016 EM-206) — by
+    /// <c>{brand_name}</c> or <c>{app}</c>, which the page fills as in the sign-in line
+    /// (<see cref="EmailLinkPageNameSlots"/>).
     /// </summary>
     public const string ConfirmationRequestText = "A confirmation was requested. If it was not you, close this page.";
 
@@ -342,6 +346,18 @@ internal static class EmailAdapterMailStrings
     public const string ApiErrorResendTooSoon = "An email has just been sent. Wait a little before requesting another one.";
 
     /// <summary>
+    /// API error: the sign-in mails to the entered address have reached their limit for the hour. Shared
+    /// Natural Key with the same refusal of the claims completion — one wording for one rule.
+    /// </summary>
+    public const string ApiErrorAddressMailLimit = "Too many emails have been sent to this address. Try again later or enter another address.";
+
+    /// <summary>
+    /// API error: the sign-in mails to the domain of the entered address have reached their limit for the
+    /// hour. Shared Natural Key with the same refusal of the claims completion — one wording for one rule.
+    /// </summary>
+    public const string ApiErrorDomainMailLimit = "Emails cannot be sent to this domain right now. Enter another address.";
+
+    /// <summary>
     /// API error of the entry of a sign-in code: the entry does not have the shape of a code; no attempt was
     /// spent. The code of a sign-in mail follows the norms of the code of the claims completion, so its errors
     /// share the Natural Keys of that code — one wording for one rule.
@@ -395,15 +411,17 @@ internal static class EmailAdapterMailStrings
 
     /// <summary>
     /// What the link page asks the recipient to confirm: <c>{address}</c> — the masked address the link was
-    /// sent to, <c>{app}</c> — the application being signed in to.
+    /// sent to, <c>{brand_name}</c> — the brand of the application being signed in to, as in
+    /// <see cref="SignInRequestText"/>.
     /// </summary>
-    public const string ClaimLinkPageQuestion = "Confirm the address {address} to sign in to {app}.";
+    public const string ClaimLinkPageQuestion = "Confirm the address {address} to sign in to {brand_name}.";
 
     /// <summary>
     /// Warning of the link page — the same as in the link mail: a recipient who did not sign in does not
-    /// confirm. <c>{app}</c> — the application being signed in to.
+    /// confirm. <c>{brand_name}</c> — the brand of the application being signed in to, as in
+    /// <see cref="SignInRequestText"/>.
     /// </summary>
-    public const string ClaimLinkPageWarning = "If you did not sign in to {app}, do not confirm the address.";
+    public const string ClaimLinkPageWarning = "If you did not sign in to {brand_name}, do not confirm the address.";
 
     /// <summary>
     /// The button of the link page — the wording of the button of the link mail.

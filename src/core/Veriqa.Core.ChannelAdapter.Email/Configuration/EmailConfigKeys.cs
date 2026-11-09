@@ -77,6 +77,18 @@ public static class EmailConfigKeys
     private const string SignInCodeAttemptsMember = "SignInCodeAttempts";
 
     /// <summary>
+    /// Member the limit of the sign-in mails to one recipient address is stated at: the member of the global
+    /// section at the core level and the member of <see cref="RecordSection"/> above it.
+    /// </summary>
+    private const string SignInMailsPerAddressMember = "SignInMailsPerAddress";
+
+    /// <summary>
+    /// Member the limit of the sign-in mails to one recipient domain is stated at: the member of the global
+    /// section at the core level and the member of <see cref="RecordSection"/> above it.
+    /// </summary>
+    private const string SignInMailsPerDomainMember = "SignInMailsPerDomain";
+
+    /// <summary>
     /// Canonical name of the key of the sign-in modes.
     /// </summary>
     private const string SignInModesKeyName = "Channels." + ChannelTypes.Email + "." + SignInModesMember;
@@ -97,6 +109,16 @@ public static class EmailConfigKeys
     private const string SignInCodeAttemptsKeyName = "Channels." + ChannelTypes.Email + "." + SignInCodeAttemptsMember;
 
     /// <summary>
+    /// Canonical name of the key of the sign-in mails to one recipient address.
+    /// </summary>
+    private const string SignInMailsPerAddressKeyName = "Channels." + ChannelTypes.Email + "." + SignInMailsPerAddressMember;
+
+    /// <summary>
+    /// Canonical name of the key of the sign-in mails to one recipient domain.
+    /// </summary>
+    private const string SignInMailsPerDomainKeyName = "Channels." + ChannelTypes.Email + "." + SignInMailsPerDomainMember;
+
+    /// <summary>
     /// Where a correct set of what the sign-in mail carries is written, as a rejection names it.
     /// </summary>
     private const string PullMethodsCorrectAt =
@@ -110,6 +132,20 @@ public static class EmailConfigKeys
     private const string SignInCodeAttemptsCorrectAt =
         "'" + EmailOptions.SectionName + ":" + SignInCodeAttemptsMember + "' of the core level, or '" + RecordSection
         + ":" + SignInCodeAttemptsMember + "' of the record of a tenant or an application";
+
+    /// <summary>
+    /// Where a correct limit of the sign-in mails to one recipient address is written, as a rejection names it.
+    /// </summary>
+    private const string SignInMailsPerAddressCorrectAt =
+        "'" + EmailOptions.SectionName + ":" + SignInMailsPerAddressMember + "' of the core level, or '" + RecordSection
+        + ":" + SignInMailsPerAddressMember + "' of the record of a tenant or an application";
+
+    /// <summary>
+    /// Where a correct limit of the sign-in mails to one recipient domain is written, as a rejection names it.
+    /// </summary>
+    private const string SignInMailsPerDomainCorrectAt =
+        "'" + EmailOptions.SectionName + ":" + SignInMailsPerDomainMember + "' of the core level, or '" + RecordSection
+        + ":" + SignInMailsPerDomainMember + "' of the record of a tenant or an application";
 
     /// <summary>
     /// Where a correct set of the sign-in modes is written, as a rejection names it.
@@ -156,6 +192,26 @@ public static class EmailConfigKeys
         static attempts => attempts >= 1,
         "a whole number of at least 1",
         SignInCodeAttemptsCorrectAt,
+        ConfigValueRejectionPolicy.FailStart);
+
+    /// <summary>
+    /// Domain of the limit of the sign-in mails to one recipient address: a positive number, judged as the limit
+    /// of the mails of the claims completion to one address is (SPEC-041 E61).
+    /// </summary>
+    private static readonly ConfigValueDomain<int> SignInMailsPerAddressDomain = new(
+        static limit => limit >= 1,
+        "a whole number of at least 1",
+        SignInMailsPerAddressCorrectAt,
+        ConfigValueRejectionPolicy.FailStart);
+
+    /// <summary>
+    /// Domain of the limit of the sign-in mails to one recipient domain: a number of at least 0, where 0 switches
+    /// the limit off — judged as the limit of the mails of the claims completion to one domain is.
+    /// </summary>
+    private static readonly ConfigValueDomain<int> SignInMailsPerDomainDomain = new(
+        static limit => limit >= 0,
+        "a whole number of at least 0, where 0 switches the limit off",
+        SignInMailsPerDomainCorrectAt,
         ConfigValueRejectionPolicy.FailStart);
 
     /// <summary>
@@ -230,6 +286,42 @@ public static class EmailConfigKeys
         .Declare();
 
     /// <summary>
+    /// Sign-in mails to one recipient address within a fixed window of one hour
+    /// (<see cref="SignInMailsPerAddressKeyName"/>, SPEC-016 EM-064), counted per tenant over all the
+    /// transactions of that tenant. A key of its own, beside the limit of the mails of the claims completion to
+    /// one address and with its semantics (SPEC-041 E61): the core, tenant and application levels, the smaller
+    /// value being the stricter one — so a setting of the claims completion does not change the sign-in, and
+    /// the mails of the two are counted apart.
+    /// </summary>
+    internal static ConfigKey<int> SignInMailsPerAddress { get; } = Declared
+        .Of<int>(SignInMailsPerAddressKeyName)
+        .At(ConfigLevel.Core, EmailOptions.SectionName + ":" + SignInMailsPerAddressMember)
+        .At(ConfigLevel.Tenant, RecordSection + ":" + SignInMailsPerAddressMember)
+        .At(ConfigLevel.Application, RecordSection + ":" + SignInMailsPerAddressMember)
+        .ProtectiveCeiling(static (upper, lower) => Math.Min(upper, lower))
+        .Domain(SignInMailsPerAddressDomain)
+        .Default(EmailAdapterConfigDefaults.DefaultSignInMailsPerAddress)
+        .Declare();
+
+    /// <summary>
+    /// Sign-in mails to one recipient domain within a fixed window of one hour
+    /// (<see cref="SignInMailsPerDomainKeyName"/>, SPEC-016 EM-064), counted per tenant; <c>0</c> — the limit
+    /// is off, which is what the product ships. A key of its own beside the limit of the mails of the claims
+    /// completion to one domain, with its semantics: the stricter is the smaller POSITIVE value and <c>0</c>
+    /// yields to any positive one, so an application can switch the limit on or lower it, never switch off the
+    /// limit its tenant set.
+    /// </summary>
+    internal static ConfigKey<int> SignInMailsPerDomain { get; } = Declared
+        .Of<int>(SignInMailsPerDomainKeyName)
+        .At(ConfigLevel.Core, EmailOptions.SectionName + ":" + SignInMailsPerDomainMember)
+        .At(ConfigLevel.Tenant, RecordSection + ":" + SignInMailsPerDomainMember)
+        .At(ConfigLevel.Application, RecordSection + ":" + SignInMailsPerDomainMember)
+        .ProtectiveCeiling(StricterSwitchableLimit)
+        .Domain(SignInMailsPerDomainDomain)
+        .Default(EmailAdapterConfigDefaults.DefaultSignInMailsPerDomain)
+        .Declare();
+
+    /// <summary>
     /// Declarations of this channel — what <c>AddEmail()</c> registers into the container, and what
     /// the schema of a deployment carries because of it.
     /// </summary>
@@ -252,6 +344,23 @@ public static class EmailConfigKeys
     /// <returns><c>true</c> when the setting admits the set.</returns>
     internal static bool IsWellFormedPullMethods(IReadOnlyList<EmailPullMethod> methods) =>
         methods.Count > 0 && methods.All(static method => Enum.IsDefined(method));
+
+    /// <summary>
+    /// The stricter of two limits a zero switches off: the smaller positive one; a zero yields to any positive
+    /// value.
+    /// </summary>
+    /// <param name="upper">Limit of the level higher in ownership.</param>
+    /// <param name="lower">Limit of the level lower in ownership.</param>
+    /// <returns>The stricter limit.</returns>
+    private static int StricterSwitchableLimit(int upper, int lower)
+    {
+        if (upper == 0)
+        {
+            return lower;
+        }
+
+        return lower == 0 ? upper : Math.Min(upper, lower);
+    }
 
     /// <summary>
     /// Narrowing of two sets of sign-in modes: the modes of the upper set the lower one names; when the

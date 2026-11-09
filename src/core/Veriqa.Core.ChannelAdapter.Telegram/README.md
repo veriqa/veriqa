@@ -1,10 +1,13 @@
 # Veriqa.Core.ChannelAdapter.Telegram
 
-**Telegram login and authentication by QR code for your website or app.** Your users scan a QR code on the
-sign-in page (on a phone, they tap a button) and confirm the sign-in with one tap in Telegram: no
-password, no SMS code and no sign-up form. Your application receives standard OpenID Connect tokens
-with the user's name, language and photo and, with their consent, their phone number. Your users can
-sign in this way on a computer, a TV, a kiosk or any other device that can show a QR code.
+**Telegram login and authentication by QR code for your website or app.**
+
+- Your users scan a QR code on the sign-in page (on a phone, they tap a button) and confirm the
+  sign-in with one tap in Telegram: no password, no SMS code and no sign-up form.
+- Your application receives standard OpenID Connect tokens with the user's name, language and photo
+  and, with their consent, their phone number.
+- Your users can sign in this way on a computer, a TV, a kiosk or any other device that can show a
+  QR code.
 
 ![Signing in on a computer with Telegram: the sign-in window shows a QR code, the phone camera scans it, the user taps Confirm in the Telegram chat, and the chat replies "Sign-in confirmed".](https://gitlab.com/veriqa/veriqa/-/raw/main/gallery-and-docs/media/readme/en-telegram-cross-device.webp)
 
@@ -12,6 +15,10 @@ This package is the Telegram channel of [Veriqa](https://veriqa.app), an open-so
 project for passwordless authentication through popular messaging apps and email, over standard
 OpenID Connect.
 Setup guide: [Telegram channel](https://veriqa.app/docs/guides/channels#telegram).
+
+Telegram also has a sign-in of its own over OpenID Connect. With Veriqa, Telegram is one of several channels behind your own
+issuer, and the same setup also covers action confirmations and step-up: see
+[How Veriqa differs](https://veriqa.app/docs/concepts/comparison#telegrams-own-sign-in).
 
 Gallery: [sign-in and confirmation in Telegram](https://gitlab.com/veriqa/veriqa/-/blob/main/gallery-and-docs/README.md#telegram). Use cases: [passwordless sign-in](https://veriqa.app/docs/scenarios/passwordless-login), [second factor and step-up](https://veriqa.app/docs/scenarios/step-up), [all use cases](https://veriqa.app/docs/scenarios/overview).
 
