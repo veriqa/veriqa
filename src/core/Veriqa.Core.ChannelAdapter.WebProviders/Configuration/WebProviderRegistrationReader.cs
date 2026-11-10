@@ -232,6 +232,7 @@ internal static partial class WebProviderRegistrationReader
             IconSvgPath = ReadText(webProvider, WebProviderConfigKeys.IconSvgPathMember),
             ConfirmSlider = ReadConfirmSlider(webProvider),
             PhoneNumber = ReadPhoneNumber(webProvider),
+            EmailProof = ReadEmailProof(webProvider),
             Claims = ReadClaims(webProvider, channelType)
         };
     }
@@ -374,6 +375,45 @@ internal static partial class WebProviderRegistrationReader
             path,
             $"is not a proof of the phone number: expected {nameof(PhoneNumberProof.NotProven)} or "
             + nameof(PhoneNumberProof.Proven));
+    }
+
+    /// <summary>
+    /// Reads whether the email addresses of the provider are taken as verified: one of the two names of
+    /// <see cref="WebProviderEmailProof"/>, without regard to case; not proven when the <c>Email</c>
+    /// subsection or its member is unstated.
+    /// </summary>
+    /// <param name="webProvider">The <c>WebProvider</c> subsection.</param>
+    /// <returns>The proof.</returns>
+    /// <exception cref="InvalidOperationException">The subsection is a single value, or the value is outside
+    /// the two names.</exception>
+    private static WebProviderEmailProof ReadEmailProof(IConfigurationSection webProvider)
+    {
+        var section = webProvider.GetSection(WebProviderConfigKeys.EmailSectionName);
+
+        if (!string.IsNullOrWhiteSpace(section.Value))
+        {
+            throw Invalid(
+                section.Path,
+                "is a single value, not a section: state the proof of the email by its member "
+                + $"'{WebProviderConfigKeys.EmailProofMember}'");
+        }
+
+        var (value, path) = ReadValue(section, WebProviderConfigKeys.EmailProofMember);
+
+        if (value is null || IsName(value, nameof(WebProviderEmailProof.NotProven)))
+        {
+            return WebProviderEmailProof.NotProven;
+        }
+
+        if (IsName(value, nameof(WebProviderEmailProof.Proven)))
+        {
+            return WebProviderEmailProof.Proven;
+        }
+
+        throw Invalid(
+            path,
+            $"is not a proof of the email: expected {nameof(WebProviderEmailProof.NotProven)} or "
+            + nameof(WebProviderEmailProof.Proven));
     }
 
     /// <summary>

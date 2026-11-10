@@ -78,6 +78,18 @@ public static class RateLimitConfigKeys
         nameof(RateLimitOptions.EmailStartPermitLimit),
         Shipped.EmailStartPermitLimit);
 
+    /// <summary>Web provider sign-in routes limit ceiling.</summary>
+    public static ConfigKey<int> WebProviderPagesPermitLimit { get; } = PermitCeiling(
+        "RateLimit.WebProviderPagesPermitLimit",
+        nameof(RateLimitOptions.WebProviderPagesPermitLimit),
+        Shipped.WebProviderPagesPermitLimit);
+
+    /// <summary>Email link pages limit ceiling.</summary>
+    public static ConfigKey<int> EmailLinkPagesPermitLimit { get; } = PermitCeiling(
+        "RateLimit.EmailLinkPagesPermitLimit",
+        nameof(RateLimitOptions.EmailLinkPagesPermitLimit),
+        Shipped.EmailLinkPagesPermitLimit);
+
     /// <summary>Authorize window ceiling (seconds).</summary>
     public static ConfigKey<int> AuthorizeWindowSeconds { get; } = WindowCeiling(
         "RateLimit.AuthorizeWindowSeconds",
@@ -119,6 +131,18 @@ public static class RateLimitConfigKeys
         "RateLimit.EmailStartWindowSeconds",
         nameof(RateLimitOptions.EmailStartWindowSeconds),
         Shipped.EmailStartWindowSeconds);
+
+    /// <summary>Web provider sign-in routes window ceiling (seconds).</summary>
+    public static ConfigKey<int> WebProviderPagesWindowSeconds { get; } = WindowCeiling(
+        "RateLimit.WebProviderPagesWindowSeconds",
+        nameof(RateLimitOptions.WebProviderPagesWindowSeconds),
+        Shipped.WebProviderPagesWindowSeconds);
+
+    /// <summary>Email link pages window ceiling (seconds).</summary>
+    public static ConfigKey<int> EmailLinkPagesWindowSeconds { get; } = WindowCeiling(
+        "RateLimit.EmailLinkPagesWindowSeconds",
+        nameof(RateLimitOptions.EmailLinkPagesWindowSeconds),
+        Shipped.EmailLinkPagesWindowSeconds);
 
     /// <summary>Confirmation creation endpoint limit ceiling (per authenticated client).</summary>
     public static ConfigKey<int> ConfirmationCreatePermitLimit { get; } = PermitCeiling(

@@ -34,8 +34,8 @@ internal static class WebProviderIdentitySnapshotBuilder
     /// <item>the identifier is the one OpenIddict issued; without it there is no snapshot;</item>
     /// <item>the display name is the name, else the email, else the identifier;</item>
     /// <item>the avatar is taken only as an absolute <c>https</c> address;</item>
-    /// <item>the email is verified or not only by an explicit statement of the provider beside the
-    /// email; without one it stays unknown;</item>
+    /// <item>the email is verified or not by the proof the registration declares and the explicit
+    /// statement of the provider beside it (<see cref="EmailVerifiedOf"/>);</item>
     /// <item>the phone number is taken only by a channel that declares it, from the path its
     /// registration states, in E.164; with it goes its proof (<see cref="PhoneNumberVerifiedOf"/>);</item>
     /// <item>the further claims are taken by the entries of the registration, each under the name the
@@ -92,7 +92,7 @@ internal static class WebProviderIdentitySnapshotBuilder
             Email = email,
             EmailVerified = email is null
                 ? null
-                : ExplicitFlag(First(principal, OpenIddictConstants.Claims.EmailVerified)),
+                : EmailVerifiedOf(registration.EmailProof, First(principal, OpenIddictConstants.Claims.EmailVerified)),
             AvatarUrl = HttpsAddress(First(
                 principal,
                 OpenIddictConstants.Claims.Picture,
@@ -180,6 +180,22 @@ internal static class WebProviderIdentitySnapshotBuilder
             verifiedClaim.ToString());
 
         return true;
+    }
+
+    /// <summary>
+    /// The proof of the email. Without a declaration of the registration only the provider decides: its
+    /// explicit statement, else unknown. A registration that declares the addresses proven raises an
+    /// unknown proof to verified, while an explicit <c>false</c> of the provider is kept — the declaration
+    /// never overrides what the provider stated about this very address.
+    /// </summary>
+    /// <param name="proof">The proof the registration declares.</param>
+    /// <param name="statement">The <c>email_verified</c> the provider stated; <c>null</c> — none.</param>
+    /// <returns>Whether the email is verified; <c>null</c> — unknown.</returns>
+    private static bool? EmailVerifiedOf(WebProviderEmailProof proof, string? statement)
+    {
+        var stated = ExplicitFlag(statement);
+
+        return proof is WebProviderEmailProof.Proven && stated is not false ? true : stated;
     }
 
     /// <summary>

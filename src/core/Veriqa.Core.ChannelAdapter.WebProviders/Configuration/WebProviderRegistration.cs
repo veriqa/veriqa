@@ -83,6 +83,11 @@ internal sealed class WebProviderRegistration
     public WebProviderPhoneNumber? PhoneNumber { get; init; }
 
     /// <summary>
+    /// Whether the email addresses of the provider are taken as verified.
+    /// </summary>
+    public WebProviderEmailProof EmailProof { get; init; } = WebProviderEmailProof.NotProven;
+
+    /// <summary>
     /// Claims taken from the answer of the provider, in the order the configuration states them.
     /// </summary>
     public required IReadOnlyList<WebProviderClaimMapping> Claims { get; init; }

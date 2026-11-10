@@ -135,6 +135,16 @@ internal static class WebProviderConfigKeys
     public const string VerifiedClaimMember = "VerifiedClaim";
 
     /// <summary>
+    /// Subsection: what the channel declares about the email addresses of the provider.
+    /// </summary>
+    public const string EmailSectionName = "Email";
+
+    /// <summary>
+    /// Member of the <c>Email</c> subsection: whether an address of the provider is taken as verified.
+    /// </summary>
+    public const string EmailProofMember = "Proof";
+
+    /// <summary>
     /// Member: list of the claims taken from the answer of the provider.
     /// </summary>
     public const string ClaimsMember = "Claims";
@@ -298,6 +308,18 @@ internal static class WebProviderConfigKeys
     public static ConfigKey<IReadOnlyList<string>> PhoneScopes { get; } =
         Core<IReadOnlyList<string>>(PhoneNumberMember(ScopesMember))
             .Default(Array.Empty<string>())
+            .Declare();
+
+    /// <summary>
+    /// <c>WebProvider:Email:Proof</c> — whether an email address the provider states is taken as verified:
+    /// <c>NotProven</c> or <c>Proven</c>, compared without regard to case. <c>Proven</c> is the
+    /// integrator's statement of trust in the addresses of the provider: an address is verified unless the
+    /// provider states <c>email_verified: false</c> beside it. Not proven by default: only the provider's
+    /// own <c>email_verified</c> decides.
+    /// </summary>
+    public static ConfigKey<WebProviderEmailProof> EmailProof { get; } =
+        Core<WebProviderEmailProof>(EmailSectionName + ConfigNode.PathSeparator + EmailProofMember)
+            .Default(WebProviderEmailProof.NotProven)
             .Declare();
 
     /// <summary>

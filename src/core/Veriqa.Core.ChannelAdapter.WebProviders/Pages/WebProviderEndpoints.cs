@@ -73,9 +73,9 @@ internal static class WebProviderEndpoints
     /// </summary>
     /// <param name="endpoints">Endpoint router.</param>
     /// <param name="channelType">The channel.</param>
-    /// <param name="pagePolicyName">Rate limiting policy of the pages a person opens; <c>null</c> — no
-    /// limiting. The page and its state are not limited: the script of an open page reads the state on
-    /// its own.</param>
+    /// <param name="pagePolicyName">Rate limiting policy of the sign-in routes of the channel — the start,
+    /// the address of return, the answer and the press; <c>null</c> — no limiting. The page and its state
+    /// are not limited: the script of an open page reads the state on its own.</param>
     public static void Map(IEndpointRouteBuilder endpoints, string channelType, string? pagePolicyName)
     {
         ArgumentNullException.ThrowIfNull(endpoints);

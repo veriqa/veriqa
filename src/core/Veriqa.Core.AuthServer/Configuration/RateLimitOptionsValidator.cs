@@ -117,6 +117,26 @@ public sealed class RateLimitOptionsValidator : IValidateOptions<RateLimitOption
             failures.Add("EmailStartWindowSeconds must be greater than 0.");
         }
 
+        if (options.WebProviderPagesPermitLimit <= 0)
+        {
+            failures.Add("WebProviderPagesPermitLimit must be greater than 0.");
+        }
+
+        if (options.WebProviderPagesWindowSeconds <= 0)
+        {
+            failures.Add("WebProviderPagesWindowSeconds must be greater than 0.");
+        }
+
+        if (options.EmailLinkPagesPermitLimit <= 0)
+        {
+            failures.Add("EmailLinkPagesPermitLimit must be greater than 0.");
+        }
+
+        if (options.EmailLinkPagesWindowSeconds <= 0)
+        {
+            failures.Add("EmailLinkPagesWindowSeconds must be greater than 0.");
+        }
+
         if (options.ConfirmationCreatePermitLimit <= 0)
         {
             failures.Add("ConfirmationCreatePermitLimit must be greater than 0.");

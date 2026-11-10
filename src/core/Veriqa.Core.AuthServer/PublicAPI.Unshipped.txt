@@ -264,6 +264,14 @@ Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailStartPermitLimit.get 
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailStartPermitLimit.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailStartWindowSeconds.get -> int
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailStartWindowSeconds.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailLinkPagesPermitLimit.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailLinkPagesPermitLimit.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailLinkPagesWindowSeconds.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailLinkPagesWindowSeconds.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebProviderPagesPermitLimit.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebProviderPagesPermitLimit.set -> void
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebProviderPagesWindowSeconds.get -> int
+Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebProviderPagesWindowSeconds.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.PollingPermitLimit.get -> int
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.PollingPermitLimit.set -> void
 Veriqa.Core.AuthServer.Configuration.RateLimitOptions.PollingWindowSeconds.get -> int
@@ -730,6 +738,8 @@ const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopResolvePolicyName
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.HopSignalPolicyName = "hop-signal" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ConfirmationResultPolicyName = "confirmation-result" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailStartPolicyName = "email-start" -> string!
+const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.EmailLinkPagesPolicyName = "email-link-pages" -> string!
+const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.WebProviderPagesPolicyName = "web-provider-pages" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.PollingPolicyName = "polling" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.RateLimitExceededMessage = "Too many requests" -> string!
 const Veriqa.Core.AuthServer.Configuration.RateLimitOptions.SectionName = "Veriqa:RateLimit" -> string!
@@ -938,6 +948,10 @@ static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.Confi
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.ConfirmationResultWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.EmailStartPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.EmailStartWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.EmailLinkPagesPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.EmailLinkPagesWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.WebProviderPagesPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
+static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.WebProviderPagesWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.PollingPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.PollingWindowSeconds.get -> Veriqa.Core.Configuration.ConfigKey<int>!
 static Veriqa.Core.AuthServer.Configuration.Resolution.RateLimitConfigKeys.SignalRPermitLimit.get -> Veriqa.Core.Configuration.ConfigKey<int>!
@@ -1045,3 +1059,4 @@ const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.RabbitMqSec
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.TransactionStoreSectionName = "Veriqa:TransactionEngine:Store" -> string!
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.ChannelStoresRedisConnectionStringKey = "Veriqa:ChannelStores:Redis:ConnectionString" -> string!
 const Veriqa.Core.AuthServer.Constants.InfrastructureConfigConstants.ChannelStoresRedisSectionName = "Veriqa:ChannelStores:Redis" -> string!
+static Veriqa.Core.AuthServer.Configuration.RateLimitOptions.ChannelEndpointPolicies.get -> Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies!

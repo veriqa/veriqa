@@ -51,50 +51,68 @@ namespace Veriqa.Core.ChannelAdapter.Email;
 ///   <item><description>POST /api/channels/email/inbound — accepts an incoming email from the inbound provider.</description></item>
 ///   <item><description>POST /api/channels/email/inbound/{tenant} — the same, with the tenant stated by the route segment (tenant demux).</description></item>
 /// </list>
+/// The start and code routes share the budget of the routes that make a channel send a message; the confirm
+/// and claim pages share the budget of the pages a link of a message opens; the inbound routes have neither.
 /// </summary>
 public static partial class EmailAuthEndpoints
 {
     /// <summary>
     /// Registers the Email Pull mode (magic link) and Push mode (the one-tap email) endpoints.
+    /// The user-facing routes fall into two kinds with budgets of their own: the form, the send and the
+    /// entry of a code — the requests that make the channel send a mail — and the pages the links of the
+    /// mails open. The inbound webhook is limited by neither.
     /// </summary>
     /// <param name="endpoints">Endpoint router.</param>
-    /// <param name="rateLimitPolicyName">Rate limiting policy name for the email start endpoint (null — no limiting).</param>
+    /// <param name="sendPolicyName">Rate limiting policy name for the form, the send and the code entry
+    /// (null — no limiting).</param>
+    /// <param name="linkPolicyName">Rate limiting policy name for the pages the links of the mails open
+    /// (null — no limiting).</param>
     /// <returns>The router for chaining.</returns>
     public static IEndpointRouteBuilder MapEmailAuthEndpoints(
         this IEndpointRouteBuilder endpoints,
-        string? rateLimitPolicyName = null)
+        string? sendPolicyName = null,
+        string? linkPolicyName = null)
     {
         // GET /auth/email/start — standalone pull form page (with rate limiting, as it is user-facing)
         var pullFormEndpoint = endpoints.MapGet(EmailAdapterConstants.PullStartPath, (Delegate)HandleEmailPullFormAsync);
-        if (!string.IsNullOrEmpty(rateLimitPolicyName))
+        if (!string.IsNullOrEmpty(sendPolicyName))
         {
-            pullFormEndpoint.RequireRateLimiting(rateLimitPolicyName);
+            pullFormEndpoint.RequireRateLimiting(sendPolicyName);
         }
 
         // Register POST /auth/email/start with rate limiting (spam protection)
         var startEndpoint = endpoints.MapPost(EmailAdapterConstants.PullStartPath, (Delegate)HandleEmailStartAsync);
-        if (!string.IsNullOrEmpty(rateLimitPolicyName))
+        if (!string.IsNullOrEmpty(sendPolicyName))
         {
-            startEndpoint.RequireRateLimiting(rateLimitPolicyName);
+            startEndpoint.RequireRateLimiting(sendPolicyName);
         }
 
         // The entry of the code of a sign-in mail is limited as the start is: its attempts are counted per
         // code, and the policy keeps a client from walking codes across transactions.
         var codeEndpoint = endpoints.MapPost(EmailAdapterConstants.PullCodePath, (Delegate)HandleEmailCodeAsync);
-        if (!string.IsNullOrEmpty(rateLimitPolicyName))
+        if (!string.IsNullOrEmpty(sendPolicyName))
         {
-            codeEndpoint.RequireRateLimiting(rateLimitPolicyName);
+            codeEndpoint.RequireRateLimiting(sendPolicyName);
         }
 
-        endpoints.MapGet(EmailAdapterConstants.PullConfirmPath, (Delegate)HandleEmailConfirmGetAsync);
-        endpoints.MapPost(EmailAdapterConstants.PullConfirmPath, (Delegate)HandleEmailConfirmPostEndpointAsync);
+        // The magic-link page and its confirmation — a page a link of a mail opens. The limiter runs before
+        // the handler, so a rejected request never reaches the read of the token and says nothing about it.
+        var confirmGetEndpoint = endpoints.MapGet(EmailAdapterConstants.PullConfirmPath, (Delegate)HandleEmailConfirmGetAsync);
+        var confirmPostEndpoint = endpoints.MapPost(EmailAdapterConstants.PullConfirmPath, (Delegate)HandleEmailConfirmPostEndpointAsync);
 
         // The page a link of the claims-completion mail opens (SPEC-041 L50) — mapped as the magic-link page
-        // is: its token is a secret of the link, not something a request rate would guess.
-        endpoints.MapGet(EmailAdapterConstants.ClaimEmailConfirmPath, (Delegate)HandleClaimLinkGetAsync);
-        endpoints.MapPost(EmailAdapterConstants.ClaimEmailConfirmPath, (Delegate)HandleClaimLinkPostAsync);
+        // is, under the budget of the pages the links of the mails open.
+        var claimGetEndpoint = endpoints.MapGet(EmailAdapterConstants.ClaimEmailConfirmPath, (Delegate)HandleClaimLinkGetAsync);
+        var claimPostEndpoint = endpoints.MapPost(EmailAdapterConstants.ClaimEmailConfirmPath, (Delegate)HandleClaimLinkPostAsync);
+        if (!string.IsNullOrEmpty(linkPolicyName))
+        {
+            confirmGetEndpoint.RequireRateLimiting(linkPolicyName);
+            confirmPostEndpoint.RequireRateLimiting(linkPolicyName);
+            claimGetEndpoint.RequireRateLimiting(linkPolicyName);
+            claimPostEndpoint.RequireRateLimiting(linkPolicyName);
+        }
 
-        // Push mode: the inbound webhook. It is NOT limited by the user-facing rate limiting policy —
+        // Push mode: the inbound webhook. It is NOT limited by the user-facing rate limiting policies —
         // it is called by the inbound provider and is protected by a secret header.
         // The inbound route is mapped twice from ONE call: the base path (default tenant, behaviour
         // unchanged) and the path with the optional {tenant} segment — the tenant demux every channel

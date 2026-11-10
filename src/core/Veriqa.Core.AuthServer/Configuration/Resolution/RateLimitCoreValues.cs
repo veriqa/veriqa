@@ -30,7 +30,7 @@ internal static class RateLimitCoreValues
     /// validates the option values nor null-checks <paramref name="config"/>: it moves values 1:1.
     /// </summary>
     /// <param name="config">Bound rate-limit options (normally <c>IOptions&lt;RateLimitOptions&gt;.Value</c>).</param>
-    /// <returns>Reader of all 26 rate-limit core values.</returns>
+    /// <returns>Reader of all 30 rate-limit core values.</returns>
     internal static ConfigCoreValues Declare(RateLimitOptions config) =>
         ConfigCoreValues.Declare(provider => Declare(provider, () => config));
 
@@ -41,7 +41,7 @@ internal static class RateLimitCoreValues
     /// <param name="options">Source of the current rate-limit options.</param>
     private static void Declare(IConfigCoreBindings provider, Func<RateLimitOptions> options)
     {
-        // Declare all endpoint (12 permit + 12 window) and UserAuth (permit + window) getters.
+        // Declare all endpoint (14 permit + 14 window) and UserAuth (permit + window) getters.
         provider.RegisterCore(RateLimitConfigKeys.AuthorizePermitLimit, () => options().AuthorizePermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.SignalRPermitLimit, () => options().SignalRPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.WebhookPermitLimit, () => options().WebhookPermitLimit);
@@ -49,6 +49,8 @@ internal static class RateLimitCoreValues
         provider.RegisterCore(RateLimitConfigKeys.CallbackPermitLimit, () => options().CallbackPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.PollingPermitLimit, () => options().PollingPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.EmailStartPermitLimit, () => options().EmailStartPermitLimit);
+        provider.RegisterCore(RateLimitConfigKeys.WebProviderPagesPermitLimit, () => options().WebProviderPagesPermitLimit);
+        provider.RegisterCore(RateLimitConfigKeys.EmailLinkPagesPermitLimit, () => options().EmailLinkPagesPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationCreatePermitLimit, () => options().ConfirmationCreatePermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationResultPermitLimit, () => options().ConfirmationResultPermitLimit);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationPagesPermitLimit, () => options().ConfirmationPagesPermitLimit);
@@ -61,6 +63,8 @@ internal static class RateLimitCoreValues
         provider.RegisterCore(RateLimitConfigKeys.CallbackWindowSeconds, () => options().CallbackWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.PollingWindowSeconds, () => options().PollingWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.EmailStartWindowSeconds, () => options().EmailStartWindowSeconds);
+        provider.RegisterCore(RateLimitConfigKeys.WebProviderPagesWindowSeconds, () => options().WebProviderPagesWindowSeconds);
+        provider.RegisterCore(RateLimitConfigKeys.EmailLinkPagesWindowSeconds, () => options().EmailLinkPagesWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationCreateWindowSeconds, () => options().ConfirmationCreateWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationResultWindowSeconds, () => options().ConfirmationResultWindowSeconds);
         provider.RegisterCore(RateLimitConfigKeys.ConfirmationPagesWindowSeconds, () => options().ConfirmationPagesWindowSeconds);

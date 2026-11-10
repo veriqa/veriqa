@@ -1,6 +1,8 @@
 // Copyright (c) Dmitrii Erusov
 // SPDX-License-Identifier: MPL-2.0
 
+using Veriqa.Core.ChannelAdapter.Pipeline;
+
 namespace Veriqa.Core.AuthServer.Configuration;
 
 /// <summary>
@@ -9,10 +11,11 @@ namespace Veriqa.Core.AuthServer.Configuration;
 /// </summary>
 /// <remarks>
 /// Read a limit below as the budget of ONE BUCKET SHARED BY ALL CALLERS unless the member says whose
-/// budget it is. The endpoint policies are registered by name and are not partitioned, so their limit
-/// counts every request to the route together; the ones with a key of their own — the two confirmation
-/// s2s surfaces (per authenticated client) and the per-user authentication limiter — name that key in
-/// their own summary. The per-IP limits of SPEC-007 §6.1 are not what these members configure today.
+/// budget it is. The endpoint policies are registered by name and, except the ones named next, are not
+/// partitioned, so their limit counts every request to the route together; the ones with a key of their
+/// own — the channel webhooks (per tenant segment of the route), the two confirmation s2s surfaces (per
+/// authenticated client) and the per-user authentication limiter — name that key in their own summary.
+/// The core sets no per-IP key: that layer belongs to the edge of the deployment (SPEC-007 §6.1).
 /// </remarks>
 public sealed class RateLimitOptions
 {
@@ -32,7 +35,9 @@ public sealed class RateLimitOptions
     public const string SignalRPolicyName = "signalr";
 
     /// <summary>
-    /// Policy name for webhook endpoints.
+    /// Policy name for webhook endpoints. Partitioned by the tenant segment of the route: each tenant gets
+    /// the limit apart, and the route without a segment is a partition of its own. Up to
+    /// <see cref="WebhookMaxPartitions"/> partitions; new segments beyond it share one overflow partition.
     /// </summary>
     public const string WebhookPolicyName = "webhook";
 
@@ -57,6 +62,23 @@ public sealed class RateLimitOptions
     /// Limits the magic link send rate to prevent spam.
     /// </summary>
     public const string EmailStartPolicyName = "email-start";
+
+    /// <summary>
+    /// Policy name for the sign-in routes of the web provider channels (their start, their address of
+    /// return, and the answer and the press sent from their page; the page itself and the state its script
+    /// reads are not limited). A bucket of its own and global, like the endpoint policies above: a sign-in
+    /// through a web provider spending the budget of <see cref="EmailStartPolicyName"/> would stop the
+    /// mails of the Email channel.
+    /// </summary>
+    public const string WebProviderPagesPolicyName = "web-provider-pages";
+
+    /// <summary>
+    /// Policy name for the pages the links of the Email mails open (the magic-link page and the page of a
+    /// link of the claims-completion mail, with their confirmations). A bucket of its own and global: the
+    /// request carries only the token of the link, and the limit is what keeps a stream of guessed tokens
+    /// from reaching the store.
+    /// </summary>
+    public const string EmailLinkPagesPolicyName = "email-link-pages";
 
     /// <summary>
     /// Policy name for the server-to-server confirmation creation endpoint
@@ -121,11 +143,25 @@ public sealed class RateLimitOptions
         "{\"error\":\"temporarily_unavailable\",\"error_description\":\"Too many requests. Please retry later.\"}";
 
     /// <summary>
+    /// The policies of the core for every kind of channel route — the one set the auth server and its host
+    /// hand to the channel endpoints. A host that maps the channel endpoints itself starts from this set
+    /// (<c>RateLimitOptions.ChannelEndpointPolicies with { … }</c>), so a kind of route added later gets the
+    /// policy of the core rather than none.
+    /// </summary>
+    public static ChannelEndpointPolicies ChannelEndpointPolicies { get; } = new()
+    {
+        WebhookPolicyName = WebhookPolicyName,
+        PagePolicyName = WebProviderPagesPolicyName,
+        MessageLinkPolicyName = EmailLinkPagesPolicyName,
+        MessageSendPolicyName = EmailStartPolicyName
+    };
+
+    /// <summary>
     /// Maximum authorize requests per period.
-    /// Default: 60 — the bucket is one for the whole instance, not one per browser, and every sign-in
+    /// Default: 200 — the bucket is one for the whole instance, not one per browser, and every sign-in
     /// spends one of its requests.
     /// </summary>
-    public int AuthorizePermitLimit { get; set; } = 60;
+    public int AuthorizePermitLimit { get; set; } = 200;
 
     /// <summary>
     /// Window period for authorize requests (seconds).
@@ -135,9 +171,9 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum SignalR connections per period.
-    /// Default: 30.
+    /// Default: 400 — a sign-in page spends two of its requests (the negotiation and the connection).
     /// </summary>
-    public int SignalRPermitLimit { get; set; } = 30;
+    public int SignalRPermitLimit { get; set; } = 400;
 
     /// <summary>
     /// Window period for SignalR connections (seconds).
@@ -146,10 +182,10 @@ public sealed class RateLimitOptions
     public int SignalRWindowSeconds { get; set; } = 60;
 
     /// <summary>
-    /// Maximum webhook requests per period.
-    /// Default: 100.
+    /// Maximum webhook requests per period, counted per tenant segment of the route.
+    /// Default: 600.
     /// </summary>
-    public int WebhookPermitLimit { get; set; } = 100;
+    public int WebhookPermitLimit { get; set; } = 600;
 
     /// <summary>
     /// Window period for webhook requests (seconds).
@@ -169,9 +205,10 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum Token Endpoint requests per period.
-    /// Default: 20.
+    /// Default: 250 — the bucket is one for the whole instance, and it serves the code exchanges of the
+    /// sign-ins and the refreshes of the tokens of every session alike.
     /// </summary>
-    public int TokenPermitLimit { get; set; } = 20;
+    public int TokenPermitLimit { get; set; } = 250;
 
     /// <summary>
     /// Window period for the Token Endpoint (seconds).
@@ -181,10 +218,10 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum Callback Endpoint requests per period.
-    /// Default: 60 — the bucket is one for the whole instance, not one per browser, and a single sign-in
+    /// Default: 200 — the bucket is one for the whole instance, not one per browser, and a single sign-in
     /// spends several of its requests (the callback itself and the actions of its page).
     /// </summary>
-    public int CallbackPermitLimit { get; set; } = 60;
+    public int CallbackPermitLimit { get; set; } = 200;
 
     /// <summary>
     /// Window period for the Callback Endpoint (seconds).
@@ -194,10 +231,10 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum transaction status polling requests per period.
-    /// Default: 600 requests per minute (10 per second).
-    /// SPEC-007 §5.4.
+    /// Default: 2000 requests per minute — the bucket is one for the whole instance, and a hop sign-in
+    /// polls the status from the phone page every few seconds.
     /// </summary>
-    public int PollingPermitLimit { get; set; } = 600;
+    public int PollingPermitLimit { get; set; } = 2000;
 
     /// <summary>
     /// Window period for polling requests (seconds).
@@ -208,9 +245,11 @@ public sealed class RateLimitOptions
     /// <summary>
     /// Maximum Email Start requests per period.
     /// Limits the magic link send rate (spam protection).
-    /// Default: 5.
+    /// Default: 600 — the bucket is one for the whole instance, and a sign-in spends up to three of its
+    /// requests (the form, the send and the code). The mails of one address and of one transaction are
+    /// bounded apart by the mail limits of the Email channel.
     /// </summary>
-    public int EmailStartPermitLimit { get; set; } = 5;
+    public int EmailStartPermitLimit { get; set; } = 600;
 
     /// <summary>
     /// Window period for Email Start requests (seconds).
@@ -219,10 +258,34 @@ public sealed class RateLimitOptions
     public int EmailStartWindowSeconds { get; set; } = 60;
 
     /// <summary>
-    /// Maximum confirmation creation requests per authenticated client per period.
+    /// Maximum requests to the sign-in routes of the web provider channels per period.
+    /// Default: 800.
+    /// </summary>
+    public int WebProviderPagesPermitLimit { get; set; } = 800;
+
+    /// <summary>
+    /// Window period for the sign-in routes of the web provider channels (seconds).
     /// Default: 60.
     /// </summary>
-    public int ConfirmationCreatePermitLimit { get; set; } = 60;
+    public int WebProviderPagesWindowSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Maximum requests to the pages the links of the Email mails open per period.
+    /// Default: 400.
+    /// </summary>
+    public int EmailLinkPagesPermitLimit { get; set; } = 400;
+
+    /// <summary>
+    /// Window period for the pages the links of the Email mails open (seconds).
+    /// Default: 60.
+    /// </summary>
+    public int EmailLinkPagesWindowSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Maximum confirmation creation requests per authenticated client per period.
+    /// Default: 200.
+    /// </summary>
+    public int ConfirmationCreatePermitLimit { get; set; } = 200;
 
     /// <summary>
     /// Window period for confirmation creation requests (seconds).
@@ -232,9 +295,9 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum confirmation result reads per authenticated client per period.
-    /// Default: 60.
+    /// Default: 400.
     /// </summary>
-    public int ConfirmationResultPermitLimit { get; set; } = 60;
+    public int ConfirmationResultPermitLimit { get; set; } = 400;
 
     /// <summary>
     /// Window period for confirmation result reads (seconds).
@@ -244,10 +307,10 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum requests to the browser pages of the confirmation vertical per period.
-    /// Default: 30 — one confirmation costs three requests of this budget (the entry page, the question
-    /// and the answer), so the shipped value admits ten walks a minute.
+    /// Default: 800 — one confirmation costs three to four requests of this budget (the entry page, the
+    /// question, the answer and, at times, the cancel), and the bucket is one for the whole instance.
     /// </summary>
-    public int ConfirmationPagesPermitLimit { get; set; } = 30;
+    public int ConfirmationPagesPermitLimit { get; set; } = 800;
 
     /// <summary>
     /// Window period for the browser pages of the confirmation vertical (seconds).
@@ -257,10 +320,10 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum requests to the hop resolve endpoint per period.
-    /// Default: 30 — the budget of the browser pages of the confirmation vertical
-    /// (<see cref="ConfirmationPagesPermitLimit"/>).
+    /// Default: 400 — one or two presentations per sign-in (a reissued QR code presents again), and the
+    /// bucket is one for the whole instance.
     /// </summary>
-    public int HopResolvePermitLimit { get; set; } = 30;
+    public int HopResolvePermitLimit { get; set; } = 400;
 
     /// <summary>
     /// Window period for the hop resolve endpoint (seconds).
@@ -270,10 +333,9 @@ public sealed class RateLimitOptions
 
     /// <summary>
     /// Maximum requests to the receiver of client signals of the launch page per period.
-    /// Default: 60 — two signals per presentation at the shipped budget of the hop resolve endpoint
-    /// (<see cref="HopResolvePermitLimit"/>).
+    /// Default: 400 — up to two signals per sign-in, and the bucket is one for the whole instance.
     /// </summary>
-    public int HopSignalPermitLimit { get; set; } = 60;
+    public int HopSignalPermitLimit { get; set; } = 400;
 
     /// <summary>
     /// Window period for the receiver of client signals of the launch page (seconds).

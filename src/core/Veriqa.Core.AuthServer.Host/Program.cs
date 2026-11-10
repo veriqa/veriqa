@@ -354,11 +354,7 @@ return HostBootstrap.Run("Veriqa Auth Server terminated with a critical error", 
     // Register the endpoints of the registered channels (with rate limiting — SPEC-007 §6.1): their
     // webhooks plus whatever routes a channel maps for itself. A channel that is disabled in the
     // configuration contributes none, so the host exposes no route for it.
-    app.MapChannelWebhookEndpoints(new ChannelEndpointPolicies
-    {
-        WebhookPolicyName = RateLimitOptions.WebhookPolicyName,
-        PagePolicyName = RateLimitOptions.EmailStartPolicyName
-    });
+    app.MapChannelWebhookEndpoints(RateLimitOptions.ChannelEndpointPolicies);
 
     // Run the application
     app.Run();

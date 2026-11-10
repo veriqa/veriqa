@@ -82,7 +82,7 @@ public static partial class ChannelWebhookPipeline
 
     /// <summary>
     /// Registers the endpoints of every registered channel, with the full set of rate-limit policies
-    /// the host offers — the webhook budget and the budget of the user-facing pages a channel serves.
+    /// the host offers — one budget per kind of channel route (<see cref="ChannelEndpointPolicies"/>).
     /// </summary>
     /// <param name="endpoints">Endpoint router.</param>
     /// <param name="policies">Rate-limit policy names the host offers to the channel endpoints.</param>

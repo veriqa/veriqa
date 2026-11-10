@@ -99,6 +99,7 @@ letter, up to 64 characters. It cannot be the name of a channel shipped with Ver
 | `WebProvider:IconSvgPath` | no | The channel glyph, by the rules of `IconSvgPath` of the HTTP channel |
 | `WebProvider:ConfirmSlider` | no, `Mobile` by default | How the user answers Yes on the phone page: `Mobile` shows a slider the user drags to the end on a touch screen and two buttons in other browsers, `Everywhere` shows the slider in every browser, `Off` shows two buttons. In every mode, No is a button and has the focus when the page opens; without JavaScript the page shows two buttons |
 | `WebProvider:PhoneNumber:…` | no | Where the phone number is in the provider's answer: `Acquisition` (`Automatic`), `Proof` (`Proven` or `NotProven`), `Claim` (the path of the number, `phone_number` by default), `VerifiedClaim` and `Scopes` — see [Phone number and other claims](#phone-number-and-other-claims) |
+| `WebProvider:Email:Proof` | no, `NotProven` by default | `Proven` — every email the provider returns is taken as verified unless the provider states `email_verified: false`; see [Verified email](#verified-email) |
 | `WebProvider:Claims` | no | Further claims from the provider's answer: a list of `Source` (the path of the value), `Claim` (the claim Veriqa issues) and `Scopes` |
 
 The host does not start, and the message names the key, when an enabled channel has no `Provider`,
@@ -106,7 +107,7 @@ The host does not start, and the message names the key, when an enabled channel 
 absolute `https` address or carries a query; when a `Settings` name is unknown to the provider or is
 refused; when OpenIddict refuses the registration (Apple without `TeamId`); when Apple has no
 `SigningKey` or `SigningKeyId`, or another provider has either; when `PhoneNumber:Acquisition` names anything but
-`Automatic`, or `Proof` is `Proven` without it; when `ConfirmSlider` is not `Off`, `Mobile` or `Everywhere`; when a path in `PhoneNumber` or `Claims` is malformed;
+`Automatic`, or `Proof` is `Proven` without it; when `Email:Proof` is neither `Proven` nor `NotProven`; when `ConfirmSlider` is not `Off`, `Mobile` or `Everywhere`; when a path in `PhoneNumber` or `Claims` is malformed;
 when a `Claims` entry has no `Source` or `Claim`, names a claim the channel may not issue, or names one
 another entry names; when the channel name breaks the rule above; and when one section carries both
 `Http` and `WebProvider`.
@@ -130,13 +131,15 @@ starts the sign-in at the provider, is `{PublicBaseUrl}/auth/web-provider/{chann
 | --- | --- | --- | --- | --- | --- |
 | `Google` | `email`, `profile` | `Prompt`: `select_account` shows the account chooser on every sign-in | identifier, name, first and last name, email, avatar, locale | the `email_verified` claim of the ID token | [Google: OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect) |
 | `Apple` | `email` | `TeamId` (required); the key goes into `SigningKey` and `SigningKeyId` | identifier, email | the `email_verified` claim of the ID token | [Apple: request an authorization](https://developer.apple.com/documentation/signinwithapple/incorporating-sign-in-with-apple-into-other-platforms) |
-| `Huawei` | `email` | `Display`: `touch` adjusts the provider page to a phone | identifier, name (`display_name` of the ID token), email | the `email_verified` claim of the ID token, when it carries one | [Huawei: obtaining an access token](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/web-get-access-token-0000001050048946) |
-| `Yandex` | none: the access rights (email address; name; profile picture) are chosen when you register the app in Yandex ID | `DeviceId`, `DeviceName`, optional | identifier (`id`), name (`display_name`), first and last name, email (`default_email`) | not stated by Yandex: unknown | [Yandex ID: user information](https://yandex.ru/dev/id/doc/en/user-information) |
-| `VkId` | `email` | none | identifier (`user_id`), first and last name, avatar, email | not stated by VK ID: unknown | [VK ID: API description](https://id.vk.ru/about/business/go/docs/en/vkid/latest/vk-id/connection/api-integration/api-description) |
+| `Huawei` | `email` | `Display`: `touch` adjusts the provider page to a phone | identifier, name (`display_name` of the ID token), email | the `email_verified` claim of the ID token, when it carries one; without it, `true` with `Email:Proof: Proven` | [Huawei: obtaining an access token](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/web-get-access-token-0000001050048946) |
+| `Yandex` | none: the access rights (email address; name; profile picture) are chosen when you register the app in Yandex ID | `DeviceId`, `DeviceName`, optional | identifier (`id`), name (`display_name`), first and last name, email (`default_email`) | not stated by Yandex: unknown; `true` with `Email:Proof: Proven` | [Yandex ID: user information](https://yandex.ru/dev/id/doc/en/user-information) |
+| `VkId` | `email` | none | identifier (`user_id`), first and last name, avatar, email | not stated by VK ID: unknown; `true` with `Email:Proof: Proven` | [VK ID: API description](https://id.vk.ru/about/business/go/docs/en/vkid/latest/vk-id/connection/api-integration/api-description) |
 
 Without added scopes OpenIddict requests only `openid` from an OpenID Connect provider, so Google
-returns no email and no name. `email_verified` is `true` or `false` only when the provider says so
-next to the email; otherwise the claim stays unknown and is never assumed `true`. Without the
+returns no email and no name. Unless the [`Email` block](#verified-email) sets `Proof: Proven`,
+`email_verified` is `true` or `false` only when the provider says so next to the email, and stays
+unknown otherwise. With `Proven`, an email the provider returns is verified unless the provider
+states `false`. Without the
 `PhoneNumber` block the phone number is not taken from the provider, and the claims completion form
 does not ask for it either. Such a channel is not offered to a sign-in that requires a phone number;
 a sign-in where the number is optional completes without it.
@@ -163,6 +166,32 @@ An example for Yandex ID with the phone number and the date of birth is in
 
 The adapter keeps no provider token. `AccessType` set to `offline` (Google, Huawei) gets a refresh
 token that nothing uses.
+
+## Verified email
+
+Yandex ID and VK ID return an email without saying whether it is verified, so `email_verified` stays
+unknown, and a relying party or a restriction policy that requires a verified email treats the sign-in as
+unverified. The `Email` block of a channel changes that:
+
+```json
+"WebProvider": {
+  "Provider": "Yandex",
+  "Email": { "Proof": "Proven" }
+}
+```
+
+- With `Proof: Proven`, an email the provider returns gets `email_verified: true`. If the provider
+  itself states `email_verified: false` next to the email, the claim stays `false`.
+- `Proof: NotProven` is the default and is the same as leaving the block out: only the provider's own
+  `email_verified` decides.
+- Without an email in the provider's answer there is no `email_verified` either.
+
+`Proven` is your statement that you trust the addresses of this provider: Veriqa does not check them.
+Relying parties make security decisions based on `email_verified`, such as linking an existing account by
+its email, so declare it only for a provider whose addresses you trust for such decisions.
+
+An Apple address may be a private relay address. Apple has verified it, but it only forwards mail to
+the user's real address and is not an identifier of the user: identify the user by `sub`.
 
 ## What the adapter adds to the OpenIddict client
 

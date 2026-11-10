@@ -132,7 +132,8 @@ public static class OpenIddictIntegrationExtensions
     /// Registers the OIDC endpoints, the SignalR hub and the endpoints of the registered channels —
     /// their webhooks plus whatever routes a channel maps for itself (a page of its own, an inbound
     /// route outside the path convention). Which channel contributes what is the channel's business:
-    /// the auth server only hands out the rate-limit policies it defined for the two kinds of route.
+    /// the auth server only hands out the rate-limit policies it defined for each kind of channel route
+    /// (<see cref="ChannelEndpointPolicies"/>).
     /// </summary>
     /// <param name="endpoints">Endpoint router.</param>
     /// <returns>Router for chaining.</returns>
@@ -140,11 +141,7 @@ public static class OpenIddictIntegrationExtensions
     {
         // The method registers all public Veriqa AuthServer endpoints
         endpoints.MapVeriqaOidcEndpoints();
-        endpoints.MapChannelWebhookEndpoints(new ChannelEndpointPolicies
-        {
-            WebhookPolicyName = RateLimitOptions.WebhookPolicyName,
-            PagePolicyName = RateLimitOptions.EmailStartPolicyName
-        });
+        endpoints.MapChannelWebhookEndpoints(RateLimitOptions.ChannelEndpointPolicies);
 
         return endpoints;
     }
@@ -391,6 +388,27 @@ public static class OpenIddictIntegrationExtensions
                 {
                     o.PermitLimit = rateLimitCore.Read(RateLimitConfigKeys.EmailStartPermitLimit);
                     o.Window = TimeSpan.FromSeconds(rateLimitCore.Read(RateLimitConfigKeys.EmailStartWindowSeconds));
+                    o.QueueLimit = 0;
+                });
+
+                // Limit on the sign-in routes of the web provider channels — a bucket of its own, so that a
+                // sign-in through a web provider does not spend the budget of the mails of the Email channel.
+                limiterOptions.AddFixedWindowLimiter(RateLimitOptions.WebProviderPagesPolicyName, o =>
+                {
+                    o.PermitLimit = rateLimitCore.Read(RateLimitConfigKeys.WebProviderPagesPermitLimit);
+                    o.Window = TimeSpan.FromSeconds(
+                        rateLimitCore.Read(RateLimitConfigKeys.WebProviderPagesWindowSeconds));
+                    o.QueueLimit = 0;
+                });
+
+                // Limit on the pages the links of the Email mails open — the magic-link page and the page
+                // of a link of the claims-completion mail. It runs before the handler, so a rejected
+                // request never reaches the read of the token.
+                limiterOptions.AddFixedWindowLimiter(RateLimitOptions.EmailLinkPagesPolicyName, o =>
+                {
+                    o.PermitLimit = rateLimitCore.Read(RateLimitConfigKeys.EmailLinkPagesPermitLimit);
+                    o.Window = TimeSpan.FromSeconds(
+                        rateLimitCore.Read(RateLimitConfigKeys.EmailLinkPagesWindowSeconds));
                     o.QueueLimit = 0;
                 });
 

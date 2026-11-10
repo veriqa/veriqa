@@ -125,6 +125,10 @@ Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.<Clone>$() -> Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies!
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.ChannelEndpointPolicies() -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.Equals(Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies? other) -> bool
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.MessageLinkPolicyName.get -> string?
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.MessageLinkPolicyName.init -> void
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.MessageSendPolicyName.get -> string?
+Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.MessageSendPolicyName.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.PagePolicyName.get -> string?
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.PagePolicyName.init -> void
 Veriqa.Core.ChannelAdapter.Pipeline.ChannelEndpointPolicies.WebhookPolicyName.get -> string?
